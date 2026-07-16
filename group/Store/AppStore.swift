@@ -81,6 +81,12 @@ final class AppStore {
     /// 目前登入使用者的顯示名稱；舊版任務看板仍會使用。
     let userName: String
 
+    /// 設定頁顯示的個人暱稱。
+    let profileName = "Peach"
+
+    /// 本機原型的通知開關。
+    var notificationsEnabled = true
+
     /// 所有已加入的群組，群組列表直接讀取這個陣列。
     var groups: [Group]
 
