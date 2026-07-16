@@ -1,0 +1,11 @@
+- Modify only the code necessary to complete the current task.
+- Keep the architecture simple and responsibilities clear. Split files, types, or abstractions only when the code becomes meaningfully complex or repetitive.
+- Prefer the simplest workable solution. Do not introduce unused abstractions, excessive protocols, complex dependency injection, or unnecessary design patterns.
+- Keep app data, including mock data, in a single source of truth and pass it through the view hierarchy. Avoid hardcoding domain data in views.
+- When prototyping, use a simple, internally consistent in-memory model with mock data as its initial state.
+- Do not introduce persistence or backend infrastructure without the user's approval.
+- This app is under rapid iteration. You may update data models directly, delete and recreate local test data, and skip migrations.
+- Use Swift Observation. Prefer @Observable and do not use the older ObservableObject pattern.
+- Show only text that users need to understand or complete an action. Do not add unnecessary explanations, instructions, placeholder copy, or developer-facing descriptions to the UI.
+- Display and verify the app only in the in-app browser provided by serve-sim. Do not open Chrome, launch Playwright, or use another external browser.
+- Project targets iOS 26 and uses the latest available SDK. Prefer modern APIs and do not add backward compatibility or availability checks for older iOS versions.
