@@ -95,6 +95,8 @@ private struct AIReportCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CommunicationAnalysisRow(analysis: model.latestCommunicationAnalysis)
+            Divider()
             AIReportRow(
                 icon: "chart.bar.fill", title: "團隊進度摘要",
                 detail: "團隊目前完成 \(model.teamProgress)%，多數任務皆按計畫推進，整體進度維持穩定。"
@@ -111,6 +113,47 @@ private struct AIReportCard: View {
             )
         }
         .comicCard()
+    }
+}
+
+/// 顯示聊天室機器人寫入 AppStore 的最新評分，尚未分析時保留明確的空狀態。
+private struct CommunicationAnalysisRow: View {
+    let analysis: CommunicationAnalysis?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                .font(.headline)
+                .frame(width: 38, height: 38)
+                .background(BombTheme.yellow)
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("AI 溝通分析").font(.subheadline.weight(.black))
+                    Spacer()
+                    if let analysis {
+                        Text("\(analysis.score) 分")
+                            .font(.caption.weight(.black).monospacedDigit())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(BombTheme.yellow)
+                            .clipShape(.capsule)
+                    }
+                }
+                Text(analysis?.summary ?? "尚未分析聊天室對話；到聊天室點選「AI 分析」即可產生報告。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let analysis {
+                    Text("建議：\(analysis.suggestion)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 11)
     }
 }
 

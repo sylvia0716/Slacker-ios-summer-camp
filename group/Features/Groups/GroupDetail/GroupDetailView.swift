@@ -74,7 +74,7 @@ struct GroupDetailView: View {
             Spacer()
 
             NavigationLink {
-                ChatRoomView(groupName: group.name)
+                ChatRoomView(model: model, group: group)
             } label: {
                 Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
                     .font(.subheadline.weight(.black))
