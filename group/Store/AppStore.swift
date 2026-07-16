@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 
+/// Legacy prototype task model. Future work: replace with ProjectTask and attach it to a Group.
 struct MissionTask: Identifiable {
     let id = UUID()
     var title: String
@@ -9,6 +10,7 @@ struct MissionTask: Identifiable {
     var owner: String?
 }
 
+/// Legacy prototype member model. Future work: replace with Member and group-scoped roles.
 struct Agent: Identifiable {
     let id = UUID()
     var name: String
@@ -18,12 +20,14 @@ struct Agent: Identifiable {
     var status = "待命"
 }
 
+/// Input data for the existing peer-review radar.
 struct RadarMetric: Identifiable {
     let id = UUID()
     let title: String
     let score: Double
 }
 
+/// Available reminder interactions for the current local-only prototype.
 enum PokeStyle: String, CaseIterable, Identifiable {
     case gentle = "輕敲"
     case meme = "迷因轟炸"
@@ -37,9 +41,20 @@ enum PokeStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Single source of truth for all mock data and mutations in the current prototype.
+/// Future work: own Group, ProjectTask, Subtask, Deliverable, chat, and report data here.
 @MainActor @Observable
-final class GroupBombModel {
+final class AppStore {
     let userName = "我"
+    var groups = [
+        Group(
+            id: UUID(),
+            name: "期末報告拆彈小隊",
+            deadline: .now.addingTimeInterval(48 * 60 * 60),
+            memberIDs: [],
+            taskIDs: []
+        )
+    ]
     var tasks = [
         MissionTask(title: "蒐集市場數據", detail: "找到 3 個可信來源", points: 120, owner: nil),
         MissionTask(title: "製作競品分析", detail: "完成比較矩陣", points: 180, owner: "小宇"),
@@ -77,3 +92,6 @@ final class GroupBombModel {
         lastEvent = "護盾啟動，隊友看得到你在做了"
     }
 }
+
+/// Temporary compatibility name while feature views migrate to AppStore.
+typealias GroupBombModel = AppStore
