@@ -17,7 +17,7 @@ struct GroupListView: View {
 
                     ForEach(model.groups) { group in
                         NavigationLink {
-                            MissionBoardView(model: model, group: group)
+                            GroupDetailView(group: group, model: model)
                         } label: {
                             GroupRow(group: group, progress: model.teamProgress, memberCount: model.agents.count)
                         }
@@ -105,7 +105,7 @@ private struct AddGroupSheet: View {
                     VStack(spacing: 20) {
                         Text("分享這組代碼給隊友")
                             .font(.headline)
-                        Text(createdGroup?.code ?? "")
+                        Text(createdGroup?.inviteCode ?? "")
                             .font(.system(.title, design: .monospaced, weight: .black))
                             .padding()
                             .background(BombTheme.paper)
@@ -163,13 +163,19 @@ private struct AddGroupSheet: View {
         switch flow {
         case .entry:
             if entryMode == .create {
-                createdGroup = model.createGroup(name: groupName)
+                let deadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
+                model.createGroup(name: groupName, deadline: deadline)
+                createdGroup = model.groups.last
                 flow = .shareCode
-            } else if let group = model.group(forCode: groupCode) {
-                enterGroup(group, false)
-                dismiss()
             } else {
-                joinError = "請確認群組代碼後再試一次。"
+                let normalizedCode = groupCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                if model.joinGroup(inviteCode: normalizedCode),
+                   let group = model.groups.first(where: { $0.inviteCode == normalizedCode }) {
+                    enterGroup(group, false)
+                    dismiss()
+                } else {
+                    joinError = "請確認群組代碼後再試一次。"
+                }
             }
         case .shareCode:
             guard let createdGroup else { return }
