@@ -1,5 +1,22 @@
 import Foundation
 
+/// 正式任務的生命週期狀態。
+enum ProjectTaskStatus: String, Codable, Hashable, CaseIterable {
+    case pending
+    case inProgress
+    case submitted
+    case completed
+
+    var title: String {
+        switch self {
+        case .pending: "待開始"
+        case .inProgress: "處理中"
+        case .submitted: "待驗收"
+        case .completed: "已完成"
+        }
+    }
+}
+
 /// 群組中的一項主要工作，例如文獻回顧、競品分析或簡報統整。
 struct ProjectTask: Identifiable, Hashable {
     /// 任務唯一識別碼。
@@ -18,6 +35,14 @@ struct ProjectTask: Identifiable, Hashable {
     var subtasks: [Subtask]
     /// 任務完成時送出的成果；nil 代表尚未交付。
     var deliverable: Deliverable?
+    /// 任務截止時間；舊資料未指定時不限制截止時間。
+    var deadline: Date = .distantFuture
+    /// 建立任務的成員；舊資料未指定時為 nil。
+    var createdByMemberID: UUID? = nil
+    /// 任務建立時間。
+    var createdAt: Date = .now
+    /// 任務目前狀態。
+    var status: ProjectTaskStatus = .pending
 
     /// 依子任務權重算出的任務完成百分比，不應直接手動設定。
     var progress: Int {

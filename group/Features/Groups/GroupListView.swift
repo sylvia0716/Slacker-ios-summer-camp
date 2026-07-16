@@ -16,7 +16,7 @@ struct GroupListView: View {
 
                     ForEach(model.groups) { group in
                         NavigationLink {
-                            MissionBoardView(model: model)
+                            GroupDetailView(group: group, model: model)
                         } label: {
                             GroupRow(group: group, progress: model.teamProgress, memberCount: model.agents.count)
                         }

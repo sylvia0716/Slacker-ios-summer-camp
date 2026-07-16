@@ -71,6 +71,25 @@ enum PokeStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// 發布正式任務時可能發生的資料驗證錯誤。
+enum PublishTaskError: LocalizedError {
+    case groupNotFound
+    case emptyTitle
+    case assigneeNotInGroup
+    case deadlineNotInFuture
+    case deadlineAfterGroupDeadline
+
+    var errorDescription: String? {
+        switch self {
+        case .groupNotFound: "找不到目前群組"
+        case .emptyTitle: "請輸入任務名稱"
+        case .assigneeNotInGroup: "負責人必須是目前群組成員"
+        case .deadlineNotInFuture: "截止時間必須晚於目前時間"
+        case .deadlineAfterGroupDeadline: "截止時間不可晚於群組總截止時間"
+        }
+    }
+}
+
 /// 全 App 的唯一資料來源。
 /// B、C、D 請只透過這個 Store 讀取與修改 mock 資料，不要在 View 內建立第二份任務或成員資料。
 @MainActor @Observable
@@ -116,6 +135,8 @@ final class AppStore {
         let allMembers = [me, xiaoYu, miMi, aKai]
 
         let groupID = UUID()
+        let initialCreatedAt = Date.now
+        let groupDeadline = initialCreatedAt.addingTimeInterval(48 * 60 * 60)
         let researchTask = ProjectTask(
             id: UUID(), groupID: groupID, title: "蒐集市場數據", detail: "找到 3 個可信來源", weight: 25,
             ownerMemberID: nil,
@@ -123,7 +144,11 @@ final class AppStore {
                 Subtask(id: UUID(), title: "找到三個可信來源", isComplete: false, weight: 50),
                 Subtask(id: UUID(), title: "整理資料重點", isComplete: false, weight: 50)
             ],
-            deliverable: nil
+            deliverable: nil,
+            deadline: groupDeadline,
+            createdByMemberID: me.id,
+            createdAt: initialCreatedAt,
+            status: .pending
         )
         let competitorTask = ProjectTask(
             id: UUID(), groupID: groupID, title: "製作競品分析", detail: "完成比較矩陣", weight: 30,
@@ -132,7 +157,11 @@ final class AppStore {
                 Subtask(id: UUID(), title: "整理競品資料", isComplete: true, weight: 40),
                 Subtask(id: UUID(), title: "完成比較矩陣", isComplete: false, weight: 60)
             ],
-            deliverable: nil
+            deliverable: nil,
+            deadline: groupDeadline,
+            createdByMemberID: me.id,
+            createdAt: initialCreatedAt,
+            status: .inProgress
         )
         let designTask = ProjectTask(
             id: UUID(), groupID: groupID, title: "簡報視覺統整", detail: "統一圖表與版面", weight: 25,
@@ -141,7 +170,11 @@ final class AppStore {
                 Subtask(id: UUID(), title: "建立簡報版型", isComplete: true, weight: 50),
                 Subtask(id: UUID(), title: "統一圖表風格", isComplete: false, weight: 50)
             ],
-            deliverable: nil
+            deliverable: nil,
+            deadline: groupDeadline,
+            createdByMemberID: me.id,
+            createdAt: initialCreatedAt,
+            status: .inProgress
         )
         let conclusionTask = ProjectTask(
             id: UUID(), groupID: groupID, title: "結論與建議", detail: "收斂成 3 個重點", weight: 20,
@@ -149,7 +182,11 @@ final class AppStore {
             subtasks: [
                 Subtask(id: UUID(), title: "撰寫三個重點", isComplete: false, weight: 100)
             ],
-            deliverable: nil
+            deliverable: nil,
+            deadline: groupDeadline,
+            createdByMemberID: me.id,
+            createdAt: initialCreatedAt,
+            status: .pending
         )
         let allProjectTasks = [researchTask, competitorTask, designTask, conclusionTask]
 
@@ -161,7 +198,7 @@ final class AppStore {
             Group(
                 id: groupID,
                 name: "期末報告拆彈小隊",
-                deadline: .now.addingTimeInterval(48 * 60 * 60),
+                deadline: groupDeadline,
                 memberIDs: allMembers.map(\.id),
                 taskIDs: allProjectTasks.map(\.id),
                 inviteCode: "BOMB52"
@@ -213,6 +250,52 @@ final class AppStore {
         let totalWeight = tasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return 0 }
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+    }
+
+    /// 驗證並發布一項正式任務，同步維護群組的 taskIDs 關係。
+    @discardableResult
+    func publishTask(
+        title: String,
+        detail: String,
+        groupID: UUID,
+        assigneeMemberID: UUID,
+        deadline: Date,
+        now: Date = .now
+    ) throws -> ProjectTask {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
+        guard let groupIndex = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        guard groups[groupIndex].memberIDs.contains(assigneeMemberID),
+              members.contains(where: { $0.id == assigneeMemberID }) else {
+            throw PublishTaskError.assigneeNotInGroup
+        }
+        guard deadline > now else { throw PublishTaskError.deadlineNotInFuture }
+        guard deadline <= groups[groupIndex].deadline else {
+            throw PublishTaskError.deadlineAfterGroupDeadline
+        }
+
+        let task = ProjectTask(
+            id: UUID(),
+            groupID: groupID,
+            title: trimmedTitle,
+            detail: trimmedDetail,
+            weight: 1,
+            ownerMemberID: assigneeMemberID,
+            subtasks: [Subtask(id: UUID(), title: trimmedTitle, isComplete: false, weight: 100)],
+            deliverable: nil,
+            deadline: deadline,
+            createdByMemberID: currentUserID,
+            createdAt: now,
+            status: .pending
+        )
+
+        projectTasks.append(task)
+        groups[groupIndex].taskIDs.append(task.id)
+        lastEvent = "已發布新任務「\(trimmedTitle)」"
+        return task
     }
 
     /// 建立一個只有目前使用者的新群組，供建立群組 sheet 呼叫。
