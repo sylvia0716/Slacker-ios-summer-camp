@@ -50,6 +50,7 @@ final class AppStore {
         Group(
             id: UUID(),
             name: "期末報告拆彈小隊",
+            code: "GB-DEMO",
             deadline: .now.addingTimeInterval(48 * 60 * 60),
             memberIDs: [],
             taskIDs: []
@@ -82,6 +83,36 @@ final class AppStore {
     func poke(agentID: UUID, style: PokeStyle) {
         guard let index = agents.firstIndex(where: { $0.id == agentID }) else { return }
         lastEvent = "用「\(style.rawValue)」戳了 \(agents[index].name)"
+    }
+
+    func createGroup(name: String) -> Group? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+
+        let group = Group(
+            id: UUID(),
+            name: trimmedName,
+            code: makeGroupCode(),
+            deadline: .now.addingTimeInterval(7 * 24 * 60 * 60),
+            memberIDs: [],
+            taskIDs: []
+        )
+        groups.append(group)
+        lastEvent = "已建立「\(trimmedName)」"
+        return group
+    }
+
+    func group(forCode code: String) -> Group? {
+        let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return groups.first { $0.code == normalizedCode }
+    }
+
+    private func makeGroupCode() -> String {
+        var code: String
+        repeat {
+            code = "GB-\(UUID().uuidString.prefix(6))"
+        } while groups.contains(where: { $0.code == code })
+        return code
     }
 
     func shield(minutes: Int, note: String) {

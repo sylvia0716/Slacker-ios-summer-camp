@@ -4,6 +4,7 @@ import Foundation
 struct Group: Identifiable, Hashable {
     let id: UUID
     var name: String
+    var code: String
     var deadline: Date
     var memberIDs: [UUID]
     var taskIDs: [UUID]

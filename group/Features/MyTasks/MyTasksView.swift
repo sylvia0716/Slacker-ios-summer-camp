@@ -22,7 +22,7 @@ struct MyTasksView: View {
                 } else {
                     ForEach(tasks) { task in
                         NavigationLink {
-                            MissionBoardView(model: model)
+                            MissionBoardView(model: model, group: model.groups[0])
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(task.title).font(.headline)
