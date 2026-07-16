@@ -6,8 +6,27 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F0A100010000000000000001 /* GroupBombWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F0A100020000000000000002 /* GroupBombWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F0A100030000000000000003 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F0A100010000000000000001 /* GroupBombWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		E5A7EFFC300755BD007F8C90 /* group.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = group.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0A100020000000000000002 /* GroupBombWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GroupBombWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,7 +35,25 @@
 			path = group;
 			sourceTree = "<group>";
 		};
+		F0A100040000000000000004 /* GroupBombWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F0A1000D000000000000000D /* Exceptions for "GroupBombWidget" folder in "GroupBombWidget" target */,
+			);
+			path = GroupBombWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F0A1000D000000000000000D /* Exceptions for "GroupBombWidget" folder in "GroupBombWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F0A100060000000000000006 /* GroupBombWidget */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		E5A7EFF9300755BD007F8C90 /* Frameworks */ = {
@@ -33,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				E5A7EFFE300755BD007F8C90 /* group */,
+				F0A100040000000000000004 /* GroupBombWidget */,
 				E5A7EFFD300755BD007F8C90 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				E5A7EFFC300755BD007F8C90 /* group.app */,
+				F0A100020000000000000002 /* GroupBombWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -55,10 +94,12 @@
 				E5A7EFF8300755BD007F8C90 /* Sources */,
 				E5A7EFF9300755BD007F8C90 /* Frameworks */,
 				E5A7EFFA300755BD007F8C90 /* Resources */,
+				F0A100030000000000000003 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F0A100050000000000000005 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				E5A7EFFE300755BD007F8C90 /* group */,
@@ -69,6 +110,28 @@
 			productName = group;
 			productReference = E5A7EFFC300755BD007F8C90 /* group.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F0A100060000000000000006 /* GroupBombWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F0A100070000000000000007 /* Build configuration list for PBXNativeTarget "GroupBombWidget" */;
+			buildPhases = (
+				F0A100080000000000000008 /* Sources */,
+				F0A100090000000000000009 /* Frameworks */,
+				F0A1000A000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F0A100040000000000000004 /* GroupBombWidget */,
+			);
+			name = GroupBombWidget;
+			packageProductDependencies = (
+			);
+			productName = GroupBombWidget;
+			productReference = F0A100020000000000000002 /* GroupBombWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +144,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					E5A7EFFB300755BD007F8C90 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					F0A100060000000000000006 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -100,12 +166,20 @@
 			projectRoot = "";
 			targets = (
 				E5A7EFFB300755BD007F8C90 /* group */,
+				F0A100060000000000000006 /* GroupBombWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		E5A7EFFA300755BD007F8C90 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0A1000A000000000000000A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +196,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0A100080000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F0A100090000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F0A100050000000000000005 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = F0A100060000000000000006 /* GroupBombWidget */; };
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		E5A7F005300755BF007F8C90 /* Debug */ = {
@@ -310,6 +405,44 @@
 			};
 			name = Release;
 		};
+		F0A1000B000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7AZCB583DJ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GroupBombWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = con.sylvia.group.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F0A1000C000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7AZCB583DJ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GroupBombWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = con.sylvia.group.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -327,6 +460,15 @@
 			buildConfigurations = (
 				E5A7F008300755BF007F8C90 /* Debug */,
 				E5A7F009300755BF007F8C90 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F0A100070000000000000007 /* Build configuration list for PBXNativeTarget "GroupBombWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F0A1000B000000000000000B /* Debug */,
+				F0A1000C000000000000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

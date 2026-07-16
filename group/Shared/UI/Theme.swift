@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Central palette for the Group Bomb visual system.
 enum BombTheme {
     static let yellow = Color(red: 1, green: 0.79, blue: 0.05)
     static let ink = Color(red: 0.08, green: 0.08, blue: 0.07)
@@ -8,6 +9,7 @@ enum BombTheme {
     static let green = Color(red: 0.16, green: 0.55, blue: 0.32)
 }
 
+/// Shared comic-style card treatment. Keep feature-specific layout out of this file.
 struct ComicCard: ViewModifier {
     func body(content: Content) -> some View {
         content.padding(16).background(BombTheme.paper)
@@ -17,8 +19,11 @@ struct ComicCard: ViewModifier {
     }
 }
 
-extension View { func comicCard() -> some View { modifier(ComicCard()) } }
+extension View {
+    func comicCard() -> some View { modifier(ComicCard()) }
+}
 
+/// Reusable warning-stripe decoration for deadline and status surfaces.
 struct HazardStripe: View {
     var body: some View {
         HStack(spacing: 0) {
