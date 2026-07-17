@@ -60,10 +60,21 @@ struct ChatRoomView: View {
     @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     let group: Group
+    private let tutorialStep: Binding<TutorialStep?>?
 
     @State private var draft = ""
     @State private var items = ChatRoomPreviewData.sample.messages
     @State private var showsShortcuts = false
+
+    init(
+        model: GroupBombModel,
+        group: Group,
+        tutorialStep: Binding<TutorialStep?>? = nil
+    ) {
+        self.model = model
+        self.group = group
+        self.tutorialStep = tutorialStep
+    }
 
     var body: some View {
         ZStack {
@@ -95,6 +106,11 @@ struct ChatRoomView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            if tutorialStep?.wrappedValue == .chatEntry {
+                tutorialStep?.wrappedValue = .aiChat
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
     }
 
@@ -265,6 +281,10 @@ struct ChatRoomView: View {
         .padding(.top, 10)
         .padding(.bottom, 8)
         .background(BombTheme.yellow)
+        .tutorialTarget(
+            .chatInput,
+            enabled: tutorialStep?.wrappedValue == .aiChat
+        )
     }
 
     private func sendDraft() {

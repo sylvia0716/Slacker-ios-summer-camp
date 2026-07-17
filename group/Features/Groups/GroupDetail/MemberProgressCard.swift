@@ -403,7 +403,6 @@ private struct PokeActionButton: View {
         }
     }
 }
-
 private struct DeliverablePhotoPreview: View {
     @Environment(\.dismiss) private var dismiss
     let deliverable: Deliverable

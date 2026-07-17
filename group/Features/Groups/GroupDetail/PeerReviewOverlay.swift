@@ -3,6 +3,9 @@ import SwiftUI
 /// 截止後的單一互評視窗，集中處理隊員列表、評分、確認與完成狀態。
 struct PeerReviewOverlay: View {
     let group: Group
+    let outcome: GroupDeadlineOutcome
+    let projectProgress: Int
+    let startsAtOutcomeSummary: Bool
     let members: [Member]
     let currentUserID: UUID
     let tasks: [ProjectTask]
@@ -18,6 +21,7 @@ struct PeerReviewOverlay: View {
     @State private var showsConfirmation = false
     @State private var errorMessage: String?
     @State private var showsResultsPlaceholder = false
+    @State private var hasEnteredReview = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -27,7 +31,9 @@ struct PeerReviewOverlay: View {
 
                 ScrollView {
                     SwiftUI.Group {
-                        if let submittedMember {
+                        if startsAtOutcomeSummary && !hasEnteredReview {
+                            outcomeSummary
+                        } else if let submittedMember {
                             submissionSuccess(for: submittedMember)
                         } else if let selectedMember {
                             reviewForm(for: selectedMember)
@@ -43,6 +49,11 @@ struct PeerReviewOverlay: View {
                 .background(BombTheme.paper)
                 .clipShape(RoundedRectangle(cornerRadius: 28))
                 .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
+                .overlay(alignment: .topTrailing) {
+                    if theme.isIncident {
+                        incidentCornerDecoration
+                    }
+                }
                 .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
                 .frame(maxWidth: 560)
                 .frame(maxHeight: max(320, proxy.size.height - 32))
@@ -56,6 +67,104 @@ struct PeerReviewOverlay: View {
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .accessibilityElement(children: .contain)
+    }
+
+    private var outcomeSummary: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: theme.iconName)
+                    .font(.system(size: 32, weight: .black))
+                    .foregroundStyle(theme.accentColor)
+                    .frame(width: 58, height: 58)
+                    .background(theme.iconBackground)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(BombTheme.ink, lineWidth: 3))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(theme.outcomeTitle)
+                        .font(.system(.largeTitle, design: .rounded, weight: .black))
+                    Text(theme.outcomeSubtitle)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if theme.isIncident {
+                incidentWarning
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                summaryRow(label: "群組名稱", value: group.name)
+                summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%")
+                summaryRow(label: theme.completedTaskLabel, value: "\(completedTaskCount) / \(tasks.count)")
+
+                if theme.isIncident {
+                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)")
+                }
+
+                summaryRow(label: "截止時間", value: formattedDeadline)
+            }
+            .padding(14)
+            .background(theme.summaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
+
+            if theme.isIncident && !unfinishedTaskTitles.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("未完成工作")
+                        .font(.headline.weight(.black))
+
+                    ForEach(unfinishedTaskTitles, id: \.self) { title in
+                        Label(title, systemImage: "exclamationmark.circle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(BombTheme.ink)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(BombTheme.red.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.red, lineWidth: 2))
+            }
+
+            Button(theme.startButtonTitle) {
+                withAnimation(.snappy) { hasEnteredReview = true }
+            }
+            .primaryReviewButton()
+        }
+    }
+
+    private var incidentWarning: some View {
+        HStack(spacing: 7) {
+            Rectangle().fill(BombTheme.red).frame(width: 34, height: 4)
+            Rectangle().fill(BombTheme.ink).frame(width: 18, height: 4)
+            Text("截止警報")
+                .font(.caption.weight(.black))
+                .foregroundStyle(BombTheme.red)
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var incidentCornerDecoration: some View {
+        ZStack {
+            Circle()
+                .fill(BombTheme.ink.opacity(0.12))
+                .frame(width: 74, height: 74)
+                .offset(x: 24, y: -25)
+
+            Image(systemName: "flame.fill")
+                .font(.title2.weight(.black))
+                .foregroundStyle(BombTheme.red)
+                .padding(12)
+                .background(BombTheme.paper)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
+                .offset(x: -10, y: 10)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var memberList: some View {
@@ -87,7 +196,7 @@ struct PeerReviewOverlay: View {
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
             Text("匿名隊員互評")
                 .font(.headline.weight(.black))
-            Text("請根據隊友在本次任務中的實際表現完成匿名互評。")
+            Text(theme.instruction)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -222,7 +331,7 @@ struct PeerReviewOverlay: View {
                 Spacer()
                 Text(score == 0 ? "尚未評分" : "\(score) / 5")
                     .font(.caption.weight(.black))
-                    .foregroundStyle(score == 0 ? Color.secondary : BombTheme.green)
+                    .foregroundStyle(score == 0 ? Color.secondary : theme.accentColor)
             }
 
             Text(criterion.detail)
@@ -236,7 +345,7 @@ struct PeerReviewOverlay: View {
                         scores[criterion] = value
                     } label: {
                         Circle()
-                            .fill(value <= score ? BombTheme.ink : Color.clear)
+                            .fill(value <= score ? theme.ratingFill : Color.clear)
                             .frame(width: 22, height: 22)
                             .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -251,11 +360,18 @@ struct PeerReviewOverlay: View {
 
     private var commentEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("匿名評語").font(.subheadline.weight(.black))
+            Text(theme.commentSectionTitle).font(.subheadline.weight(.black))
+
+            if let commentGuidance = theme.commentGuidance {
+                Label(commentGuidance, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             ZStack(alignment: .topLeading) {
                 if comment.isEmpty {
-                    Text("寫下這位組員做得好的地方，或可以改進的地方")
+                    Text(theme.commentPlaceholder)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
@@ -290,8 +406,8 @@ struct PeerReviewOverlay: View {
             BombTheme.ink.opacity(0.48).ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 16) {
-                Text("確認送出？").font(.title2.weight(.black))
-                Text("送出後本次匿名評價將無法修改。")
+                Text(theme.confirmationTitle).font(.title2.weight(.black))
+                Text(theme.confirmationMessage)
                     .font(.subheadline.weight(.bold))
 
                 HStack(spacing: 10) {
@@ -328,9 +444,9 @@ struct PeerReviewOverlay: View {
 
         return VStack(alignment: .leading, spacing: 18) {
             titleBlock
-            Label("已完成對\(member.name)的匿名評價", systemImage: "checkmark.circle.fill")
+            Label(theme.submissionSuccessMessage(for: member.name), systemImage: theme.successIconName)
                 .font(.title3.weight(.black))
-                .foregroundStyle(BombTheme.green)
+                .foregroundStyle(theme.accentColor)
 
             Text("剩餘 \(remainingCount) 位隊員尚未評價")
                 .font(.subheadline.weight(.bold))
@@ -350,8 +466,8 @@ struct PeerReviewOverlay: View {
     private var completionContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             titleBlock
-            Text("互評完成").font(.title2.weight(.black))
-            Text("你已完成所有隊員的匿名互評。")
+            Text(theme.completionTitle).font(.title2.weight(.black))
+            Text(theme.completionMessage)
                 .font(.subheadline.weight(.bold))
 
             VStack(alignment: .leading, spacing: 8) {
@@ -359,14 +475,14 @@ struct PeerReviewOverlay: View {
                 summaryRow(label: "整體互評完成進度", value: "\(completedReviewerCount) / \(members.count) 位")
             }
 
-            Text(completedReviewerCount == members.count ? "所有匿名互評已完成" : "等待其他隊員完成互評")
+            Text(completedReviewerCount == members.count ? theme.everyoneCompletedMessage : theme.waitingMessage)
                 .font(.subheadline.weight(.black))
-                .foregroundStyle(completedReviewerCount == members.count ? BombTheme.green : BombTheme.red)
+                .foregroundStyle(completedReviewerCount == members.count ? theme.accentColor : BombTheme.red)
 
             anonymityNotice
 
             if showsResultsPlaceholder {
-                Text("互評結果將於下一階段開放")
+                Text(theme.resultsPlaceholder)
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.red)
             }
@@ -374,7 +490,7 @@ struct PeerReviewOverlay: View {
             Button("返回群組", action: onLater)
                 .primaryReviewButton()
 
-            Button("查看互評結果") {
+            Button(theme.resultsButtonTitle) {
                 showsResultsPlaceholder = true
             }
             .secondaryReviewButton()
@@ -401,6 +517,32 @@ struct PeerReviewOverlay: View {
 
     private var otherMembers: [Member] {
         members.filter { $0.id != currentUserID }
+    }
+
+    private var theme: PeerReviewTheme {
+        PeerReviewTheme(outcome: outcome)
+    }
+
+    private var clampedProjectProgress: Int {
+        if outcome == .completed { return 100 }
+        return min(max(projectProgress, 0), 100)
+    }
+
+    private var completedTaskCount: Int {
+        if outcome == .completed { return tasks.count }
+        return tasks.filter { $0.progress >= 100 }.count
+    }
+
+    private var incompleteTaskCount: Int {
+        tasks.count - completedTaskCount
+    }
+
+    private var unfinishedTaskTitles: [String] {
+        Array(tasks.filter { $0.progress < 100 }.map(\.title).prefix(3))
+    }
+
+    private var formattedDeadline: String {
+        group.deadline.formatted(date: .abbreviated, time: .shortened)
     }
 
     private var selectedMember: Member? {
@@ -468,6 +610,117 @@ struct PeerReviewOverlay: View {
             showsConfirmation = false
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// 單一互評流程的輕量視覺設定；只依截止結果切換文案與局部樣式。
+private struct PeerReviewTheme {
+    let outcome: GroupDeadlineOutcome
+
+    var isIncident: Bool { outcome == .incomplete }
+
+    var outcomeTitle: String {
+        isIncident ? "任務爆炸" : "成功拆彈！"
+    }
+
+    var outcomeSubtitle: String {
+        isIncident
+            ? "截止時間已到，先查看戰損，再完成匿名隊員互評。"
+            : "任務已完成，請進行匿名隊員互評。"
+    }
+
+    var instruction: String {
+        isIncident
+            ? "請根據本次任務中的實際合作表現完成匿名互評，找出這次任務卡住的原因。"
+            : "請根據隊友在本次任務中的實際表現完成匿名互評。"
+    }
+
+    var iconName: String {
+        isIncident ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+    }
+
+    var successIconName: String {
+        isIncident ? "doc.text.fill" : "checkmark.circle.fill"
+    }
+
+    var startButtonTitle: String {
+        isIncident ? "開始戰損復盤" : "開始雷包點點名"
+    }
+
+    var progressLabel: String {
+        isIncident ? "截止時完成率" : "最終進度"
+    }
+
+    var completedTaskLabel: String {
+        isIncident ? "已完成任務數" : "完成任務數"
+    }
+
+    var commentSectionTitle: String {
+        isIncident ? "事故報告" : "匿名評語"
+    }
+
+    var commentPlaceholder: String {
+        isIncident
+            ? "請寫下這次合作中做得好的地方，或造成任務卡住、延誤的原因。"
+            : "寫下這位隊員做得好的地方，或可以改進的地方。"
+    }
+
+    var commentGuidance: String? {
+        isIncident ? "請針對行為與合作狀況，不要進行人身攻擊。" : nil
+    }
+
+    var confirmationTitle: String {
+        isIncident ? "確認提交事故報告？" : "確認送出？"
+    }
+
+    var confirmationMessage: String {
+        isIncident ? "送出後，本次匿名評價將無法修改。" : "送出後本次匿名評價將無法修改。"
+    }
+
+    func submissionSuccessMessage(for memberName: String) -> String {
+        isIncident
+            ? "已完成對「\(memberName)」的匿名復盤"
+            : "已完成對「\(memberName)」的匿名評價"
+    }
+
+    var completionTitle: String {
+        isIncident ? "戰損分析完成" : "互評完成"
+    }
+
+    var completionMessage: String {
+        "你已完成所有隊員的匿名互評。"
+    }
+
+    var everyoneCompletedMessage: String {
+        isIncident ? "所有隊員皆已完成復盤" : "所有匿名互評已完成"
+    }
+
+    var waitingMessage: String {
+        isIncident ? "等待其他隊員完成復盤" : "等待其他隊員完成互評"
+    }
+
+    var resultsButtonTitle: String {
+        isIncident ? "查看戰損報告" : "查看互評結果"
+    }
+
+    var resultsPlaceholder: String {
+        isIncident ? "戰損報告將於下一階段開放" : "互評結果將於下一階段開放"
+    }
+
+    var accentColor: Color {
+        isIncident ? BombTheme.red : BombTheme.green
+    }
+
+    var ratingFill: Color {
+        isIncident ? BombTheme.red : BombTheme.ink
+    }
+
+    var iconBackground: Color {
+        isIncident ? BombTheme.red.opacity(0.14) : BombTheme.yellow
+    }
+
+    var summaryBackground: Color {
+        isIncident ? Color.black.opacity(0.06) : BombTheme.yellow.opacity(0.34)
     }
 }
 
