@@ -115,6 +115,9 @@ final class AppStore {
     /// 所有正式任務；任務與群組、負責人的關係都用 ID 連結。
     var projectTasks: [ProjectTask]
 
+    /// 截止後送出的匿名隊員互評；MVP 僅保留於目前 App 執行期間。
+    var peerReviews: [PeerReview]
+
     /// 舊版任務看板資料；等 C 完成新群組詳細頁後再移除。
     var tasks: [MissionTask]
 
@@ -197,6 +200,7 @@ final class AppStore {
         userName = me.name
         members = allMembers
         projectTasks = allProjectTasks
+        peerReviews = []
         groups = [
             Group(
                 id: groupID,
@@ -284,6 +288,104 @@ final class AppStore {
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
     }
 
+    /// 取得指定群組已送出的匿名互評。
+    func reviews(for groupID: UUID) -> [PeerReview] {
+        peerReviews.filter { $0.groupID == groupID }
+    }
+
+    /// 同一位評價者對同一位隊員只能送出一次。
+    func hasReviewed(reviewerID: UUID, revieweeID: UUID, groupID: UUID) -> Bool {
+        peerReviews.contains {
+            $0.groupID == groupID
+                && $0.reviewerMemberID == reviewerID
+                && $0.revieweeMemberID == revieweeID
+        }
+    }
+
+    /// 判斷一位成員是否已完成對群組內所有其他成員的互評。
+    func hasCompletedAllReviews(reviewerID: UUID, groupID: UUID) -> Bool {
+        guard let group = groups.first(where: { $0.id == groupID }),
+              group.memberIDs.contains(reviewerID) else { return false }
+
+        return group.memberIDs
+            .filter { $0 != reviewerID }
+            .allSatisfy { hasReviewed(reviewerID: reviewerID, revieweeID: $0, groupID: groupID) }
+    }
+
+    /// 群組內已完成全部互評的成員人數。
+    func completedPeerReviewerCount(in groupID: UUID) -> Int {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return 0 }
+        return group.memberIDs.filter {
+            hasCompletedAllReviews(reviewerID: $0, groupID: groupID)
+        }.count
+    }
+
+    /// 驗證並送出匿名隊員互評。評價內容不對外暴露 reviewer 身份。
+    @discardableResult
+    func submitPeerReview(
+        groupID: UUID,
+        reviewerID: UUID,
+        revieweeID: UUID,
+        taskCompletionScore: Int,
+        discussionScore: Int,
+        collaborationScore: Int,
+        ideaScore: Int,
+        reliabilityScore: Int,
+        comment: String,
+        now: Date = .now
+    ) throws -> PeerReview {
+        guard let group = groups.first(where: { $0.id == groupID }) else {
+            throw PeerReviewSubmissionError.groupNotFound
+        }
+        guard now >= group.deadline else {
+            throw PeerReviewSubmissionError.groupStillActive
+        }
+        guard group.memberIDs.contains(reviewerID), group.memberIDs.contains(revieweeID) else {
+            throw PeerReviewSubmissionError.memberNotInGroup
+        }
+        guard reviewerID != revieweeID else {
+            throw PeerReviewSubmissionError.cannotReviewSelf
+        }
+
+        let scores = [
+            taskCompletionScore,
+            discussionScore,
+            collaborationScore,
+            ideaScore,
+            reliabilityScore
+        ]
+        guard scores.allSatisfy({ (1...5).contains($0) }) else {
+            throw PeerReviewSubmissionError.invalidScore
+        }
+        guard !hasReviewed(reviewerID: reviewerID, revieweeID: revieweeID, groupID: groupID) else {
+            throw PeerReviewSubmissionError.duplicateReview
+        }
+
+        let review = PeerReview(
+            id: UUID(),
+            groupID: groupID,
+            reviewerMemberID: reviewerID,
+            revieweeMemberID: revieweeID,
+            taskCompletionScore: taskCompletionScore,
+            discussionScore: discussionScore,
+            collaborationScore: collaborationScore,
+            ideaScore: ideaScore,
+            reliabilityScore: reliabilityScore,
+            comment: String(comment.prefix(200)),
+            submittedAt: now
+        )
+        peerReviews.append(review)
+        lastEvent = "已送出匿名隊員互評"
+        return review
+    }
+
+#if DEBUG
+    /// 清除指定群組互評，僅供截止後互評流程的 DEBUG 測試選單使用。
+    func resetPeerReviews(for groupID: UUID) {
+        peerReviews.removeAll { $0.groupID == groupID }
+    }
+#endif
+
     /// 驗證並發布一項正式任務，同步維護群組的 taskIDs 關係。
     @discardableResult
     func publishTask(
@@ -363,6 +465,19 @@ final class AppStore {
         guard let index = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
         projectTasks[index].deliverable = deliverable
         lastEvent = "已送出「\(projectTasks[index].title)」成果"
+    }
+
+    /// 由群組成員確認已看到任務成果；同一位成員不可重複確認。
+    func confirmDeliverable(taskID: UUID, memberID: UUID) {
+        guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
+              let group = groups.first(where: { $0.id == projectTasks[taskIndex].groupID }),
+              group.memberIDs.contains(memberID),
+              var deliverable = projectTasks[taskIndex].deliverable,
+              !deliverable.confirmedMemberIDs.contains(memberID) else { return }
+
+        deliverable.confirmedMemberIDs.append(memberID)
+        projectTasks[taskIndex].deliverable = deliverable
+        lastEvent = "已確認「\(projectTasks[taskIndex].title)」成果進度"
     }
 
     /// 將已送出的成果標記為驗收通過。
