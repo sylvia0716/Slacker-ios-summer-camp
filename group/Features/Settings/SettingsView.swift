@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
@@ -126,6 +127,8 @@ private struct NotificationSettingsRow: View {
 
 private struct GroupManagementView: View {
     let model: GroupBombModel
+    @State private var groupToLeave: Group?
+    @State private var showsLeaveConfirmation = false
 
     var body: some View {
         ZStack {
@@ -136,11 +139,15 @@ private struct GroupManagementView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(group.name).font(.title3.weight(.black))
                         Button("複製邀請碼", systemImage: "doc.on.doc.fill") {
+                            UIPasteboard.general.string = group.inviteCode
                             model.lastEvent = "邀請碼已複製"
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(BombTheme.ink)
-                        Button("離開群組", role: .destructive) {}
+                        Button("離開群組", role: .destructive) {
+                            groupToLeave = group
+                            showsLeaveConfirmation = true
+                        }
                             .font(.body.bold())
                     }
                     .comicCard()
@@ -151,5 +158,15 @@ private struct GroupManagementView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .confirmationDialog(
+            "確定要離開「\(groupToLeave?.name ?? "")」嗎？",
+            isPresented: $showsLeaveConfirmation
+        ) {
+            Button("離開群組", role: .destructive) {
+                guard let groupToLeave else { return }
+                model.leaveGroup(groupID: groupToLeave.id)
+            }
+            Button("取消", role: .cancel) { }
+        }
     }
 }
