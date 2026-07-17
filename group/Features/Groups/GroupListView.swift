@@ -3,8 +3,10 @@ import SwiftUI
 /// First tab: lists groups the current user has joined and opens their detail screen.
 struct GroupListView: View {
     let model: GroupBombModel
+    let isSelected: Bool
     @State private var isAddGroupPresented = false
     @State private var enteredGroup: Group?
+    @State private var animationSequence = 0
 
     var body: some View {
         ZStack {
@@ -27,13 +29,15 @@ struct GroupListView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 80)
                     } else {
-                        ForEach(model.groups.sorted(by: { $0.deadline < $1.deadline })) { group in
+                        ForEach(Array(sortedGroups.enumerated()), id: \.element.id) { index, group in
                             NavigationLink {
                                 GroupDetailView(group: group, model: model)
                             } label: {
                                 GroupRow(
                                     group: group,
-                                    progress: model.projectProgress(for: group.id)
+                                    progress: model.projectProgress(for: group.id),
+                                    animationDelay: Double(index) * 0.09,
+                                    animationSequence: animationSequence
                                 )
                             }
                             .buttonStyle(.plain)
@@ -59,6 +63,15 @@ struct GroupListView: View {
         .navigationDestination(item: $enteredGroup) { group in
             GroupDetailView(group: group, model: model)
         }
+        .task(id: isSelected) {
+            guard isSelected else { return }
+
+            animationSequence += 1
+        }
+    }
+
+    private var sortedGroups: [Group] {
+        model.groups.sorted(by: { $0.deadline < $1.deadline })
     }
 }
 
@@ -251,8 +264,14 @@ private enum GroupEntryMode: Equatable {
 
 /// One group entry. Future work: show the real member and task counts from Group relationships.
 private struct GroupRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: Group
     let progress: Int
+    let animationDelay: TimeInterval
+    let animationSequence: Int
+
+    @State private var cardHasAppeared = false
+    @State private var animatedProgress = 0
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -269,12 +288,46 @@ private struct GroupRow: View {
                     Label("專案進度 \(progress)%", systemImage: "chart.bar.fill")
                 }
                 .font(.caption.bold())
-                ProgressView(value: Double(progress), total: 100).tint(BombTheme.yellow)
+                ProgressView(value: Double(animatedProgress), total: 100)
+                    .tint(BombTheme.yellow)
             }
             .foregroundStyle(.white)
             .padding(18)
             .background(BombTheme.ink)
             .clipShape(RoundedRectangle(cornerRadius: 20))
+        }
+        .opacity(cardHasAppeared || reduceMotion ? 1 : 0)
+        .offset(y: cardHasAppeared || reduceMotion ? 0 : 28)
+        .task(id: animationSequence) {
+            guard animationSequence > 0 else { return }
+
+            cardHasAppeared = false
+            animatedProgress = 0
+
+            if reduceMotion {
+                cardHasAppeared = true
+                animatedProgress = progress
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(animationDelay + 0.06))
+            guard !Task.isCancelled else { return }
+
+            withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+                cardHasAppeared = true
+            }
+
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+
+            withAnimation(.spring(duration: 0.75, bounce: 0.08)) {
+                animatedProgress = progress
+            }
+        }
+        .onChange(of: progress) { _, newProgress in
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) {
+                animatedProgress = newProgress
+            }
         }
     }
 

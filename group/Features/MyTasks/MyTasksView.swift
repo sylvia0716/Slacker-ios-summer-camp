@@ -65,14 +65,15 @@ struct MyTasksView: View {
 /// 半圓進度儀表板由新版子任務完成比例驅動，不再建立第二份進度資料。
 private struct TaskProgressDashboard: View {
     let progress: Int
+    @State private var animatedProgress = 0.0
+    @State private var animationTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
-            ProgressDial(progress: Double(progress))
-                .animation(.spring(duration: 0.65, bounce: 0.22), value: progress)
+            ProgressDial(progress: animatedProgress)
 
             VStack(spacing: 7) {
-                Text("\(progress)%")
+                Text("\(Int(animatedProgress.rounded()))%")
                     .font(.system(size: 46, weight: .black, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(BombTheme.ink)
@@ -89,6 +90,43 @@ private struct TaskProgressDashboard: View {
             .offset(y: 31)
         }
         .frame(height: 260)
+        .onAppear {
+            animateProgress(fromZero: true)
+        }
+        .onDisappear {
+            animationTask?.cancel()
+            animatedProgress = 0
+        }
+        .onChange(of: progress) {
+            animateProgress(fromZero: false)
+        }
+    }
+
+    private func animateProgress(fromZero: Bool) {
+        animationTask?.cancel()
+
+        let target = Double(min(max(progress, 0), 100))
+        let start = fromZero ? 0 : animatedProgress
+        if fromZero {
+            animatedProgress = 0
+        }
+
+        animationTask = Task { @MainActor in
+            if fromZero {
+                try? await Task.sleep(for: .milliseconds(140))
+            }
+
+            let frameCount = 52
+            for frame in 1...frameCount {
+                guard !Task.isCancelled else { return }
+                let time = Double(frame) / Double(frameCount)
+                let eased = 1 - (1 - time) * (1 - time) * (1 - time)
+                animatedProgress = start + (target - start) * eased
+                try? await Task.sleep(for: .milliseconds(18))
+            }
+
+            animatedProgress = target
+        }
     }
 }
 

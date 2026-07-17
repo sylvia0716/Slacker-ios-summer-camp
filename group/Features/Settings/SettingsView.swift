@@ -14,7 +14,17 @@ struct SettingsView: View {
                     Text("設定")
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
 
-                    ProfileCard(name: model.profileName)
+                    NavigationLink {
+                        ProfileDetailView(model: model)
+                    } label: {
+                        ProfileCard(
+                            name: model.profileName,
+                            role: model.profileRole,
+                            avatarSymbol: model.profileAvatarSymbol,
+                            avatarData: model.profileAvatarData
+                        )
+                    }
+                    .buttonStyle(.plain)
 
                     SettingsSection(title: "戰情報告") {
                         NavigationLink { PeerReviewReportView(model: model) } label: {
@@ -46,20 +56,19 @@ struct SettingsView: View {
 
 private struct ProfileCard: View {
     let name: String
+    let role: String
+    let avatarSymbol: String
+    let avatarData: Data?
 
     var body: some View {
         HStack(spacing: 16) {
-            ZStack {
-                Circle().fill(BombTheme.ink)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-            }
+            ProfileAvatarImage(data: avatarData, fallbackSymbol: avatarSymbol)
             .frame(width: 76, height: 76)
+            .clipShape(.circle)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(name).font(.title2.weight(.black))
-                Text("拆彈手").font(.subheadline.bold()).foregroundStyle(.secondary)
+                Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
                 Label("期末報告拆彈小隊", systemImage: "person.3.fill")
                     .font(.caption.bold())
             }
