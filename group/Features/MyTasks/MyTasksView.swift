@@ -5,9 +5,9 @@ struct MyTasksView: View {
     let model: GroupBombModel
     @State private var showCompleted = false
 
-    private var visibleTasks: [ProjectTask] {
-        model.projectTasks.filter {
-            $0.ownerMemberID == model.currentUserID && $0.isCompleted == showCompleted
+    private var visibleTasks: [MissionTask] {
+        model.tasks.filter {
+            $0.owner == model.userName && $0.isComplete == showCompleted
         }
     }
 
@@ -19,13 +19,7 @@ struct MyTasksView: View {
                     Text("我的任務")
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
 
-                    if let group = model.groups.first {
-                        GroupTaskSummary(
-                            groupName: group.name,
-                            taskCount: model.tasks(for: model.currentUserID, in: group.id).count,
-                            progress: model.memberProgress(for: model.currentUserID, in: group.id)
-                        )
-                    }
+                    TaskProgressDashboard(progress: personalProgress)
 
                     Picker("任務狀態", selection: $showCompleted) {
                         Text("待完成").tag(false)
@@ -42,11 +36,10 @@ struct MyTasksView: View {
                         .padding(.vertical, 42)
                     } else {
                         ForEach(visibleTasks) { task in
-                            let group = model.groups.first { $0.id == task.groupID }
                             NavigationLink {
                                 MyTaskDetailView(model: model, taskID: task.id)
                             } label: {
-                                MyTaskCard(task: task, groupName: group?.name ?? "", deadline: group?.deadline)
+                                MyTaskCard(task: task, groupName: model.groups.first?.name ?? "")
                             }
                             .buttonStyle(.plain)
                         }
@@ -59,39 +52,114 @@ struct MyTasksView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
     }
+
+    private var personalProgress: Int {
+        let mine = model.tasks.filter { $0.owner == model.userName }
+        guard !mine.isEmpty else { return 0 }
+        return mine.reduce(0) { $0 + $1.progress } / mine.count
+    }
 }
 
-private struct GroupTaskSummary: View {
-    let groupName: String
-    let taskCount: Int
+private struct TaskProgressDashboard: View {
     let progress: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(groupName).font(.title3.weight(.black))
-                Spacer()
-                Image(systemName: "bolt.fill").foregroundStyle(BombTheme.yellow)
+        ZStack {
+            ProgressDial(progress: Double(progress))
+                .animation(.spring(duration: 0.65, bounce: 0.22), value: progress)
+
+            VStack(spacing: 7) {
+                Text("\(progress)%")
+                    .font(.system(size: 46, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(BombTheme.ink)
+
+                Text("整體任務進度")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(BombTheme.yellow)
+                    .clipShape(.capsule)
+                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 1.5))
             }
-            HStack(spacing: 18) {
-                Label("\(taskCount) 項任務", systemImage: "checklist")
-                Label("剩 2 天", systemImage: "timer")
-            }
-            .font(.subheadline.bold())
-            ProgressView(value: Double(progress), total: 100).tint(BombTheme.yellow)
-            Text("個人進度 \(progress)%").font(.caption.bold())
+            .offset(y: 31)
         }
-        .foregroundStyle(.white)
-        .padding(18)
-        .background(BombTheme.ink)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .frame(height: 190)
+    }
+}
+
+private struct ProgressDial: View, Animatable {
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height * 0.82)
+            let radius = min(size.width * 0.43, size.height * 0.70)
+            let startAngle = 180.0
+            let sweep = 180.0
+            let clampedProgress = min(max(progress, 0), 100)
+
+            let track = arcPath(center: center, radius: radius, start: startAngle, sweep: sweep)
+            context.stroke(track, with: .color(.white.opacity(0.52)), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+
+            let progressPath = arcPath(
+                center: center,
+                radius: radius,
+                start: startAngle,
+                sweep: sweep * clampedProgress / 100
+            )
+            context.stroke(progressPath, with: .color(BombTheme.ink), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+
+            for tick in 0...10 {
+                let angle = startAngle + sweep * Double(tick) / 10
+                let outer = point(center: center, radius: radius - 17, angle: angle)
+                let inner = point(center: center, radius: radius - (tick.isMultiple(of: 5) ? 34 : 28), angle: angle)
+                var tickPath = Path()
+                tickPath.move(to: inner)
+                tickPath.addLine(to: outer)
+                context.stroke(tickPath, with: .color(BombTheme.ink.opacity(0.42)), lineWidth: tick.isMultiple(of: 5) ? 2.5 : 1.3)
+            }
+
+            for marker in [0, 100] {
+                let angle = startAngle + sweep * Double(marker) / 100
+                let location = point(center: center, radius: radius + 22, angle: angle)
+                context.draw(
+                    Text("\(marker)")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.62)),
+                    at: location
+                )
+            }
+
+        }
+    }
+
+    private func arcPath(center: CGPoint, radius: Double, start: Double, sweep: Double) -> Path {
+        var path = Path()
+        let steps = max(1, Int(abs(sweep) / 3))
+        for step in 0...steps {
+            let angle = start + sweep * Double(step) / Double(steps)
+            let location = point(center: center, radius: radius, angle: angle)
+            step == 0 ? path.move(to: location) : path.addLine(to: location)
+        }
+        return path
+    }
+
+    private func point(center: CGPoint, radius: Double, angle: Double) -> CGPoint {
+        let radians = angle * .pi / 180
+        return CGPoint(x: center.x + cos(radians) * radius, y: center.y + sin(radians) * radius)
     }
 }
 
 private struct MyTaskCard: View {
-    let task: ProjectTask
+    let task: MissionTask
     let groupName: String
-    let deadline: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -109,10 +177,12 @@ private struct MyTaskCard: View {
                     .clipShape(.capsule)
             }
             ProgressView(value: Double(task.progress), total: 100)
-                .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
+                .tint(task.isComplete ? BombTheme.green : BombTheme.red)
             HStack {
-                if let deadline {
-                    Label { Text(deadline, style: .relative) } icon: { Image(systemName: "clock.fill") }
+                Label {
+                    Text(task.deadline, style: .relative)
+                } icon: {
+                    Image(systemName: "clock.fill")
                 }
                 Spacer()
                 Label("查看任務", systemImage: "chevron.right")
@@ -127,7 +197,9 @@ private struct MyTaskDetailView: View {
     let model: GroupBombModel
     let taskID: UUID
 
-    private var task: ProjectTask? { model.projectTasks.first { $0.id == taskID } }
+    private var task: MissionTask? {
+        model.tasks.first { $0.id == taskID }
+    }
 
     var body: some View {
         ZStack {
@@ -135,14 +207,6 @@ private struct MyTaskDetailView: View {
             if let task {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Text(model.groups.first { $0.id == task.groupID }?.name ?? "")
-                            .font(.subheadline.bold())
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(BombTheme.ink)
-                            .foregroundStyle(BombTheme.yellow)
-                            .clipShape(.capsule)
-
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
                                 Text(task.title).font(.title2.weight(.black))
@@ -151,59 +215,56 @@ private struct MyTaskDetailView: View {
                             }
                             Text(task.detail).font(.subheadline).foregroundStyle(.secondary)
                             ProgressView(value: Double(task.progress), total: 100)
-                                .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
-                        }
-                        .comicCard()
+                                .tint(task.isComplete ? BombTheme.green : BombTheme.red)
 
-                        Text("子任務").font(.title2.weight(.black))
-                        VStack(spacing: 0) {
-                            ForEach(task.subtasks) { subtask in
-                                Button {
-                                    model.toggleSubtask(taskID: task.id, subtaskID: subtask.id)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: subtask.isComplete ? "checkmark.square.fill" : "square")
-                                            .font(.title3)
-                                            .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink)
-                                        Text(subtask.title)
-                                            .font(.body.weight(.bold))
-                                            .strikethrough(subtask.isComplete)
-                                        Spacer()
+                            Text("子任務").font(.title2.weight(.black))
+                            VStack(spacing: 0) {
+                                ForEach(task.subtasks) { subtask in
+                                    Button {
+                                        model.toggleSubtask(taskID: task.id, subtaskID: subtask.id)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: subtask.isComplete ? "checkmark.square.fill" : "square")
+                                                .font(.title3)
+                                                .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink)
+                                            Text(subtask.title)
+                                                .font(.body.weight(.bold))
+                                                .strikethrough(subtask.isComplete)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 14)
                                     }
-                                    .padding(.vertical, 14)
+                                    .buttonStyle(.plain)
+                                    if subtask.id != task.subtasks.last?.id { Divider() }
                                 }
-                                .buttonStyle(.plain)
-                                if subtask.id != task.subtasks.last?.id { Divider() }
                             }
-                        }
-                        .comicCard()
 
-                        Text("成果交付").font(.title2.weight(.black))
-                        VStack(alignment: .leading, spacing: 12) {
-                            if let deliverable = task.deliverable {
+                            Text("成果交付").font(.title2.weight(.black))
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(task.deliverables) { deliverable in
+                                    HStack {
+                                        Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
+                                        Text(deliverable.title).font(.subheadline.bold()).lineLimit(1)
+                                        Spacer()
+                                        Text(deliverable.isApproved ? "已驗收" : "待驗收")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(deliverable.isApproved ? BombTheme.green : .secondary)
+                                    }
+                                }
                                 HStack {
-                                    Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
-                                    Text(deliverable.title).font(.subheadline.bold()).lineLimit(1)
                                     Spacer()
-                                    Text(deliverable.isApproved ? "已驗收" : "待驗收")
-                                        .font(.caption.bold())
-                                        .foregroundStyle(deliverable.isApproved ? BombTheme.green : .secondary)
+                                    Button {
+                                        model.addMockDeliverable(to: task.id)
+                                    } label: {
+                                        Label("上傳檔案或貼上連結", systemImage: "paperclip")
+                                            .padding(.horizontal, 10)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(BombTheme.ink)
+                                    .fixedSize()
+                                    Spacer()
                                 }
                             }
-                            Button {
-                                model.submitDeliverable(
-                                    taskID: task.id,
-                                    deliverable: Deliverable(
-                                        id: UUID(), title: "新增成果連結", url: URL(string: "https://example.com"),
-                                        submittedAt: .now, isApproved: false
-                                    )
-                                )
-                            } label: {
-                                Label("上傳檔案或貼上連結", systemImage: "paperclip")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(BombTheme.ink)
                         }
                         .comicCard()
                     }
@@ -212,7 +273,7 @@ private struct MyTaskDetailView: View {
                 }
             }
         }
-        .navigationTitle("我的任務")
+        .navigationTitle(model.groups.first?.name ?? "我的任務")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
     }

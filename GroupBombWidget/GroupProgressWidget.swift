@@ -52,6 +52,8 @@ struct GroupProgressWidget: Widget {
     }
 }
 
+//hi
+
 /// Widget presentation only. Keep the data and timeline policy in GroupProgressProvider.
 private struct GroupProgressWidgetView: View {
     let entry: GroupProgressEntry
