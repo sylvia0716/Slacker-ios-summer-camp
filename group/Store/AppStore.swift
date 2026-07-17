@@ -140,14 +140,24 @@ final class AppStore {
     /// 本機原型的通知開關。
     var notificationsEnabled = true
 
+    /// 目前原型以本機通知模擬送往被戳隊員裝置的推播。
+    private let pokeNotifications = PokeNotificationService()
+
+    /// 每位被戳隊員在個別群組中的累積次數；正式版會由後端維護。
+    private var pokeCounts: [PokeCountKey: Int] = [:]
+
     /// 所有已加入的群組，群組列表直接讀取這個陣列。
-    var groups: [Group]
+    var groups: [Group] {
+        didSet { publishWidgetSnapshot() }
+    }
 
     /// 所有成員；以 Group.memberIDs 決定某群組要顯示哪些人。
     var members: [Member]
 
     /// 所有正式任務；任務與群組、負責人的關係都用 ID 連結。
-    var projectTasks: [ProjectTask]
+    var projectTasks: [ProjectTask] {
+        didSet { publishWidgetSnapshot() }
+    }
 
     /// 截止後送出的匿名隊員互評；MVP 僅保留於目前 App 執行期間。
     var peerReviews: [PeerReview]
@@ -168,6 +178,8 @@ final class AppStore {
     var lastEvent: String
 
     init() {
+        pokeNotifications.requestAuthorization()
+
         let me = Member(id: UUID(), name: "我", role: .leader, avatarSymbol: "person.fill")
         let xiaoYu = Member(id: UUID(), name: "小宇", role: .member, avatarSymbol: "person.fill")
         let miMi = Member(id: UUID(), name: "米米", role: .member, avatarSymbol: "person.fill")
@@ -265,6 +277,7 @@ final class AppStore {
         ]
         communicationAnalyses = [:]
         lastEvent = "拆彈小隊已上線"
+        publishWidgetSnapshot()
     }
 
     /// 舊任務看板中「我已認領幾項任務」的數值。
@@ -312,6 +325,19 @@ final class AppStore {
         let totalWeight = tasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return 0 }
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+    }
+
+    /// Writes the nearest group deadline and calculated project progress for the widget.
+    private func publishWidgetSnapshot() {
+        let group = groups.min(by: { $0.deadline < $1.deadline })
+        let snapshot = group.map {
+            WidgetProgressSnapshot(
+                groupName: $0.name,
+                progress: projectProgress(for: $0.id),
+                deadline: $0.deadline
+            )
+        }
+        WidgetSnapshotStore.save(snapshot)
     }
 
     /// 依該成員負責任務的子任務完成狀態計算個人進度。
@@ -568,11 +594,33 @@ final class AppStore {
         lastEvent = "已驗收「\(projectTasks[index].title)」成果"
     }
 
-    /// 在群組內提醒進度較慢的成員；MVP 先記錄系統事件，之後可接推播與觸覺回饋。
-    func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) {
+    /// 在群組內提醒進度較慢的成員，並以本機系統通知模擬送達被戳隊員。
+    @discardableResult
+    func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) -> Int? {
         guard let group = groups.first(where: { $0.id == groupID }), group.memberIDs.contains(memberID),
-              let member = members.first(where: { $0.id == memberID }) else { return }
+              let member = members.first(where: { $0.id == memberID }) else { return nil }
         lastEvent = "用「\(style.rawValue)」戳了 \(member.name)"
+
+        let key = PokeCountKey(groupID: groupID, memberID: memberID)
+        let pokeCount = (pokeCounts[key] ?? 0) + 1
+        pokeCounts[key] = pokeCount
+        if notificationsEnabled {
+            pokeNotifications.deliver(group: group, pokeCount: pokeCount)
+        }
+        return pokeCount
+    }
+
+    /// 僅供隱藏測試頁使用，模擬目前使用者收到群組的戳一戳通知。
+    @discardableResult
+    func sendTestPoke(in groupID: UUID) -> Int? {
+        guard notificationsEnabled,
+              let group = groups.first(where: { $0.id == groupID }) else { return nil }
+
+        let key = PokeCountKey(groupID: groupID, memberID: currentUserID)
+        let pokeCount = (pokeCounts[key] ?? 0) + 1
+        pokeCounts[key] = pokeCount
+        pokeNotifications.deliver(group: group, pokeCount: pokeCount)
+        return pokeCount
     }
 
     /// 舊任務看板的認領行為；等新任務畫面完成後改用 ProjectTask.ownerMemberID。
@@ -596,6 +644,11 @@ final class AppStore {
         agents[index].progress = min(100, agents[index].progress + 5)
         lastEvent = "護盾啟動，隊友看得到你在做了"
     }
+}
+
+private struct PokeCountKey: Hashable {
+    let groupID: UUID
+    let memberID: UUID
 }
 
 /// 暫時相容舊 View 名稱；新檔案一律使用 AppStore。
