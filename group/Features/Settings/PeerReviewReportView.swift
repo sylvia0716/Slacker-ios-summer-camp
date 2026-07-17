@@ -99,20 +99,17 @@ private struct AIReportCard: View {
             CommunicationAnalysisRow(analysis: model.latestCommunicationAnalysis)
             Divider()
             AIReportRow(
-                icon: "chart.bar.fill",
-                title: "團隊進度摘要",
+                icon: "chart.bar.fill", title: "團隊進度摘要",
                 detail: "團隊目前完成 \(model.teamProgress)%，多數任務皆按計畫推進，整體進度維持穩定。"
             )
             Divider()
             AIReportRow(
-                icon: "exclamationmark.triangle.fill",
-                title: "延誤風險",
+                icon: "exclamationmark.triangle.fill", title: "延誤風險",
                 detail: "米米目前進度偏慢，可能影響後續整合，建議優先確認交付時間與需要的支援。"
             )
             Divider()
             AIReportRow(
-                icon: "arrow.right.circle.fill",
-                title: "建議下一步",
+                icon: "arrow.right.circle.fill", title: "建議下一步",
                 detail: "先完成市場資料整理與來源確認，再集中處理簡報視覺統整，降低重複修改。"
             )
         }

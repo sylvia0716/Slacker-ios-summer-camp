@@ -10,6 +10,16 @@
 		F0A100010000000000000001 /* GroupBombWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F0A100020000000000000002 /* GroupBombWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		E53CCAC33008B446007849D4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5A7EFF4300755BD007F8C90 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F0A100060000000000000006;
+			remoteInfo = GroupBombWidget;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		F0A100030000000000000003 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -29,6 +39,16 @@
 		F0A100020000000000000002 /* GroupBombWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GroupBombWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F0A1000D000000000000000D /* Exceptions for "GroupBombWidget" folder in "GroupBombWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F0A100060000000000000006 /* GroupBombWidget */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E5A7EFFE300755BD007F8C90 /* group */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -45,18 +65,15 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F0A1000D000000000000000D /* Exceptions for "GroupBombWidget" folder in "GroupBombWidget" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = F0A100060000000000000006 /* GroupBombWidget */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFrameworksBuildPhase section */
 		E5A7EFF9300755BD007F8C90 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0A100090000000000000009 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -205,18 +222,12 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		F0A100090000000000000009 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin PBXTargetDependency section */
-		F0A100050000000000000005 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = F0A100060000000000000006 /* GroupBombWidget */; };
+		F0A100050000000000000005 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F0A100060000000000000006 /* GroupBombWidget */;
+			targetProxy = E53CCAC33008B446007849D4 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
