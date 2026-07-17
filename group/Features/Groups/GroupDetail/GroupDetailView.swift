@@ -367,35 +367,28 @@ struct GroupDetailView: View {
                         .background(BombTheme.ink)
                         .clipShape(.capsule)
                 }
-            }
 
-            Button {
-                nameDraft = currentGroup.name
-                showsNameSheet = true
-            } label: {
-                Label("修改群組名稱", systemImage: "pencil")
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
+                Menu {
+                    Button("修改群組名稱", systemImage: "pencil") {
+                        nameDraft = currentGroup.name
+                        showsNameSheet = true
+                    }
 
-            Button {
-                deadlineDraft = currentGroup.deadline
-                showsDeadlineSheet = true
-            } label: {
-                Label("修改截止時間", systemImage: "calendar.badge.clock")
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
+                    Button("修改截止時間", systemImage: "calendar.badge.clock") {
+                        deadlineDraft = currentGroup.deadline
+                        showsDeadlineSheet = true
+                    }
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .accessibilityLabel("修改群組")
             }
-            .buttonStyle(.plain)
 
             if showsCopiedFeedback {
                 Text("群組代碼已複製")
