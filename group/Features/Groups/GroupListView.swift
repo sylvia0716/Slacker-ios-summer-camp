@@ -5,7 +5,6 @@ struct GroupListView: View {
     let model: GroupBombModel
     @State private var isAddGroupPresented = false
     @State private var enteredGroup: Group?
-    @State private var showsNewGroupPrompt = false
 
     var body: some View {
         ZStack {
@@ -15,13 +14,30 @@ struct GroupListView: View {
                     Text("選一組，繼續拆彈。")
                         .font(.subheadline.bold())
 
-                    ForEach(model.groups) { group in
-                        NavigationLink {
-                            GroupDetailView(group: group, model: model)
-                        } label: {
-                            GroupRow(group: group, progress: model.teamProgress, memberCount: model.agents.count)
+                    if model.groups.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 36, weight: .black))
+                            Text("還沒有群組")
+                                .font(.title3.weight(.black))
+                            Text("建立群組或輸入邀請碼加入")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(BombTheme.ink.opacity(0.65))
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 80)
+                    } else {
+                        ForEach(model.groups.sorted(by: { $0.deadline < $1.deadline })) { group in
+                            NavigationLink {
+                                GroupDetailView(group: group, model: model)
+                            } label: {
+                                GroupRow(
+                                    group: group,
+                                    progress: model.projectProgress(for: group.id)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
                 .padding(16)
@@ -36,24 +52,24 @@ struct GroupListView: View {
             }
         }
         .sheet(isPresented: $isAddGroupPresented) {
-            AddGroupSheet(model: model) { group, isNewGroup in
-                showsNewGroupPrompt = isNewGroup
+            AddGroupSheet(model: model) { group in
                 enteredGroup = group
             }
         }
         .navigationDestination(item: $enteredGroup) { group in
-            MissionBoardView(model: model, group: group, showsNewGroupPrompt: showsNewGroupPrompt)
+            GroupDetailView(group: group, model: model)
         }
     }
 }
 
 private struct AddGroupSheet: View {
     let model: GroupBombModel
-    let enterGroup: (Group, Bool) -> Void
+    let enterGroup: (Group) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var flow = GroupEntryFlow.entry
     @State private var entryMode = GroupEntryMode.create
     @State private var groupName = ""
+    @State private var groupDeadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
     @State private var groupCode = ""
     @State private var createdGroup: Group?
     @State private var joinError: String?
@@ -92,6 +108,15 @@ private struct AddGroupSheet: View {
                         if entryMode == .create {
                             Section("群組名稱") {
                                 TextField("輸入群組名稱", text: $groupName)
+                            }
+
+                            Section("群組期限") {
+                                DatePicker(
+                                    "截止時間",
+                                    selection: $groupDeadline,
+                                    in: Date.now...,
+                                    displayedComponents: [.date, .hourAndMinute]
+                                )
                             }
                         } else {
                             Section("群組代碼") {
@@ -153,7 +178,7 @@ private struct AddGroupSheet: View {
     private var canAdvance: Bool {
         switch flow {
         case .entry:
-            entryMode == .create ? canCreate : canJoin
+            entryMode == .create ? canCreate && groupDeadline > .now : canJoin
         case .shareCode:
             createdGroup != nil
         }
@@ -163,15 +188,14 @@ private struct AddGroupSheet: View {
         switch flow {
         case .entry:
             if entryMode == .create {
-                let deadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
-                model.createGroup(name: groupName, deadline: deadline)
+                model.createGroup(name: groupName, deadline: groupDeadline)
                 createdGroup = model.groups.last
                 flow = .shareCode
             } else {
                 let normalizedCode = groupCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                 if model.joinGroup(inviteCode: normalizedCode),
                    let group = model.groups.first(where: { $0.inviteCode == normalizedCode }) {
-                    enterGroup(group, false)
+                    enterGroup(group)
                     dismiss()
                 } else {
                     joinError = "請確認群組代碼後再試一次。"
@@ -179,7 +203,7 @@ private struct AddGroupSheet: View {
             }
         case .shareCode:
             guard let createdGroup else { return }
-            enterGroup(createdGroup, true)
+            enterGroup(createdGroup)
             dismiss()
         }
     }
@@ -229,28 +253,44 @@ private enum GroupEntryMode: Equatable {
 private struct GroupRow: View {
     let group: Group
     let progress: Int
-    let memberCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "bolt.fill").foregroundStyle(BombTheme.yellow)
-                Text(group.name).font(.title3.weight(.black))
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption.bold())
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Image(systemName: "bolt.fill").foregroundStyle(BombTheme.yellow)
+                    Text(group.name).font(.title3.weight(.black))
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.bold())
+                }
+                HStack {
+                    Label(remainingTime(at: context.date), systemImage: "timer")
+                    Spacer()
+                    Label("專案進度 \(progress)%", systemImage: "chart.bar.fill")
+                }
+                .font(.caption.bold())
+                ProgressView(value: Double(progress), total: 100).tint(BombTheme.yellow)
             }
-            HStack {
-                Label("剩 2 天", systemImage: "timer")
-                Spacer()
-                Label("\(memberCount) 位特工", systemImage: "person.3.fill")
-            }
-            .font(.caption.bold())
-            ProgressView(value: Double(progress), total: 100).tint(BombTheme.yellow)
-            Text("專案進度 \(progress)%").font(.caption.bold())
+            .foregroundStyle(.white)
+            .padding(18)
+            .background(BombTheme.ink)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
         }
-        .foregroundStyle(.white)
-        .padding(18)
-        .background(BombTheme.ink)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func remainingTime(at date: Date) -> String {
+        let remaining = max(0, Int(group.deadline.timeIntervalSince(date)))
+        let days = remaining / 86_400
+        let hours = remaining % 86_400 / 3_600
+
+        if remaining == 0 {
+            return "已截止"
+        }
+
+        if days > 0 {
+            return "剩 \(days) 天"
+        }
+
+        return "剩 \(hours) 小時"
     }
 }

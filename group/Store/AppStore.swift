@@ -90,6 +90,36 @@ enum PublishTaskError: LocalizedError {
     }
 }
 
+/// 修改群組期限時可能發生的資料驗證錯誤。
+enum GroupDeadlineError: LocalizedError {
+    case deadlineNotInFuture
+    case beforeTaskDeadline
+
+    var errorDescription: String? {
+        switch self {
+        case .deadlineNotInFuture:
+            "群組期限必須晚於目前時間"
+        case .beforeTaskDeadline:
+            "群組期限不可早於既有任務的截止時間"
+        }
+    }
+}
+
+/// 修改群組名稱時可能發生的資料驗證錯誤。
+enum GroupNameError: LocalizedError {
+    case emptyName
+    case groupNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName:
+            "群組名稱不可為空白"
+        case .groupNotFound:
+            "找不到目前群組"
+        }
+    }
+}
+
 /// 全 App 的唯一資料來源。
 /// B、C、D 請只透過這個 Store 讀取與修改 mock 資料，不要在 View 內建立第二份任務或成員資料。
 @MainActor @Observable
@@ -305,6 +335,39 @@ final class AppStore {
         lastEvent = "已建立「\(name)」"
     }
 
+    /// 修改群組總截止時間；任務發布會以更新後的期限驗證。
+    @discardableResult
+    func updateGroupDeadline(groupID: UUID, deadline: Date, now: Date = .now) throws -> Group {
+        guard deadline > now else { throw GroupDeadlineError.deadlineNotInFuture }
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        let taskDeadlines = projectTasks
+            .filter { $0.groupID == groupID }
+            .map(\.deadline)
+        guard taskDeadlines.allSatisfy({ $0 <= deadline }) else {
+            throw GroupDeadlineError.beforeTaskDeadline
+        }
+
+        groups[index].deadline = deadline
+        lastEvent = "已更新「\(groups[index].name)」期限"
+        return groups[index]
+    }
+
+    /// 修改群組名稱。
+    @discardableResult
+    func updateGroupName(groupID: UUID, name: String) throws -> Group {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { throw GroupNameError.emptyName }
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw GroupNameError.groupNotFound
+        }
+
+        groups[index].name = trimmedName
+        lastEvent = "已更新群組名稱"
+        return groups[index]
+    }
+
     /// 以邀請碼加入 MVP mock 群組；成功時回傳 true，輸入空白則回傳 false。
     @discardableResult
     func joinGroup(inviteCode: String) -> Bool {
@@ -315,6 +378,18 @@ final class AppStore {
             groups[index].memberIDs.append(currentUserID)
         }
         lastEvent = "已加入「\(groups[index].name)」"
+        return true
+    }
+
+    /// 離開目前使用者已加入的群組；群組列表只保留目前使用者仍加入的群組。
+    @discardableResult
+    func leaveGroup(groupID: UUID) -> Bool {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }),
+              groups[index].memberIDs.contains(currentUserID) else { return false }
+
+        let groupName = groups[index].name
+        groups.remove(at: index)
+        lastEvent = "已離開「\(groupName)」"
         return true
     }
 

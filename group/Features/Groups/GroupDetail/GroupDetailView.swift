@@ -9,6 +9,12 @@ struct GroupDetailView: View {
 
     @State private var showsCopiedFeedback = false
     @State private var showsPublishTaskSheet = false
+    @State private var showsDeadlineSheet = false
+    @State private var deadlineDraft = Date.now
+    @State private var deadlineError: String?
+    @State private var showsNameSheet = false
+    @State private var nameDraft = ""
+    @State private var nameError: String?
 
     var body: some View {
         GeometryReader { proxy in
@@ -37,7 +43,7 @@ struct GroupDetailView: View {
                         .transition(.opacity)
 
                     PublishTaskSheet(
-                        group: group,
+                        group: currentGroup,
                         members: groupMembers,
                         onPublish: { title, detail, assigneeID, deadline in
                             try model.publishTask(
@@ -59,6 +65,29 @@ struct GroupDetailView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { deadlineDraft = currentGroup.deadline }
+        .sheet(isPresented: $showsDeadlineSheet) {
+            DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
+        }
+        .sheet(isPresented: $showsNameSheet) {
+            GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
+        }
+        .alert("無法修改期限", isPresented: Binding(
+            get: { deadlineError != nil },
+            set: { if !$0 { deadlineError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(deadlineError ?? "")
+        }
+        .alert("無法修改群組名稱", isPresented: Binding(
+            get: { nameError != nil },
+            set: { if !$0 { nameError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(nameError ?? "")
+        }
     }
 
     private var topBar: some View {
@@ -74,7 +103,7 @@ struct GroupDetailView: View {
             Spacer()
 
             NavigationLink {
-                ChatRoomView(groupName: group.name)
+                ChatRoomView(groupName: currentGroup.name)
             } label: {
                 Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
                     .font(.subheadline.weight(.black))
@@ -90,12 +119,12 @@ struct GroupDetailView: View {
 
     private var groupIdentity: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(group.name)
+            Text(currentGroup.name)
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                Text("群組代碼：\(group.inviteCode)")
+                Text("群組代碼：\(currentGroup.inviteCode)")
                     .font(.subheadline.weight(.black))
                     .lineLimit(1)
 
@@ -109,7 +138,47 @@ struct GroupDetailView: View {
                         .clipShape(.capsule)
                 }
                 .buttonStyle(.plain)
+
+                ShareLink(
+                    item: "加入「\(currentGroup.name)」的群組，邀請碼：\(currentGroup.inviteCode)"
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
             }
+
+            Button {
+                nameDraft = currentGroup.name
+                showsNameSheet = true
+            } label: {
+                Label("修改群組名稱", systemImage: "pencil")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                deadlineDraft = currentGroup.deadline
+                showsDeadlineSheet = true
+            } label: {
+                Label("修改截止時間", systemImage: "calendar.badge.clock")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+            }
+            .buttonStyle(.plain)
 
             if showsCopiedFeedback {
                 Text("群組代碼已複製")
@@ -121,6 +190,12 @@ struct GroupDetailView: View {
     }
 
     private var countdownCard: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            countdownCard(at: context.date)
+        }
+    }
+
+    private func countdownCard(at date: Date) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "timer")
@@ -136,7 +211,7 @@ struct GroupDetailView: View {
             }
 
             HStack(alignment: .lastTextBaseline, spacing: 12) {
-                Text(remainingTime)
+                Text(remainingTime(at: date))
                     .font(.system(.title2, design: .rounded, weight: .black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -175,7 +250,7 @@ struct GroupDetailView: View {
                 Button {
                     withAnimation(.snappy) { showsPublishTaskSheet = true }
                 } label: {
-                    Text("＋ 發布任務")
+                    Text(isGroupDeadlinePassed ? "已截止" : "＋ 發布任務")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11)
@@ -184,6 +259,8 @@ struct GroupDetailView: View {
                         .clipShape(.capsule)
                 }
                 .buttonStyle(.plain)
+                .disabled(isGroupDeadlinePassed)
+                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
             }
 
             ForEach(groupMembers) { member in
@@ -193,26 +270,39 @@ struct GroupDetailView: View {
     }
 
     private var groupMembers: [Member] {
-        group.memberIDs.compactMap { memberID in
+        currentGroup.memberIDs.compactMap { memberID in
             model.members.first(where: { $0.id == memberID })
         }
+    }
+
+    private var currentGroup: Group {
+        model.groups.first(where: { $0.id == group.id }) ?? group
     }
 
     private var groupProgress: Int {
         model.projectProgress(for: group.id)
     }
 
-    private var missionName: String {
-        let name = group.name.replacingOccurrences(of: "拆彈小隊", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? group.name : name
+    private var isGroupDeadlinePassed: Bool {
+        currentGroup.deadline <= .now
     }
 
-    private var remainingTime: String {
-        let remaining = max(0, Int(group.deadline.timeIntervalSinceNow))
+    private var missionName: String {
+        let name = currentGroup.name.replacingOccurrences(of: "拆彈小隊", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? currentGroup.name : name
+    }
+
+    private func remainingTime(at date: Date) -> String {
+        let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(date)))
         let days = remaining / 86_400
         let hours = remaining % 86_400 / 3_600
         let minutes = remaining % 3_600 / 60
+
+        if remaining == 0 {
+            return "已截止"
+        }
+
         return "\(days) 天 \(hours) 小時 \(minutes) 分鐘"
     }
 
@@ -233,7 +323,7 @@ struct GroupDetailView: View {
     }
 
     private func copyInviteCode() {
-        UIPasteboard.general.string = group.inviteCode
+        UIPasteboard.general.string = currentGroup.inviteCode
         withAnimation(.snappy) { showsCopiedFeedback = true }
 
         Task {
@@ -244,6 +334,79 @@ struct GroupDetailView: View {
 
     private func closePublishTaskSheet() {
         withAnimation(.snappy) { showsPublishTaskSheet = false }
+    }
+
+    private func saveDeadline() {
+        do {
+            try model.updateGroupDeadline(groupID: group.id, deadline: deadlineDraft)
+            showsDeadlineSheet = false
+        } catch {
+            deadlineError = error.localizedDescription
+        }
+    }
+
+    private func saveName() {
+        do {
+            try model.updateGroupName(groupID: group.id, name: nameDraft)
+            showsNameSheet = false
+        } catch {
+            nameError = error.localizedDescription
+        }
+    }
+}
+
+private struct DeadlineEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var deadline: Date
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(
+                    "截止時間",
+                    selection: $deadline,
+                    in: Date.now...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+            }
+            .navigationTitle("修改截止時間")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("儲存") { onSave() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+private struct GroupNameEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var name: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("群組名稱", text: $name)
+            }
+            .navigationTitle("修改群組名稱")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("儲存") { onSave() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
