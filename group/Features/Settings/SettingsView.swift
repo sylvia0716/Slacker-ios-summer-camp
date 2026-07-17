@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
     let model: GroupBombModel
+    @State private var showsNotificationTest = false
 
     var body: some View {
         ZStack {
@@ -12,7 +14,17 @@ struct SettingsView: View {
                     Text("設定")
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
 
-                    ProfileCard(name: model.profileName)
+                    NavigationLink {
+                        ProfileDetailView(model: model)
+                    } label: {
+                        ProfileCard(
+                            name: model.profileName,
+                            role: model.profileRole,
+                            avatarSymbol: model.profileAvatarSymbol,
+                            avatarData: model.profileAvatarData
+                        )
+                    }
+                    .buttonStyle(.plain)
 
                     SettingsSection(title: "戰情報告") {
                         NavigationLink { PeerReviewReportView(model: model) } label: {
@@ -25,24 +37,8 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: "一般設定") {
-                        SettingsRow(icon: "person.crop.circle.fill", title: "個人資料", subtitle: model.profileName)
-                        Divider()
-                        Toggle(isOn: Binding(
-                            get: { model.notificationsEnabled },
-                            set: { model.notificationsEnabled = $0 }
-                        )) {
-                            Label("通知設定", systemImage: "bell.fill")
-                                .font(.body.weight(.bold))
-                        }
-                        .tint(BombTheme.green)
-                        .padding(.vertical, 8)
-                        Divider()
-                        NavigationLink { GroupManagementView(model: model) } label: {
-                            SettingsRow(
-                                icon: "person.2.badge.gearshape.fill",
-                                title: "群組管理",
-                                subtitle: "邀請組員或離開群組"
-                            )
+                        NotificationSettingsRow(model: model) {
+                            showsNotificationTest = true
                         }
                     }
                 }
@@ -52,25 +48,27 @@ struct SettingsView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationDestination(isPresented: $showsNotificationTest) {
+            NotificationTestView(model: model)
+        }
     }
 }
 
 private struct ProfileCard: View {
     let name: String
+    let role: String
+    let avatarSymbol: String
+    let avatarData: Data?
 
     var body: some View {
         HStack(spacing: 16) {
-            ZStack {
-                Circle().fill(BombTheme.ink)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-            }
+            ProfileAvatarImage(data: avatarData, fallbackSymbol: avatarSymbol)
             .frame(width: 76, height: 76)
+            .clipShape(.circle)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(name).font(.title2.weight(.black))
-                Text("拆彈手").font(.subheadline.bold()).foregroundStyle(.secondary)
+                Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
                 Label("期末報告拆彈小隊", systemImage: "person.3.fill")
                     .font(.caption.bold())
             }
@@ -118,8 +116,100 @@ private struct SettingsRow: View {
     }
 }
 
+private struct NotificationSettingsRow: View {
+    let model: GroupBombModel
+    let showsTestPage: () -> Void
+    @State private var titleTapCount = 0
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "bell.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .background(BombTheme.yellow)
+                .clipShape(.circle)
+            Button {
+                titleTapCount += 1
+                guard titleTapCount == 5 else { return }
+                titleTapCount = 0
+                showsTestPage()
+            } label: {
+                Text("通知設定").font(.body.weight(.bold))
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Toggle("通知設定", isOn: Binding(
+                get: { model.notificationsEnabled },
+                set: { model.notificationsEnabled = $0 }
+            ))
+            .labelsHidden()
+            .tint(BombTheme.green)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct NotificationTestView: View {
+    let model: GroupBombModel
+    @State private var selectedGroupID: UUID?
+    @State private var pokeCount = 0
+    @State private var showsNotificationsDisabledAlert = false
+
+    var body: some View {
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Picker("小組", selection: $selectedGroupID) {
+                    ForEach(model.groups) { group in
+                        Text(group.name).tag(Optional(group.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.headline)
+
+                Button {
+                    guard let selectedGroupID,
+                          let count = model.sendTestPoke(in: selectedGroupID) else {
+                        showsNotificationsDisabledAlert = true
+                        return
+                    }
+                    pokeCount = count
+                } label: {
+                    Label("戳自己一下", systemImage: "hand.tap.fill")
+                        .font(.title3.weight(.black))
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 15)
+                        .foregroundStyle(.white)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .buttonStyle(.plain)
+
+                if pokeCount > 0 {
+                    Text("已戳自己 \(pokeCount) 下")
+                        .font(.headline.weight(.black))
+                }
+            }
+            .padding(24)
+        }
+        .navigationTitle("通知測試")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .onAppear {
+            selectedGroupID = selectedGroupID ?? model.groups.first?.id
+        }
+        .alert("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
+            Button("好", role: .cancel) { }
+        }
+    }
+}
+
 private struct GroupManagementView: View {
     let model: GroupBombModel
+    @State private var groupToLeave: Group?
+    @State private var showsLeaveConfirmation = false
 
     var body: some View {
         ZStack {
@@ -130,11 +220,15 @@ private struct GroupManagementView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(group.name).font(.title3.weight(.black))
                         Button("複製邀請碼", systemImage: "doc.on.doc.fill") {
+                            UIPasteboard.general.string = group.inviteCode
                             model.lastEvent = "邀請碼已複製"
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(BombTheme.ink)
-                        Button("離開群組", role: .destructive) {}
+                        Button("離開群組", role: .destructive) {
+                            groupToLeave = group
+                            showsLeaveConfirmation = true
+                        }
                             .font(.body.bold())
                     }
                     .comicCard()
@@ -145,5 +239,15 @@ private struct GroupManagementView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .confirmationDialog(
+            "確定要離開「\(groupToLeave?.name ?? "")」嗎？",
+            isPresented: $showsLeaveConfirmation
+        ) {
+            Button("離開群組", role: .destructive) {
+                guard let groupToLeave else { return }
+                model.leaveGroup(groupID: groupToLeave.id)
+            }
+            Button("取消", role: .cancel) { }
+        }
     }
 }

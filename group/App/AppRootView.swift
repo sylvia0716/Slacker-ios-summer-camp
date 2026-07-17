@@ -14,6 +14,7 @@ struct AppRootView: View {
                 NavigationStack {
                     GroupListView(
                         model: store,
+                        isSelected: tab == .groups,
                         tutorialStep: $tutorialStep,
                         onReplayTutorial: replayTutorial
                     )

@@ -90,6 +90,36 @@ enum PublishTaskError: LocalizedError {
     }
 }
 
+/// 修改群組期限時可能發生的資料驗證錯誤。
+enum GroupDeadlineError: LocalizedError {
+    case deadlineNotInFuture
+    case beforeTaskDeadline
+
+    var errorDescription: String? {
+        switch self {
+        case .deadlineNotInFuture:
+            "群組期限必須晚於目前時間"
+        case .beforeTaskDeadline:
+            "群組期限不可早於既有任務的截止時間"
+        }
+    }
+}
+
+/// 修改群組名稱時可能發生的資料驗證錯誤。
+enum GroupNameError: LocalizedError {
+    case emptyName
+    case groupNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName:
+            "群組名稱不可為空白"
+        case .groupNotFound:
+            "找不到目前群組"
+        }
+    }
+}
+
 /// 全 App 的唯一資料來源。
 /// B、C、D 請只透過這個 Store 讀取與修改 mock 資料，不要在 View 內建立第二份任務或成員資料。
 @MainActor @Observable
@@ -100,20 +130,34 @@ final class AppStore {
     /// 目前登入使用者的顯示名稱；舊版任務看板仍會使用。
     let userName: String
 
-    /// 設定頁顯示的個人暱稱。
-    let profileName = "Peach"
+    /// 設定頁顯示並可由個人資料頁修改的公開資料。
+    var profileName = "Peach"
+    var profileRole = "拆彈手"
+    var profileBio = "一起把死線拆掉。"
+    var profileAvatarSymbol = "person.fill"
+    var profileAvatarData: Data?
 
     /// 本機原型的通知開關。
     var notificationsEnabled = true
 
+    /// 目前原型以本機通知模擬送往被戳隊員裝置的推播。
+    private let pokeNotifications = PokeNotificationService()
+
+    /// 每位被戳隊員在個別群組中的累積次數；正式版會由後端維護。
+    private var pokeCounts: [PokeCountKey: Int] = [:]
+
     /// 所有已加入的群組，群組列表直接讀取這個陣列。
-    var groups: [Group]
+    var groups: [Group] {
+        didSet { publishWidgetSnapshot() }
+    }
 
     /// 所有成員；以 Group.memberIDs 決定某群組要顯示哪些人。
     var members: [Member]
 
     /// 所有正式任務；任務與群組、負責人的關係都用 ID 連結。
-    var projectTasks: [ProjectTask]
+    var projectTasks: [ProjectTask] {
+        didSet { publishWidgetSnapshot() }
+    }
 
     /// 截止後送出的匿名隊員互評；MVP 僅保留於目前 App 執行期間。
     var peerReviews: [PeerReview]
@@ -127,10 +171,15 @@ final class AppStore {
     /// 互評雷達圖的 mock 資料。
     let radar: [RadarMetric]
 
+    /// 聊天室 AI 機器人的溝通評分；key 是群組 ID，設定頁與聊天室共用同一份結果。
+    var communicationAnalyses: [UUID: CommunicationAnalysis]
+
     /// 顯示在舊版畫面上的最新系統事件文字。
     var lastEvent: String
 
     init() {
+        pokeNotifications.requestAuthorization()
+
         let me = Member(id: UUID(), name: "我", role: .leader, avatarSymbol: "person.fill")
         let xiaoYu = Member(id: UUID(), name: "小宇", role: .member, avatarSymbol: "person.fill")
         let miMi = Member(id: UUID(), name: "米米", role: .member, avatarSymbol: "person.fill")
@@ -292,7 +341,9 @@ final class AppStore {
             RadarMetric(title: "溝通", score: 0.92), RadarMetric(title: "救火", score: 0.68),
             RadarMetric(title: "合作", score: 0.88)
         ]
+        communicationAnalyses = [:]
         lastEvent = "拆彈小隊已上線"
+        publishWidgetSnapshot()
     }
 
     /// 舊任務看板中「我已認領幾項任務」的數值。
@@ -300,6 +351,34 @@ final class AppStore {
 
     /// 舊特工頁的平均進度；新版畫面請使用 projectProgress(for:)。
     var teamProgress: Int { agents.map(\.progress).reduce(0, +) / max(agents.count, 1) }
+
+    /// 取得最近更新的一份溝通分析，供設定頁的 AI 報告顯示。
+    var latestCommunicationAnalysis: CommunicationAnalysis? {
+        communicationAnalyses.values.max(by: { $0.updatedAt < $1.updatedAt })
+    }
+
+    /// 依聊天室訊息產生 MVP 用的溝通評分；之後可在這裡改接真正的 AI 分析 service。
+    @discardableResult
+    func analyzeCommunication(groupID: UUID, messages: [String], now: Date = .now) -> CommunicationAnalysis {
+        let joinedMessages = messages.joined(separator: " ")
+        let coordinationWords = ["收到", "完成", "確認", "連結", "幫", "截止", "今天", "明天"]
+        let matchedCount = coordinationWords.reduce(into: 0) { count, word in
+            if joinedMessages.contains(word) { count += 1 }
+        }
+        let score = min(96, max(62, 68 + messages.count * 3 + matchedCount * 4))
+        let analysis = CommunicationAnalysis(
+            id: UUID(),
+            groupID: groupID,
+            score: score,
+            summary: score >= 80 ? "溝通節奏清楚，成員有回覆、確認與交付共識。" : "已有討論，但待辦與交付時間還可以說得更明確。",
+            strength: matchedCount >= 2 ? "對話中有具體回覆與下一步安排，減少重工風險。" : "成員願意主動同步目前狀況。",
+            suggestion: "每次更新請補上負責人、完成時間與成果連結，讓全組更容易追蹤。",
+            updatedAt: now
+        )
+        communicationAnalyses[groupID] = analysis
+        lastEvent = "AI 已完成團隊溝通分析：\(score) 分"
+        return analysis
+    }
 
     /// 取得指定群組內某位成員負責的正式任務。
     func tasks(for memberID: UUID, in groupID: UUID) -> [ProjectTask] {
@@ -312,6 +391,19 @@ final class AppStore {
         let totalWeight = tasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return 0 }
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+    }
+
+    /// Writes the nearest group deadline and calculated project progress for the widget.
+    private func publishWidgetSnapshot() {
+        let group = groups.min(by: { $0.deadline < $1.deadline })
+        let snapshot = group.map {
+            WidgetProgressSnapshot(
+                groupName: $0.name,
+                progress: projectProgress(for: $0.id),
+                deadline: $0.deadline
+            )
+        }
+        WidgetSnapshotStore.save(snapshot)
     }
 
     /// 依該成員負責任務的子任務完成狀態計算個人進度。
@@ -473,6 +565,39 @@ final class AppStore {
         lastEvent = "已建立「\(name)」"
     }
 
+    /// 修改群組總截止時間；任務發布會以更新後的期限驗證。
+    @discardableResult
+    func updateGroupDeadline(groupID: UUID, deadline: Date, now: Date = .now) throws -> Group {
+        guard deadline > now else { throw GroupDeadlineError.deadlineNotInFuture }
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        let taskDeadlines = projectTasks
+            .filter { $0.groupID == groupID }
+            .map(\.deadline)
+        guard taskDeadlines.allSatisfy({ $0 <= deadline }) else {
+            throw GroupDeadlineError.beforeTaskDeadline
+        }
+
+        groups[index].deadline = deadline
+        lastEvent = "已更新「\(groups[index].name)」期限"
+        return groups[index]
+    }
+
+    /// 修改群組名稱。
+    @discardableResult
+    func updateGroupName(groupID: UUID, name: String) throws -> Group {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { throw GroupNameError.emptyName }
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw GroupNameError.groupNotFound
+        }
+
+        groups[index].name = trimmedName
+        lastEvent = "已更新群組名稱"
+        return groups[index]
+    }
+
     /// 以邀請碼加入 MVP mock 群組；成功時回傳 true，輸入空白則回傳 false。
     @discardableResult
     func joinGroup(inviteCode: String) -> Bool {
@@ -483,6 +608,18 @@ final class AppStore {
             groups[index].memberIDs.append(currentUserID)
         }
         lastEvent = "已加入「\(groups[index].name)」"
+        return true
+    }
+
+    /// 離開目前使用者已加入的群組；群組列表只保留目前使用者仍加入的群組。
+    @discardableResult
+    func leaveGroup(groupID: UUID) -> Bool {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }),
+              groups[index].memberIDs.contains(currentUserID) else { return false }
+
+        let groupName = groups[index].name
+        groups.remove(at: index)
+        lastEvent = "已離開「\(groupName)」"
         return true
     }
 
@@ -523,11 +660,33 @@ final class AppStore {
         lastEvent = "已驗收「\(projectTasks[index].title)」成果"
     }
 
-    /// 在群組內提醒進度較慢的成員；MVP 先記錄系統事件，之後可接推播與觸覺回饋。
-    func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) {
+    /// 在群組內提醒進度較慢的成員，並以本機系統通知模擬送達被戳隊員。
+    @discardableResult
+    func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) -> Int? {
         guard let group = groups.first(where: { $0.id == groupID }), group.memberIDs.contains(memberID),
-              let member = members.first(where: { $0.id == memberID }) else { return }
+              let member = members.first(where: { $0.id == memberID }) else { return nil }
         lastEvent = "用「\(style.rawValue)」戳了 \(member.name)"
+
+        let key = PokeCountKey(groupID: groupID, memberID: memberID)
+        let pokeCount = (pokeCounts[key] ?? 0) + 1
+        pokeCounts[key] = pokeCount
+        if notificationsEnabled {
+            pokeNotifications.deliver(group: group, pokeCount: pokeCount)
+        }
+        return pokeCount
+    }
+
+    /// 僅供隱藏測試頁使用，模擬目前使用者收到群組的戳一戳通知。
+    @discardableResult
+    func sendTestPoke(in groupID: UUID) -> Int? {
+        guard notificationsEnabled,
+              let group = groups.first(where: { $0.id == groupID }) else { return nil }
+
+        let key = PokeCountKey(groupID: groupID, memberID: currentUserID)
+        let pokeCount = (pokeCounts[key] ?? 0) + 1
+        pokeCounts[key] = pokeCount
+        pokeNotifications.deliver(group: group, pokeCount: pokeCount)
+        return pokeCount
     }
 
     /// 舊任務看板的認領行為；等新任務畫面完成後改用 ProjectTask.ownerMemberID。
@@ -551,6 +710,11 @@ final class AppStore {
         agents[index].progress = min(100, agents[index].progress + 5)
         lastEvent = "護盾啟動，隊友看得到你在做了"
     }
+}
+
+private struct PokeCountKey: Hashable {
+    let groupID: UUID
+    let memberID: UUID
 }
 
 /// 暫時相容舊 View 名稱；新檔案一律使用 AppStore。

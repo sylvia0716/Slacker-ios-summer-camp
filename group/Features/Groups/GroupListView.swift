@@ -3,18 +3,22 @@ import SwiftUI
 /// First tab: groups projects by their deadline and peer-review state.
 struct GroupListView: View {
     let model: GroupBombModel
+    let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
     private let onReplayTutorial: (() -> Void)?
 
-    @State private var showsCreateGroupSheet = false
-    @State private var newlyCreatedGroup: Group?
+    @State private var isAddGroupPresented = false
+    @State private var enteredGroup: Group?
+    @State private var animationSequence = 0
 
     init(
         model: GroupBombModel,
+        isSelected: Bool = true,
         tutorialStep: Binding<TutorialStep?>? = nil,
         onReplayTutorial: (() -> Void)? = nil
     ) {
         self.model = model
+        self.isSelected = isSelected
         self.tutorialStep = tutorialStep
         self.onReplayTutorial = onReplayTutorial
     }
@@ -26,20 +30,20 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("我的群組")
-                                .font(.system(.largeTitle, design: .rounded, weight: .black))
-                            Text("選一組，繼續拆彈。")
-                                .font(.subheadline.bold())
+                        Text("選一組，繼續拆彈。")
+                            .font(.subheadline.bold())
+
+                        if model.groups.isEmpty {
+                            emptyState
+                        } else {
+                            let activeGroups = groups(matching: { $0 == .active }, now: context.date)
+                            let awaitingGroups = groups(matching: { $0.isAwaitingReview }, now: context.date)
+                            let closedGroups = groups(matching: { $0 == .closed }, now: context.date)
+
+                            groupSection(title: "進行中", groups: activeGroups, now: context.date)
+                            groupSection(title: "待評分", groups: awaitingGroups, now: context.date)
+                            groupSection(title: "已完成", groups: closedGroups, now: context.date)
                         }
-
-                        let activeGroups = groups(matching: { $0 == .active }, now: context.date)
-                        let awaitingGroups = groups(matching: { $0.isAwaitingReview }, now: context.date)
-                        let closedGroups = groups(matching: { $0 == .closed }, now: context.date)
-
-                        groupSection(title: "進行中", groups: activeGroups, now: context.date)
-                        groupSection(title: "待評分", groups: awaitingGroups, now: context.date)
-                        groupSection(title: "已完成", groups: closedGroups, now: context.date)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -48,39 +52,56 @@ struct GroupListView: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .navigationTitle("群組")
+        .navigationTitle("我的群組")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Menu {
-                    Button("建立群組", systemImage: "plus") {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("新增", systemImage: "plus") {
+                    if tutorialStep?.wrappedValue == .createGroup {
                         tutorialStep?.wrappedValue = .createGroupForm
-                        showsCreateGroupSheet = true
                     }
-                    Button("加入群組", systemImage: "person.badge.plus") { model.lastEvent = "加入群組功能準備中" }
-                } label: {
-                    Image(systemName: "plus")
-                        .tutorialTarget(
-                            .createGroupButton,
-                            enabled: tutorialStep?.wrappedValue == .createGroup
-                        )
+                    isAddGroupPresented = true
                 }
+                .tutorialTarget(
+                    .createGroupButton,
+                    enabled: tutorialStep?.wrappedValue == .createGroup
+                )
             }
 
 #if DEBUG
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 debugMenu
             }
 #endif
         }
-        .sheet(isPresented: $showsCreateGroupSheet) {
-            CreateGroupSheet(
-                onCreate: createGroup,
-                onCancel: cancelCreateGroup
-            )
+        .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
+            AddGroupSheet(model: model) { group in
+                enteredGroup = group
+                if tutorialStep?.wrappedValue == .createGroupForm {
+                    tutorialStep?.wrappedValue = .inviteCode
+                }
+            }
         }
-        .navigationDestination(item: $newlyCreatedGroup) { group in
+        .navigationDestination(item: $enteredGroup) { group in
             GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
         }
+        .task(id: isSelected) {
+            guard isSelected else { return }
+            animationSequence += 1
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.3.fill")
+                .font(.system(size: 36, weight: .black))
+            Text("還沒有群組")
+                .font(.title3.weight(.black))
+            Text("建立群組或輸入邀請碼加入")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(BombTheme.ink.opacity(0.65))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 80)
     }
 
     @ViewBuilder
@@ -90,7 +111,7 @@ struct GroupListView: View {
                 Text(title)
                     .font(.system(.title2, design: .rounded, weight: .black))
 
-                ForEach(groups) { group in
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                     let status = listStatus(for: group, now: now)
                     NavigationLink {
                         destination(for: group, status: status)
@@ -100,7 +121,9 @@ struct GroupListView: View {
                             status: status,
                             progress: model.projectProgress(for: group.id),
                             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
-                            now: now
+                            now: now,
+                            animationDelay: Double(index) * 0.09,
+                            animationSequence: animationSequence
                         )
                     }
                     .buttonStyle(.plain)
@@ -113,7 +136,9 @@ struct GroupListView: View {
         matching predicate: (GroupListStatus) -> Bool,
         now: Date
     ) -> [Group] {
-        model.groups.filter { predicate(listStatus(for: $0, now: now)) }
+        model.groups
+            .filter { predicate(listStatus(for: $0, now: now)) }
+            .sorted(by: { $0.deadline < $1.deadline })
     }
 
     private func listStatus(for group: Group, now: Date) -> GroupListStatus {
@@ -136,6 +161,12 @@ struct GroupListView: View {
             GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
         case .closed:
             PostGameReviewView(groupName: group.name)
+        }
+    }
+
+    private func restoreCreateGroupTutorialIfNeeded() {
+        if tutorialStep?.wrappedValue == .createGroupForm {
+            tutorialStep?.wrappedValue = .createGroup
         }
     }
 
@@ -195,98 +226,181 @@ struct GroupListView: View {
         }
     }
 #endif
-
-    private func createGroup(name: String, deadline: Date) {
-        let existingIDs = Set(model.groups.map(\.id))
-        model.createGroup(name: name, deadline: deadline)
-        guard let group = model.groups.last(where: { !existingIDs.contains($0.id) }) else { return }
-
-        showsCreateGroupSheet = false
-        newlyCreatedGroup = group
-        tutorialStep?.wrappedValue = .inviteCode
-    }
-
-    private func cancelCreateGroup() {
-        showsCreateGroupSheet = false
-        if tutorialStep?.wrappedValue == .createGroupForm {
-            tutorialStep?.wrappedValue = .createGroup
-        }
-    }
 }
 
-private struct CreateGroupSheet: View {
-    @State private var name = "我的第一個拆彈計畫"
-    @State private var deadline = Calendar.current.date(byAdding: .day, value: 7, to: .now) ?? .now
+private struct AddGroupSheet: View {
+    let model: GroupBombModel
+    let enterGroup: (Group) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var flow = GroupEntryFlow.entry
+    @State private var entryMode = GroupEntryMode.create
+    @State private var groupName = ""
+    @State private var groupDeadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
+    @State private var groupCode = ""
+    @State private var createdGroup: Group?
+    @State private var joinError: String?
 
-    let onCreate: (String, Date) -> Void
-    let onCancel: () -> Void
+    private var canCreate: Bool {
+        !groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var canJoin: Bool {
+        !groupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                BombTheme.yellow.ignoresSafeArea()
+            SwiftUI.Group {
+                switch flow {
+                case .entry:
+                    Form {
+                        Section {
+                            HStack(spacing: 12) {
+                                entryButton(title: "建立群組", symbol: "plus", mode: .create)
+                                entryButton(title: "加入群組", symbol: "person.badge.plus", mode: .join)
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                        }
 
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("建立第一個專案")
-                        .font(.system(.largeTitle, design: .rounded, weight: .black))
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("專案名稱")
-                            .font(.headline.weight(.black))
-                        TextField("輸入專案名稱", text: $name)
-                            .textFieldStyle(.plain)
-                            .font(.headline.weight(.bold))
-                            .padding(14)
-                            .background(BombTheme.paper)
-                            .clipShape(RoundedRectangle(cornerRadius: 15))
-                            .overlay(RoundedRectangle(cornerRadius: 15).stroke(BombTheme.ink, lineWidth: 3))
-
-                        Text("Deadline")
-                            .font(.headline.weight(.black))
-                        DatePicker("截止時間", selection: $deadline, in: Date.now..., displayedComponents: [.date, .hourAndMinute])
-                            .font(.subheadline.weight(.bold))
-                            .padding(14)
-                            .background(BombTheme.paper)
-                            .clipShape(RoundedRectangle(cornerRadius: 15))
-                            .overlay(RoundedRectangle(cornerRadius: 15).stroke(BombTheme.ink, lineWidth: 3))
+                        if entryMode == .create {
+                            Section("群組名稱") {
+                                TextField("輸入群組名稱", text: $groupName)
+                            }
+                            Section("群組期限") {
+                                DatePicker(
+                                    "截止時間",
+                                    selection: $groupDeadline,
+                                    in: Date.now...,
+                                    displayedComponents: [.date, .hourAndMinute]
+                                )
+                            }
+                        } else {
+                            Section("群組代碼") {
+                                TextField("例如 GB-DEMO", text: $groupCode)
+                                    .textInputAutocapitalization(.characters)
+                                    .autocorrectionDisabled()
+                            }
+                        }
                     }
-                    .padding(18)
-                    .background(BombTheme.paper)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 4))
-                    .shadow(color: BombTheme.ink, radius: 0, x: 6, y: 6)
-
-                    Button("完成建立，開始拆彈") {
-                        onCreate(trimmedName, deadline)
+                case .shareCode:
+                    VStack(spacing: 20) {
+                        Text("分享這組代碼給隊友")
+                            .font(.headline)
+                        Text(createdGroup?.inviteCode ?? "")
+                            .font(.system(.title, design: .monospaced, weight: .black))
+                            .padding()
+                            .background(BombTheme.paper)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-                    .buttonStyle(.plain)
-                    .disabled(trimmedName.isEmpty)
-                    .opacity(trimmedName.isEmpty ? 0.45 : 1)
-
-                    Spacer()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
                 }
-                .padding(20)
             }
+            .navigationTitle(navigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("取消", action: onCancel)
-                        .fontWeight(.black)
-                        .foregroundStyle(BombTheme.ink)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(flow == .entry ? "取消" : "上一步") {
+                        if flow == .entry { dismiss() } else { flow = .entry }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("下一步", action: advance)
+                        .disabled(!canAdvance)
                 }
             }
         }
-        .interactiveDismissDisabled()
+        .presentationDetents([.medium])
+        .alert("無法加入群組", isPresented: Binding(
+            get: { joinError != nil },
+            set: { if !$0 { joinError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(joinError ?? "")
+        }
     }
+
+    private var navigationTitle: String {
+        switch flow {
+        case .entry: "新增群組"
+        case .shareCode: "群組代碼"
+        }
+    }
+
+    private var canAdvance: Bool {
+        switch flow {
+        case .entry:
+            entryMode == .create ? canCreate && groupDeadline > .now : canJoin
+        case .shareCode:
+            createdGroup != nil
+        }
+    }
+
+    private func advance() {
+        switch flow {
+        case .entry:
+            if entryMode == .create {
+                model.createGroup(name: groupName, deadline: groupDeadline)
+                createdGroup = model.groups.last
+                flow = .shareCode
+            } else {
+                let normalizedCode = groupCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                if model.joinGroup(inviteCode: normalizedCode),
+                   let group = model.groups.first(where: { $0.inviteCode == normalizedCode }) {
+                    enterGroup(group)
+                    dismiss()
+                } else {
+                    joinError = "請確認群組代碼後再試一次。"
+                }
+            }
+        case .shareCode:
+            guard let createdGroup else { return }
+            enterGroup(createdGroup)
+            dismiss()
+        }
+    }
+
+    private func entryButton(title: String, symbol: String, mode: GroupEntryMode) -> some View {
+        let isSelected = entryMode == mode
+
+        return Button {
+            entryMode = mode
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.headline.bold())
+                    .foregroundStyle(isSelected ? BombTheme.yellow : BombTheme.ink)
+                    .frame(width: 32, height: 32)
+                    .background(isSelected ? BombTheme.ink : BombTheme.yellow.opacity(0.35))
+                    .clipShape(Circle())
+                Text(title)
+                    .font(.subheadline.bold())
+            }
+            .foregroundStyle(BombTheme.ink)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(isSelected ? BombTheme.yellow : Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.clear : BombTheme.ink.opacity(0.2), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private enum GroupEntryFlow: Equatable {
+    case entry
+    case shareCode
+}
+
+private enum GroupEntryMode: Equatable {
+    case create
+    case join
 }
 
 private enum GroupListStatus: Equatable {
@@ -336,24 +450,26 @@ private enum GroupListStatus: Equatable {
 }
 
 private struct GroupRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: Group
     let status: GroupListStatus
     let progress: Int
     let completedReviewerCount: Int
     let now: Date
+    let animationDelay: TimeInterval
+    let animationSequence: Int
+
+    @State private var animatedProgress = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: status.iconName)
                     .foregroundStyle(status.accentColor)
-
                 Text(group.name)
                     .font(.title3.weight(.black))
                     .fixedSize(horizontal: false, vertical: true)
-
                 Spacer(minLength: 8)
-
                 Text(status.badgeTitle)
                     .font(.caption2.weight(.black))
                     .foregroundStyle(BombTheme.ink)
@@ -383,7 +499,7 @@ private struct GroupRow: View {
                 .font(.caption.bold())
             }
 
-            ProgressView(value: Double(progress), total: 100)
+            ProgressView(value: Double(animatedProgress), total: 100)
                 .tint(status.accentColor)
                 .scaleEffect(y: 1.4)
 
@@ -403,6 +519,29 @@ private struct GroupRow: View {
         .overlay {
             RoundedRectangle(cornerRadius: 22)
                 .stroke(status == .awaitingReviewExploded ? BombTheme.red : BombTheme.ink, lineWidth: 3)
+        }
+        .task(id: animationSequence) {
+            guard animationSequence > 0 else { return }
+            animatedProgress = 0
+
+            if reduceMotion {
+                animatedProgress = progress
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(animationDelay + 0.06))
+            guard !Task.isCancelled else {
+                animatedProgress = progress
+                return
+            }
+            withAnimation(.spring(duration: 0.75, bounce: 0.08)) {
+                animatedProgress = progress
+            }
+        }
+        .onChange(of: progress) { _, newProgress in
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) {
+                animatedProgress = newProgress
+            }
         }
     }
 

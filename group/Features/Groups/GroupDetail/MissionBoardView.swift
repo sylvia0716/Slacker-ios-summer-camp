@@ -4,14 +4,23 @@ import SwiftUI
 /// Future work: evolve this into GroupDetailView after Group and ProjectTask models are connected.
 struct MissionBoardView: View {
     let model: GroupBombModel
+    let group: Group
+    let showsNewGroupPrompt: Bool
     @State private var shieldOpen = false
+    @State private var isTaskPromptPresented = false
+
+    init(model: GroupBombModel, group: Group, showsNewGroupPrompt: Bool = false) {
+        self.model = model
+        self.group = group
+        self.showsNewGroupPrompt = showsNewGroupPrompt
+    }
 
     var body: some View {
         ZStack {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 18) {
-                    ProjectStatusHeader(progress: model.teamProgress)
+                    ProjectStatusHeader(name: group.name, progress: model.teamProgress)
                     HStack {
                         Stat(value: "\(model.claimedCount)", label: "我的任務")
                         Stat(value: "\(model.teamProgress)%", label: "拆彈進度")
@@ -38,7 +47,7 @@ struct MissionBoardView: View {
                 .padding(.bottom, 20)
             }
         }
-        .navigationTitle("GROUP BOMB")
+        .navigationTitle(group.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -48,18 +57,27 @@ struct MissionBoardView: View {
             }
         }
         .sheet(isPresented: $shieldOpen) { ShieldSheet(model: model) }
+        .alert("群組已建立", isPresented: $isTaskPromptPresented) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text("現在可以新增任務，邀請隊友一起拆彈。")
+        }
+        .onAppear {
+            isTaskPromptPresented = showsNewGroupPrompt
+        }
     }
 }
 
 /// Group status header: shows the deadline countdown and total project progress.
 struct ProjectStatusHeader: View {
+    let name: String
     let progress: Int
 
     var body: some View {
         VStack(spacing: 10) {
             HStack {
                 Image(systemName: "timer").foregroundStyle(BombTheme.yellow)
-                Text("行動代號：期末報告").font(.headline)
+                Text("行動代號：\(name)").font(.headline)
                 Spacer()
                 Text("LIVE").font(.caption.weight(.black)).foregroundStyle(BombTheme.red)
             }

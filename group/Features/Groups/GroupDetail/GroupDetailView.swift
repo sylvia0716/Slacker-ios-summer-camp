@@ -15,6 +15,12 @@ struct GroupDetailView: View {
     @State private var peerReviewStartsAtOutcomeSummary = true
     @State private var peerReviewRevision = 0
     @State private var showsExplosionMeme = true
+    @State private var showsDeadlineSheet = false
+    @State private var deadlineDraft = Date.now
+    @State private var deadlineError: String?
+    @State private var showsNameSheet = false
+    @State private var nameDraft = ""
+    @State private var nameError: String?
 
     init(
         group: Group,
@@ -62,7 +68,7 @@ struct GroupDetailView: View {
                             .transition(.opacity)
 
                         PublishTaskSheet(
-                            group: group,
+                            group: currentGroup,
                             members: groupMembers,
                             onPublish: { title, detail, assigneeID, deadline in
                                 try model.publishTask(
@@ -86,7 +92,7 @@ struct GroupDetailView: View {
                         let projectProgress = model.projectProgress(for: group.id)
 
                         PeerReviewOverlay(
-                            group: group,
+                            group: currentGroup,
                             outcome: outcome,
                             projectProgress: projectProgress,
                             startsAtOutcomeSummary: startsAtPeerReviewSummary,
@@ -156,6 +162,29 @@ struct GroupDetailView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { deadlineDraft = currentGroup.deadline }
+        .sheet(isPresented: $showsDeadlineSheet) {
+            DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
+        }
+        .sheet(isPresented: $showsNameSheet) {
+            GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
+        }
+        .alert("無法修改期限", isPresented: Binding(
+            get: { deadlineError != nil },
+            set: { if !$0 { deadlineError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(deadlineError ?? "")
+        }
+        .alert("無法修改群組名稱", isPresented: Binding(
+            get: { nameError != nil },
+            set: { if !$0 { nameError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(nameError ?? "")
+        }
     }
 
     private var topBar: some View {
@@ -175,7 +204,7 @@ struct GroupDetailView: View {
 #endif
 
             NavigationLink {
-                ChatRoomView(groupName: group.name, tutorialStep: tutorialStep)
+                ChatRoomView(model: model, group: currentGroup, tutorialStep: tutorialStep)
             } label: {
                 Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
                     .font(.subheadline.weight(.black))
@@ -337,7 +366,7 @@ struct GroupDetailView: View {
             ideaScore: 4,
             reliabilityScore: 4,
             comment: "",
-            now: group.deadline.addingTimeInterval(1)
+            now: currentGroup.deadline.addingTimeInterval(1)
         )
     }
 
@@ -370,7 +399,7 @@ struct GroupDetailView: View {
         if let debugDeadlineOutcome { return debugDeadlineOutcome }
 #endif
         return GroupDeadlineOutcome.resolve(
-            deadline: group.deadline,
+            deadline: currentGroup.deadline,
             progress: model.projectProgress(for: group.id),
             now: now
         )
@@ -457,7 +486,7 @@ struct GroupDetailView: View {
     private func reviewSubmissionDate(now: Date) -> Date {
 #if DEBUG
         if debugDeadlineOutcome == .completed || debugDeadlineOutcome == .incomplete {
-            return group.deadline.addingTimeInterval(1)
+            return currentGroup.deadline.addingTimeInterval(1)
         }
 #endif
         return now
@@ -465,12 +494,12 @@ struct GroupDetailView: View {
 
     private var groupIdentity: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(group.name)
+            Text(currentGroup.name)
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                Text("群組代碼：\(group.inviteCode)")
+                Text("群組代碼：\(currentGroup.inviteCode)")
                     .font(.subheadline.weight(.black))
                     .lineLimit(1)
 
@@ -484,6 +513,39 @@ struct GroupDetailView: View {
                         .clipShape(.capsule)
                 }
                 .buttonStyle(.plain)
+
+                ShareLink(
+                    item: "加入「\(currentGroup.name)」的群組，邀請碼：\(currentGroup.inviteCode)"
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+
+                Menu {
+                    Button("修改群組名稱", systemImage: "pencil") {
+                        nameDraft = currentGroup.name
+                        showsNameSheet = true
+                    }
+
+                    Button("修改截止時間", systemImage: "calendar.badge.clock") {
+                        deadlineDraft = currentGroup.deadline
+                        showsDeadlineSheet = true
+                    }
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .accessibilityLabel("修改群組")
             }
             .tutorialTarget(
                 .inviteCode,
@@ -554,7 +616,7 @@ struct GroupDetailView: View {
                 Button {
                     withAnimation(.snappy) { showsPublishTaskSheet = true }
                 } label: {
-                    Text("＋ 發布任務")
+                    Text(isGroupDeadlinePassed ? "已截止" : "＋ 發布任務")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11)
@@ -567,13 +629,15 @@ struct GroupDetailView: View {
                     .publishTask,
                     enabled: tutorialStep?.wrappedValue == .publishTask
                 )
+                .disabled(isGroupDeadlinePassed)
+                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
             }
 
             ForEach(groupMembers) { member in
                 MemberProgressCard(
                     member: memberProgressItem(for: member),
                     tasks: model.tasks(for: member.id, in: group.id),
-                    groupMemberIDs: group.memberIDs,
+                    groupMemberIDs: currentGroup.memberIDs,
                     currentUserID: model.currentUserID,
                     isCurrentUser: member.id == model.currentUserID,
                     isExpanded: expandedMemberID == member.id,
@@ -590,6 +654,9 @@ struct GroupDetailView: View {
                     },
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
+                    },
+                    onPoke: { style in
+                        model.poke(memberID: member.id, in: group.id, style: style)
                     }
                 )
                 .tutorialTarget(
@@ -602,26 +669,39 @@ struct GroupDetailView: View {
     }
 
     private var groupMembers: [Member] {
-        group.memberIDs.compactMap { memberID in
+        currentGroup.memberIDs.compactMap { memberID in
             model.members.first(where: { $0.id == memberID })
         }
+    }
+
+    private var currentGroup: Group {
+        model.groups.first(where: { $0.id == group.id }) ?? group
     }
 
     private var groupProgress: Int {
         model.projectProgress(for: group.id)
     }
 
+    private var isGroupDeadlinePassed: Bool {
+        currentGroup.deadline <= .now
+    }
+
     private var missionName: String {
-        let name = group.name.replacingOccurrences(of: "拆彈小隊", with: "")
+        let name = currentGroup.name.replacingOccurrences(of: "拆彈小隊", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? group.name : name
+        return name.isEmpty ? currentGroup.name : name
     }
 
     private func remainingTime(now: Date) -> String {
-        let remaining = max(0, Int(group.deadline.timeIntervalSince(now)))
+        let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(now)))
         let days = remaining / 86_400
         let hours = remaining % 86_400 / 3_600
         let minutes = remaining % 3_600 / 60
+
+        if remaining == 0 {
+            return "已截止"
+        }
+
         return "\(days) 天 \(hours) 小時 \(minutes) 分鐘"
     }
 
@@ -642,7 +722,7 @@ struct GroupDetailView: View {
     }
 
     private func copyInviteCode() {
-        UIPasteboard.general.string = group.inviteCode
+        UIPasteboard.general.string = currentGroup.inviteCode
         withAnimation(.snappy) { showsCopiedFeedback = true }
 
         Task {
@@ -653,6 +733,79 @@ struct GroupDetailView: View {
 
     private func closePublishTaskSheet() {
         withAnimation(.snappy) { showsPublishTaskSheet = false }
+    }
+
+    private func saveDeadline() {
+        do {
+            try model.updateGroupDeadline(groupID: group.id, deadline: deadlineDraft)
+            showsDeadlineSheet = false
+        } catch {
+            deadlineError = error.localizedDescription
+        }
+    }
+
+    private func saveName() {
+        do {
+            try model.updateGroupName(groupID: group.id, name: nameDraft)
+            showsNameSheet = false
+        } catch {
+            nameError = error.localizedDescription
+        }
+    }
+}
+
+private struct DeadlineEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var deadline: Date
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(
+                    "截止時間",
+                    selection: $deadline,
+                    in: Date.now...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+            }
+            .navigationTitle("修改截止時間")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("儲存") { onSave() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+private struct GroupNameEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var name: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("群組名稱", text: $name)
+            }
+            .navigationTitle("修改群組名稱")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("儲存") { onSave() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
