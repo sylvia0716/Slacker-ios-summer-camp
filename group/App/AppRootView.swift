@@ -7,7 +7,9 @@ struct AppRootView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            NavigationStack { GroupListView(model: store) }
+            NavigationStack {
+                GroupListView(model: store, isSelected: tab == .groups)
+            }
                 .tabItem { Label(AppTab.groups.title, systemImage: AppTab.groups.symbol) }
                 .tag(AppTab.groups)
             NavigationStack { MyTasksView(model: store) }
