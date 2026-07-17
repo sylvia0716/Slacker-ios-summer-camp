@@ -77,6 +77,7 @@ private struct RadarReportCard: View {
                     .font(.system(size: 42, weight: .black, design: .rounded))
             }
             .padding(.horizontal, 28)
+            .padding(.top, 18)
 
             ContributionRadar(metrics: metrics)
                 .frame(height: 280)
