@@ -1,8 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-/// Snapshot of the minimum group information a Home Screen widget needs to display.
-/// Future work: read this value from an App Group shared by the main app and widget extension.
 struct GroupProgressEntry: TimelineEntry {
     let date: Date
     let groupName: String
@@ -10,21 +8,29 @@ struct GroupProgressEntry: TimelineEntry {
     let deadline: Date
 }
 
-/// Supplies mock timeline data for the MVP widget.
-/// Future work: replace the hard-coded snapshot with a shared WidgetSnapshot service.
 struct GroupProgressProvider: TimelineProvider {
     func placeholder(in context: Context) -> GroupProgressEntry {
         sampleEntry
     }
 
     func getSnapshot(in context: Context, completion: @escaping (GroupProgressEntry) -> Void) {
-        completion(sampleEntry)
+        completion(currentEntry)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<GroupProgressEntry>) -> Void) {
-        let entry = sampleEntry
-        let refreshDate = Date.now.addingTimeInterval(60)
+        let entry = currentEntry
+        let refreshDate = min(entry.deadline, Date.now.addingTimeInterval(15 * 60))
         completion(Timeline(entries: [entry], policy: .after(refreshDate)))
+    }
+
+    private var currentEntry: GroupProgressEntry {
+        guard let snapshot = WidgetSnapshotStore.current else { return sampleEntry }
+        return GroupProgressEntry(
+            date: .now,
+            groupName: snapshot.groupName,
+            progress: snapshot.progress,
+            deadline: snapshot.deadline
+        )
     }
 
     private var sampleEntry: GroupProgressEntry {
@@ -73,13 +79,15 @@ private struct GroupProgressWidgetView: View {
                 .font(.headline.weight(.black))
                 .lineLimit(1)
 
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(entry.progress)%")
-                    .font(.system(size: 32, weight: .black, design: .rounded))
-                Spacer()
-                Text(entry.deadline, style: .timer)
-                    .font(.caption.weight(.bold))
-                    .multilineTextAlignment(.trailing)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(entry.progress)%")
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                    Spacer()
+                    Label(remainingTime(at: context.date), systemImage: "timer")
+                        .font(.caption.weight(.bold))
+                        .labelStyle(.titleAndIcon)
+                }
             }
 
             ProgressView(value: Double(entry.progress), total: 100)
@@ -90,5 +98,21 @@ private struct GroupProgressWidgetView: View {
         .containerBackground(for: .widget) {
             Color(red: 0.08, green: 0.08, blue: 0.07)
         }
+    }
+
+    private func remainingTime(at date: Date) -> String {
+        let remaining = max(0, Int(entry.deadline.timeIntervalSince(date)))
+        let days = remaining / 86_400
+        let hours = remaining % 86_400 / 3_600
+
+        if remaining == 0 {
+            return "已截止"
+        }
+
+        if days > 0 {
+            return "剩 \(days) 天"
+        }
+
+        return "剩 \(hours) 小時"
     }
 }

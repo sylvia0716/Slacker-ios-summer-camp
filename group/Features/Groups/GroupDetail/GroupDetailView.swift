@@ -264,7 +264,9 @@ struct GroupDetailView: View {
             }
 
             ForEach(groupMembers) { member in
-                MemberProgressCard(member: memberProgressItem(for: member))
+                MemberProgressCard(member: memberProgressItem(for: member)) { style in
+                    model.poke(memberID: member.id, in: group.id, style: style)
+                }
             }
         }
     }

@@ -4,6 +4,7 @@ import UIKit
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
     let model: GroupBombModel
+    @State private var showsNotificationTest = false
 
     var body: some View {
         ZStack {
@@ -26,7 +27,9 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: "一般設定") {
-                        NotificationSettingsRow(model: model)
+                        NotificationSettingsRow(model: model) {
+                            showsNotificationTest = true
+                        }
                     }
                 }
                 .padding(16)
@@ -35,6 +38,9 @@ struct SettingsView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationDestination(isPresented: $showsNotificationTest) {
+            NotificationTestView(model: model)
+        }
     }
 }
 
@@ -103,6 +109,8 @@ private struct SettingsRow: View {
 
 private struct NotificationSettingsRow: View {
     let model: GroupBombModel
+    let showsTestPage: () -> Void
+    @State private var titleTapCount = 0
 
     var body: some View {
         HStack(spacing: 14) {
@@ -111,7 +119,15 @@ private struct NotificationSettingsRow: View {
                 .frame(width: 34, height: 34)
                 .background(BombTheme.yellow)
                 .clipShape(.circle)
-            Text("通知設定").font(.body.weight(.bold))
+            Button {
+                titleTapCount += 1
+                guard titleTapCount == 5 else { return }
+                titleTapCount = 0
+                showsTestPage()
+            } label: {
+                Text("通知設定").font(.body.weight(.bold))
+            }
+            .buttonStyle(.plain)
             Spacer()
             Toggle("通知設定", isOn: Binding(
                 get: { model.notificationsEnabled },
@@ -122,6 +138,62 @@ private struct NotificationSettingsRow: View {
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 8)
+    }
+}
+
+private struct NotificationTestView: View {
+    let model: GroupBombModel
+    @State private var selectedGroupID: UUID?
+    @State private var pokeCount = 0
+    @State private var showsNotificationsDisabledAlert = false
+
+    var body: some View {
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Picker("小組", selection: $selectedGroupID) {
+                    ForEach(model.groups) { group in
+                        Text(group.name).tag(Optional(group.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.headline)
+
+                Button {
+                    guard let selectedGroupID,
+                          let count = model.sendTestPoke(in: selectedGroupID) else {
+                        showsNotificationsDisabledAlert = true
+                        return
+                    }
+                    pokeCount = count
+                } label: {
+                    Label("戳自己一下", systemImage: "hand.tap.fill")
+                        .font(.title3.weight(.black))
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 15)
+                        .foregroundStyle(.white)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .buttonStyle(.plain)
+
+                if pokeCount > 0 {
+                    Text("已戳自己 \(pokeCount) 下")
+                        .font(.headline.weight(.black))
+                }
+            }
+            .padding(24)
+        }
+        .navigationTitle("通知測試")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .onAppear {
+            selectedGroupID = selectedGroupID ?? model.groups.first?.id
+        }
+        .alert("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
+            Button("好", role: .cancel) { }
+        }
     }
 }
 
