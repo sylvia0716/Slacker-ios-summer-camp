@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
@@ -34,30 +35,6 @@ struct SettingsView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
-    }
-}
-
-private struct NotificationSettingsRow: View {
-    let model: GroupBombModel
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "bell.fill")
-                .font(.title3)
-                .frame(width: 34, height: 34)
-                .background(BombTheme.yellow)
-                .clipShape(Circle())
-            Text("通知設定").font(.body.weight(.bold))
-            Spacer()
-            Toggle("通知設定", isOn: Binding(
-                get: { model.notificationsEnabled },
-                set: { model.notificationsEnabled = $0 }
-            ))
-            .labelsHidden()
-            .tint(BombTheme.green)
-        }
-        .foregroundStyle(BombTheme.ink)
-        .padding(.vertical, 8)
     }
 }
 
@@ -121,5 +98,75 @@ private struct SettingsRow: View {
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 8)
+    }
+}
+
+private struct NotificationSettingsRow: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "bell.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .background(BombTheme.yellow)
+                .clipShape(.circle)
+            Text("通知設定").font(.body.weight(.bold))
+            Spacer()
+            Toggle("通知設定", isOn: Binding(
+                get: { model.notificationsEnabled },
+                set: { model.notificationsEnabled = $0 }
+            ))
+            .labelsHidden()
+            .tint(BombTheme.green)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct GroupManagementView: View {
+    let model: GroupBombModel
+    @State private var groupToLeave: Group?
+    @State private var showsLeaveConfirmation = false
+
+    var body: some View {
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 18) {
+                Text("群組管理").font(.largeTitle.weight(.black))
+                ForEach(model.groups) { group in
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(group.name).font(.title3.weight(.black))
+                        Button("複製邀請碼", systemImage: "doc.on.doc.fill") {
+                            UIPasteboard.general.string = group.inviteCode
+                            model.lastEvent = "邀請碼已複製"
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(BombTheme.ink)
+                        Button("離開群組", role: .destructive) {
+                            groupToLeave = group
+                            showsLeaveConfirmation = true
+                        }
+                            .font(.body.bold())
+                    }
+                    .comicCard()
+                }
+                Spacer()
+            }
+            .padding(16)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .confirmationDialog(
+            "確定要離開「\(groupToLeave?.name ?? "")」嗎？",
+            isPresented: $showsLeaveConfirmation
+        ) {
+            Button("離開群組", role: .destructive) {
+                guard let groupToLeave else { return }
+                model.leaveGroup(groupID: groupToLeave.id)
+            }
+            Button("取消", role: .cancel) { }
+        }
     }
 }
