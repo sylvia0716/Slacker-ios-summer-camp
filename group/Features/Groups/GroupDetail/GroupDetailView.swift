@@ -6,11 +6,25 @@ struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let group: Group
     let model: AppStore
+    private let tutorialStep: Binding<TutorialStep?>?
 
     @State private var showsCopiedFeedback = false
     @State private var showsPublishTaskSheet = false
     @State private var expandedMemberID: UUID?
     @State private var reviewDeferred = false
+    @State private var peerReviewStartsAtOutcomeSummary = true
+    @State private var peerReviewRevision = 0
+    @State private var showsExplosionMeme = true
+
+    init(
+        group: Group,
+        model: AppStore,
+        tutorialStep: Binding<TutorialStep?>? = nil
+    ) {
+        self.group = group
+        self.model = model
+        self.tutorialStep = tutorialStep
+    }
 
 #if DEBUG
     @State private var debugDeadlineOutcome: GroupDeadlineOutcome?
@@ -27,6 +41,9 @@ struct GroupDetailView: View {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 18) {
                                 topBar
+                                if shouldShowContinueReviewBanner(now: context.date) {
+                                    continueReviewBanner(now: context.date)
+                                }
                                 groupIdentity
                                 countdownCard(now: context.date)
                                 memberSection
@@ -65,12 +82,14 @@ struct GroupDetailView: View {
                     }
 
                     if shouldShowPeerReview(now: context.date) {
-                        if deadlineOutcome(now: context.date) == .incomplete {
-                            // Future BombExplosionOverlay belongs here, below the review overlay.
-                        }
+                        let outcome = deadlineOutcome(now: context.date)
+                        let projectProgress = model.projectProgress(for: group.id)
 
                         PeerReviewOverlay(
                             group: group,
+                            outcome: outcome,
+                            projectProgress: projectProgress,
+                            startsAtOutcomeSummary: startsAtPeerReviewSummary,
                             members: groupMembers,
                             currentUserID: model.currentUserID,
                             tasks: model.projectTasks.filter { $0.groupID == group.id },
@@ -94,7 +113,31 @@ struct GroupDetailView: View {
                                 withAnimation(.snappy) { reviewDeferred = true }
                             }
                         )
+                        .id(peerReviewOverlayIdentity)
                         .zIndex(20)
+                        .transition(.opacity)
+                    }
+
+                    if shouldShowExplosionMeme(now: context.date) {
+                        ExplosionMemeOverlay(
+                            groupName: group.name,
+                            progress: model.projectProgress(for: group.id),
+                            incompleteTaskCount: model.projectTasks.filter {
+                                $0.groupID == group.id && $0.progress < 100
+                            }.count,
+                            onViewDamage: {
+                                peerReviewStartsAtOutcomeSummary = true
+                                peerReviewRevision += 1
+                                withAnimation(.snappy) { showsExplosionMeme = false }
+                            },
+                            onLater: {
+                                withAnimation(.snappy) {
+                                    showsExplosionMeme = false
+                                    reviewDeferred = true
+                                }
+                            }
+                        )
+                        .zIndex(25)
                         .transition(.opacity)
                     }
 
@@ -107,8 +150,9 @@ struct GroupDetailView: View {
 #endif
                 }
                 .animation(.snappy, value: shouldShowPeerReview(now: context.date))
+                .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
             }
-            .toolbar(shouldShowPeerReview(now: context.date) ? .hidden : .visible, for: .tabBar)
+            .toolbar(isBlockingOverlayVisible(now: context.date) ? .hidden : .visible, for: .tabBar)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -131,7 +175,7 @@ struct GroupDetailView: View {
 #endif
 
             NavigationLink {
-                ChatRoomView(groupName: group.name)
+                ChatRoomView(groupName: group.name, tutorialStep: tutorialStep)
             } label: {
                 Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
                     .font(.subheadline.weight(.black))
@@ -142,6 +186,17 @@ struct GroupDetailView: View {
                     .clipShape(.capsule)
             }
             .buttonStyle(.plain)
+            .tutorialTarget(
+                .chatButton,
+                enabled: tutorialStep?.wrappedValue == .chatEntry
+            )
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if tutorialStep?.wrappedValue == .chatEntry {
+                        tutorialStep?.wrappedValue = .aiChat
+                    }
+                }
+            )
         }
     }
 
@@ -183,40 +238,46 @@ struct GroupDetailView: View {
                     debugAction("正常進行中") {
                         debugDeadlineOutcome = .active
                         reviewDeferred = false
+                        showsExplosionMeme = false
+                        peerReviewStartsAtOutcomeSummary = true
+                        peerReviewRevision += 1
                     }
-                    debugAction("模擬截止＋任務完成") {
-                        debugDeadlineOutcome = .completed
-                        reviewDeferred = false
+                    debugAction("成功拆彈摘要") {
+                        presentDebugPeerReview(outcome: .completed, startsAtSummary: true)
                     }
-                    debugAction("模擬截止＋任務未完成") {
+                    debugAction("直接顯示爆炸梗圖") {
+                        presentDebugExplosionMeme()
+                    }
+                    debugAction("關閉爆炸梗圖") {
                         debugDeadlineOutcome = .incomplete
-                        reviewDeferred = false
+                        showsExplosionMeme = false
+                        reviewDeferred = true
                     }
-                    debugAction("模擬尚未評分") {
-                        model.resetPeerReviews(for: group.id)
-                        debugDeadlineOutcome = .incomplete
-                        reviewDeferred = false
+                    debugAction("重新顯示爆炸梗圖") {
+                        presentDebugExplosionMeme()
+                    }
+                    debugAction("直接跳到戰損摘要") {
+                        presentDebugPeerReview(outcome: .incomplete, startsAtSummary: true)
+                    }
+                    debugAction("直接跳到雷包點點名") {
+                        let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
+                        presentDebugPeerReview(outcome: outcome, startsAtSummary: false, resetReviews: true)
                     }
                     debugAction("模擬部分成員已評分") {
                         seedCurrentUserReviews(count: 1)
-                        debugDeadlineOutcome = .incomplete
-                        reviewDeferred = false
+                        presentDebugPeerReview(outcome: .incomplete, startsAtSummary: false)
                     }
                     debugAction("模擬全部評分完成") {
                         seedAllPeerReviews()
-                        debugDeadlineOutcome = .incomplete
-                        reviewDeferred = false
+                        presentDebugPeerReview(outcome: .incomplete, startsAtSummary: false)
                     }
-                    debugAction("重設評分狀態") {
-                        model.resetPeerReviews(for: group.id)
-                        debugDeadlineOutcome = nil
-                        reviewDeferred = false
+                    debugAction("重設互評進度") {
+                        let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
+                        presentDebugPeerReview(outcome: outcome, startsAtSummary: true, resetReviews: true)
                     }
-                    debugAction("重新顯示互評視窗") {
-                        if debugDeadlineOutcome == nil || debugDeadlineOutcome == .active {
-                            debugDeadlineOutcome = .incomplete
-                        }
-                        reviewDeferred = false
+                    debugAction("重新顯示結果摘要") {
+                        let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
+                        presentDebugPeerReview(outcome: outcome, startsAtSummary: true)
                     }
                 }
                 .padding(18)
@@ -279,6 +340,29 @@ struct GroupDetailView: View {
             now: group.deadline.addingTimeInterval(1)
         )
     }
+
+    private func presentDebugPeerReview(
+        outcome: GroupDeadlineOutcome,
+        startsAtSummary: Bool,
+        resetReviews: Bool = false
+    ) {
+        if resetReviews {
+            model.resetPeerReviews(for: group.id)
+        }
+        debugDeadlineOutcome = outcome
+        showsExplosionMeme = false
+        peerReviewStartsAtOutcomeSummary = startsAtSummary
+        reviewDeferred = false
+        peerReviewRevision += 1
+    }
+
+    private func presentDebugExplosionMeme() {
+        debugDeadlineOutcome = .incomplete
+        showsExplosionMeme = true
+        reviewDeferred = false
+        peerReviewStartsAtOutcomeSummary = true
+        peerReviewRevision += 1
+    }
 #endif
 
     private func deadlineOutcome(now: Date) -> GroupDeadlineOutcome {
@@ -293,7 +377,81 @@ struct GroupDetailView: View {
     }
 
     private func shouldShowPeerReview(now: Date) -> Bool {
-        deadlineOutcome(now: now) != .active && !reviewDeferred
+        deadlineOutcome(now: now) != .active
+            && !reviewDeferred
+            && !shouldShowExplosionMeme(now: now)
+    }
+
+    private func shouldShowExplosionMeme(now: Date) -> Bool {
+        deadlineOutcome(now: now) == .incomplete
+            && showsExplosionMeme
+            && !reviewDeferred
+    }
+
+    private func isBlockingOverlayVisible(now: Date) -> Bool {
+        shouldShowPeerReview(now: now) || shouldShowExplosionMeme(now: now)
+    }
+
+    private var startsAtPeerReviewSummary: Bool {
+        peerReviewStartsAtOutcomeSummary
+    }
+
+    private var peerReviewOverlayIdentity: String {
+        "\(group.id.uuidString)-\(peerReviewRevision)"
+    }
+
+    private func shouldShowContinueReviewBanner(now: Date) -> Bool {
+        deadlineOutcome(now: now) != .active
+            && reviewDeferred
+            && remainingReviewCount > 0
+    }
+
+    private var remainingReviewCount: Int {
+        let reviewedMemberIDs = Set(
+            model.reviews(for: group.id)
+                .filter { $0.reviewerMemberID == model.currentUserID }
+                .map(\.revieweeMemberID)
+        )
+        return group.memberIDs
+            .filter { $0 != model.currentUserID && !reviewedMemberIDs.contains($0) }
+            .count
+    }
+
+    private func continueReviewBanner(now: Date) -> some View {
+        let alertOrange = Color(red: 0.94, green: 0.34, blue: 0.12)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .foregroundStyle(BombTheme.ink)
+                Text("尚有匿名互評未完成")
+                    .font(.headline.weight(.black))
+            }
+
+            HStack {
+                Text("還剩 \(remainingReviewCount) 位隊員")
+                    .font(.subheadline.weight(.bold))
+
+                Spacer()
+
+                Button("繼續評分") {
+                    peerReviewStartsAtOutcomeSummary = false
+                    peerReviewRevision += 1
+                    withAnimation(.snappy) { reviewDeferred = false }
+                }
+                .font(.subheadline.weight(.black))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(BombTheme.ink)
+                .clipShape(.capsule)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(15)
+        .background(alertOrange)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 3))
     }
 
     private func reviewSubmissionDate(now: Date) -> Date {
@@ -327,6 +485,10 @@ struct GroupDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .tutorialTarget(
+                .inviteCode,
+                enabled: tutorialStep?.wrappedValue == .inviteCode
+            )
 
             if showsCopiedFeedback {
                 Text("群組代碼已複製")
@@ -401,6 +563,10 @@ struct GroupDetailView: View {
                         .clipShape(.capsule)
                 }
                 .buttonStyle(.plain)
+                .tutorialTarget(
+                    .publishTask,
+                    enabled: tutorialStep?.wrappedValue == .publishTask
+                )
             }
 
             ForEach(groupMembers) { member in
@@ -425,6 +591,11 @@ struct GroupDetailView: View {
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
                     }
+                )
+                .tutorialTarget(
+                    .memberProgress,
+                    enabled: tutorialStep?.wrappedValue == .memberProgress
+                        && member.id == groupMembers.first?.id
                 )
             }
         }
@@ -482,6 +653,111 @@ struct GroupDetailView: View {
 
     private func closePublishTaskSheet() {
         withAnimation(.snappy) { showsPublishTaskSheet = false }
+    }
+}
+
+private struct ExplosionMemeOverlay: View {
+    let groupName: String
+    let progress: Int
+    let incompleteTaskCount: Int
+    let onViewDamage: () -> Void
+    let onLater: () -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                BombTheme.ink.opacity(0.6)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 28, weight: .black))
+                                .foregroundStyle(BombTheme.red)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("任務爆炸")
+                                    .font(.system(.title, design: .rounded, weight: .black))
+                                Text("截止時間已到")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+
+                        Image("ExplosionMemeProject")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .frame(maxHeight: min(270, proxy.size.height * 0.36))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(BombTheme.ink, lineWidth: 2)
+                            )
+                            .accessibilityLabel("爆炸專案梗圖")
+
+                        VStack(spacing: 9) {
+                            Text(groupName)
+                                .font(.title3.weight(.black))
+                                .multilineTextAlignment(.center)
+
+                            HStack(spacing: 12) {
+                                Text("完成率 \(progress)%")
+                                Text("｜")
+                                    .foregroundStyle(.secondary)
+                                Text("未完成任務 \(incompleteTaskCount) 項")
+                            }
+                            .font(.subheadline.weight(.black))
+                            .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .background(BombTheme.yellow.opacity(0.32))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
+
+                        Text("本次任務未能如期完成，\n請查看戰損並完成匿名隊員互評。")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(BombTheme.ink.opacity(0.76))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Button("查看戰損", action: onViewDamage)
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(BombTheme.ink)
+                            .clipShape(.capsule)
+                            .buttonStyle(.plain)
+
+                        Button("稍後查看", action: onLater)
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(BombTheme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(BombTheme.paper)
+                            .clipShape(.capsule)
+                            .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                            .buttonStyle(.plain)
+                    }
+                    .padding(20)
+                }
+                .scrollIndicators(.hidden)
+                .background(BombTheme.paper)
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
+                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
+                .frame(maxWidth: 560)
+                .frame(maxHeight: max(320, proxy.size.height - 32))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
