@@ -488,6 +488,9 @@ struct GroupDetailView: View {
                     },
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
+                    },
+                    onPoke: { style in
+                        model.poke(memberID: member.id, in: group.id, style: style)
                     }
                 )
             }
