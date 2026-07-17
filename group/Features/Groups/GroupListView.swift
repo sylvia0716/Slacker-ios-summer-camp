@@ -6,6 +6,7 @@ struct GroupListView: View {
     let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
     private let onReplayTutorial: (() -> Void)?
+    private let onCreateGroupTutorialFrameChange: ((CGRect?) -> Void)?
 
     @State private var isAddGroupPresented = false
     @State private var enteredGroup: Group?
@@ -15,12 +16,14 @@ struct GroupListView: View {
         model: GroupBombModel,
         isSelected: Bool = true,
         tutorialStep: Binding<TutorialStep?>? = nil,
-        onReplayTutorial: (() -> Void)? = nil
+        onReplayTutorial: (() -> Void)? = nil,
+        onCreateGroupTutorialFrameChange: ((CGRect?) -> Void)? = nil
     ) {
         self.model = model
         self.isSelected = isSelected
         self.tutorialStep = tutorialStep
         self.onReplayTutorial = onReplayTutorial
+        self.onCreateGroupTutorialFrameChange = onCreateGroupTutorialFrameChange
     }
 
     var body: some View {
@@ -61,10 +64,7 @@ struct GroupListView: View {
                     }
                     isAddGroupPresented = true
                 }
-                .tutorialTarget(
-                    .createGroupButton,
-                    enabled: tutorialStep?.wrappedValue == .createGroup
-                )
+                .accessibilityIdentifier("tutorial.createGroupButton")
             }
 
 #if DEBUG
@@ -72,6 +72,16 @@ struct GroupListView: View {
                 debugMenu
             }
 #endif
+        }
+        .background {
+            if tutorialStep?.wrappedValue == .createGroup {
+                ToolbarTargetFrameReader(
+                    identifier: "tutorial.createGroupButton",
+                    accessibilityLabel: "新增"
+                ) {
+                    onCreateGroupTutorialFrameChange?($0)
+                }
+            }
         }
         .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
             AddGroupSheet(model: model) { group in

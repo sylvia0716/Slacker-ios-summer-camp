@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum TutorialStep: Equatable {
     case welcome
@@ -22,25 +23,135 @@ enum TutorialTarget: Hashable {
 }
 
 struct TutorialTargetPreferenceKey: PreferenceKey {
-    static var defaultValue: [TutorialTarget: CGRect] = [:]
+    static var defaultValue: [TutorialTarget: Anchor<CGRect>] = [:]
 
-    static func reduce(value: inout [TutorialTarget: CGRect], nextValue: () -> [TutorialTarget: CGRect]) {
+    static func reduce(
+        value: inout [TutorialTarget: Anchor<CGRect>],
+        nextValue: () -> [TutorialTarget: Anchor<CGRect>]
+    ) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
 extension View {
     func tutorialTarget(_ target: TutorialTarget, enabled: Bool = true) -> some View {
-        background {
-            if enabled {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TutorialTargetPreferenceKey.self,
-                        value: [target: proxy.frame(in: .global)]
-                    )
-                }
+        anchorPreference(key: TutorialTargetPreferenceKey.self, value: .bounds) { anchor in
+            enabled ? [target: anchor] : [:]
+        }
+    }
+
+}
+
+struct ToolbarTargetFrameReader: UIViewRepresentable {
+    let identifier: String
+    let accessibilityLabel: String
+    let onChange: (CGRect) -> Void
+
+    func makeUIView(context: Context) -> ToolbarTargetFrameReportingView {
+        let view = ToolbarTargetFrameReportingView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.identifier = identifier
+        view.targetAccessibilityLabel = accessibilityLabel
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: ToolbarTargetFrameReportingView, context: Context) {
+        uiView.identifier = identifier
+        uiView.targetAccessibilityLabel = accessibilityLabel
+        uiView.onChange = onChange
+        uiView.beginReporting()
+    }
+}
+
+final class ToolbarTargetFrameReportingView: UIView {
+    var identifier = ""
+    var targetAccessibilityLabel = ""
+    var onChange: ((CGRect) -> Void)?
+    private var lastFrame: CGRect?
+    private var retryWorkItem: DispatchWorkItem?
+    private var remainingAttempts = 0
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        beginReporting()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        beginReporting()
+    }
+
+    func beginReporting() {
+        retryWorkItem?.cancel()
+        remainingAttempts = 12
+        reportTargetFrame()
+    }
+
+    private func reportTargetFrame() {
+        guard let window else { return }
+
+        if let target = targetView(in: window) {
+            let frame = target.convert(target.bounds, to: window)
+            guard frame.width > 0, frame.height > 0, frame != lastFrame else { return }
+            lastFrame = frame
+            DispatchQueue.main.async { [onChange] in
+                onChange?(frame)
+            }
+            return
+        }
+
+        guard remainingAttempts > 0 else { return }
+        remainingAttempts -= 1
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.reportTargetFrame()
+        }
+        retryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+    }
+
+    private func targetView(in window: UIWindow) -> UIView? {
+        if let identified = firstDescendant(in: window, matching: {
+            $0.accessibilityIdentifier == identifier
+        }) {
+            return identified
+        }
+
+        if let labelled = firstDescendant(in: window, matching: {
+            $0.accessibilityLabel == targetAccessibilityLabel && $0 is UIControl
+        }) {
+            return labelled
+        }
+
+        let navigationBars = descendants(in: window)
+            .compactMap { $0 as? UINavigationBar }
+            .filter { !$0.isHidden && $0.alpha > 0 && $0.window === window }
+
+        return navigationBars
+            .flatMap { descendants(in: $0) }
+            .compactMap { $0 as? UIControl }
+            .filter { !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0 && $0.bounds.height > 0 }
+            .max { lhs, rhs in
+                lhs.convert(lhs.bounds, to: window).midX < rhs.convert(rhs.bounds, to: window).midX
+            }
+    }
+
+    private func firstDescendant(
+        in root: UIView,
+        matching predicate: (UIView) -> Bool
+    ) -> UIView? {
+        if predicate(root) { return root }
+        for subview in root.subviews {
+            if let match = firstDescendant(in: subview, matching: predicate) {
+                return match
             }
         }
+        return nil
+    }
+
+    private func descendants(in root: UIView) -> [UIView] {
+        root.subviews + root.subviews.flatMap { descendants(in: $0) }
     }
 }
 
@@ -66,9 +177,10 @@ struct OnboardingTutorialView: View {
                 SpotlightOverlay(
                     targetFrame: targets[.createGroupButton],
                     title: "建立你的第一個專案",
-                    description: "點擊 ＋，設定專案名稱與 Deadline。",
+                    description: "點選右上角的「新增」，設定專案名稱與 Deadline。",
                     actionTitle: nil,
-                    action: nil
+                    action: nil,
+                    cardPlacement: .belowTarget
                 )
 
             case .createGroupForm:
@@ -79,10 +191,12 @@ struct OnboardingTutorialView: View {
                     targetFrame: targets[.inviteCode],
                     title: "🔑 分享這組代碼",
                     description: "邀請隊友加入你的拆彈任務。",
-                    actionTitle: "下一步"
-                ) {
-                    self.step = .publishTask
-                }
+                    actionTitle: "下一步",
+                    action: {
+                        self.step = .publishTask
+                    },
+                    cardPlacement: .belowTarget
+                )
 
             case .publishTask:
                 SpotlightOverlay(
@@ -99,10 +213,12 @@ struct OnboardingTutorialView: View {
                     targetFrame: targets[.memberProgress],
                     title: "查看每位隊員進度",
                     description: "掌握待完成事項、已完成事項與成果證明。",
-                    actionTitle: "前往聊天室"
-                ) {
-                    self.step = .chatEntry
-                }
+                    actionTitle: "前往聊天室",
+                    action: {
+                        self.step = .chatEntry
+                    },
+                    cardPlacement: .aboveTarget
+                )
 
             case .chatEntry:
                 SpotlightOverlay(
@@ -136,25 +252,43 @@ struct OnboardingTutorialView: View {
     }
 }
 
+enum SpotlightCardPlacement: Equatable {
+    case automatic
+    case aboveTarget
+    case belowTarget
+}
+
 struct SpotlightOverlay: View {
     let targetFrame: CGRect?
     let title: String
     let description: String
     let actionTitle: String?
     let action: (() -> Void)?
+    let cardPlacement: SpotlightCardPlacement
+
+    init(
+        targetFrame: CGRect?,
+        title: String,
+        description: String,
+        actionTitle: String?,
+        action: (() -> Void)?,
+        cardPlacement: SpotlightCardPlacement = .automatic
+    ) {
+        self.targetFrame = targetFrame
+        self.title = title
+        self.description = description
+        self.actionTitle = actionTitle
+        self.action = action
+        self.cardPlacement = cardPlacement
+    }
 
     var body: some View {
         GeometryReader { proxy in
-            let rootFrame = proxy.frame(in: .global)
-            let localTarget = targetFrame.map {
-                CGRect(
-                    x: $0.minX - rootFrame.minX,
-                    y: $0.minY - rootFrame.minY,
-                    width: $0.width,
-                    height: $0.height
-                ).insetBy(dx: -8, dy: -8)
+            let localTarget = targetFrame?.insetBy(dx: -8, dy: -8)
+            let safeBounds = safeBounds(in: proxy)
+            let cardSide = localTarget.map {
+                cardPlacement.side(for: $0, in: safeBounds)
             }
-            let targetIsHigh = (localTarget?.midY ?? proxy.size.height / 2) < proxy.size.height / 2
 
             ZStack {
                 spotlightMask(size: proxy.size, target: localTarget)
@@ -162,28 +296,37 @@ struct SpotlightOverlay: View {
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
 
-                if let localTarget {
-                    Image(systemName: targetIsHigh ? "arrow.up" : "arrow.down")
+                if let localTarget, let cardSide {
+                    Image(systemName: cardSide == .below ? "arrow.up" : "arrow.down")
                         .font(.system(size: 28, weight: .black))
                         .foregroundStyle(BombTheme.yellow)
                         .position(
                             x: min(max(localTarget.midX, 28), proxy.size.width - 28),
-                            y: targetIsHigh ? localTarget.maxY + 25 : localTarget.minY - 25
+                            y: cardSide == .below ? localTarget.maxY + 25 : localTarget.minY - 25
                         )
                         .allowsHitTesting(false)
                 }
 
-                tutorialCard
-                    .frame(maxWidth: min(350, proxy.size.width - 32))
-                    .position(
-                        x: proxy.size.width / 2,
-                        y: cardCenterY(in: proxy.size, target: localTarget, targetIsHigh: targetIsHigh)
-                    )
+                SpotlightCardLayout(
+                    target: localTarget,
+                    placement: cardPlacement,
+                    safeAreaInsets: proxy.safeAreaInsets
+                ) {
+                    tutorialCard
+                }
             }
         }
-        .ignoresSafeArea()
         .transition(.opacity)
         .zIndex(100)
+    }
+
+    private func safeBounds(in proxy: GeometryProxy) -> CGRect {
+        CGRect(
+            x: proxy.safeAreaInsets.leading,
+            y: proxy.safeAreaInsets.top,
+            width: proxy.size.width - proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing,
+            height: proxy.size.height - proxy.safeAreaInsets.top - proxy.safeAreaInsets.bottom
+        )
     }
 
     private var tutorialCard: some View {
@@ -217,7 +360,7 @@ struct SpotlightOverlay: View {
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 4))
         .shadow(color: BombTheme.ink, radius: 0, x: 6, y: 6)
-        .padding(.horizontal, 16)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func spotlightMask(size: CGSize, target: CGRect?) -> Path {
@@ -229,11 +372,87 @@ struct SpotlightOverlay: View {
         return path
     }
 
-    private func cardCenterY(in size: CGSize, target: CGRect?, targetIsHigh: Bool) -> CGFloat {
-        guard let target else { return size.height / 2 }
-        if targetIsHigh {
-            return min(size.height - 145, target.maxY + 155)
+}
+
+private enum SpotlightCardSide {
+    case above
+    case below
+}
+
+private extension SpotlightCardPlacement {
+    func side(for target: CGRect, in safeBounds: CGRect) -> SpotlightCardSide {
+        switch self {
+        case .aboveTarget:
+            return .above
+        case .belowTarget:
+            return .below
+        case .automatic:
+            let spaceAbove = target.minY - safeBounds.minY
+            let spaceBelow = safeBounds.maxY - target.maxY
+            return spaceBelow >= spaceAbove ? .below : .above
         }
-        return max(145, target.minY - 155)
+    }
+}
+
+private struct SpotlightCardLayout: Layout {
+    let target: CGRect?
+    let placement: SpotlightCardPlacement
+    let safeAreaInsets: EdgeInsets
+
+    private let margin: CGFloat = 16
+    private let arrowClearance: CGFloat = 58
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard let card = subviews.first else { return }
+
+        let safeBounds = CGRect(
+            x: bounds.minX + safeAreaInsets.leading + margin,
+            y: bounds.minY + safeAreaInsets.top + margin,
+            width: max(0, bounds.width - safeAreaInsets.leading - safeAreaInsets.trailing - margin * 2),
+            height: max(0, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - margin * 2)
+        )
+        let cardProposal = ProposedViewSize(width: min(350, safeBounds.width), height: nil)
+        let measuredSize = card.sizeThatFits(cardProposal)
+        let cardSize = CGSize(
+            width: min(measuredSize.width, safeBounds.width),
+            height: min(measuredSize.height, safeBounds.height)
+        )
+
+        let desiredOrigin: CGPoint
+        if let target {
+            let side = placement.side(for: target, in: safeBounds)
+            let y = side == .below
+                ? target.maxY + arrowClearance
+                : target.minY - arrowClearance - cardSize.height
+            desiredOrigin = CGPoint(x: target.midX - cardSize.width / 2, y: y)
+        } else {
+            desiredOrigin = CGPoint(
+                x: safeBounds.midX - cardSize.width / 2,
+                y: safeBounds.midY - cardSize.height / 2
+            )
+        }
+
+        let origin = CGPoint(
+            x: min(max(desiredOrigin.x, safeBounds.minX), safeBounds.maxX - cardSize.width),
+            y: min(max(desiredOrigin.y, safeBounds.minY), safeBounds.maxY - cardSize.height)
+        )
+        card.place(
+            at: origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: cardSize.width, height: cardSize.height)
+        )
     }
 }

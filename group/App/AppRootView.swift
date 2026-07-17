@@ -5,7 +5,7 @@ struct AppRootView: View {
     @State private var store = GroupBombModel()
     @State private var tab = AppTab.groups
     @State private var tutorialStep: TutorialStep?
-    @State private var tutorialTargets: [TutorialTarget: CGRect] = [:]
+    @State private var createGroupTutorialWindowFrame: CGRect?
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
@@ -16,7 +16,10 @@ struct AppRootView: View {
                         model: store,
                         isSelected: tab == .groups,
                         tutorialStep: $tutorialStep,
-                        onReplayTutorial: replayTutorial
+                        onReplayTutorial: replayTutorial,
+                        onCreateGroupTutorialFrameChange: {
+                            createGroupTutorialWindowFrame = $0
+                        }
                     )
                 }
                 .tabItem { Label(AppTab.groups.title, systemImage: AppTab.groups.symbol) }
@@ -30,21 +33,42 @@ struct AppRootView: View {
             }
             .tint(BombTheme.ink)
 
-            if tutorialStep != nil {
-                OnboardingTutorialView(
-                    step: $tutorialStep,
-                    targets: tutorialTargets,
-                    onFinish: finishTutorial
-                )
-            }
         }
-        .onPreferenceChange(TutorialTargetPreferenceKey.self) { tutorialTargets = $0 }
+        .overlayPreferenceValue(TutorialTargetPreferenceKey.self) { targetAnchors in
+            GeometryReader { proxy in
+                if tutorialStep != nil {
+                    OnboardingTutorialView(
+                        step: $tutorialStep,
+                        targets: tutorialFrames(from: targetAnchors, in: proxy),
+                        onFinish: finishTutorial
+                    )
+                }
+            }
+            .ignoresSafeArea()
+        }
         .onAppear {
             if !hasCompletedOnboarding, tutorialStep == nil {
                 tab = .groups
                 tutorialStep = .welcome
             }
         }
+    }
+
+    private func tutorialFrames(
+        from targets: [TutorialTarget: Anchor<CGRect>],
+        in proxy: GeometryProxy
+    ) -> [TutorialTarget: CGRect] {
+        let overlayFrame = proxy.frame(in: .global)
+        var frames = targets.mapValues { proxy[$0] }
+
+        if let createGroupTutorialWindowFrame {
+            frames[.createGroupButton] = createGroupTutorialWindowFrame.offsetBy(
+                dx: -overlayFrame.minX,
+                dy: -overlayFrame.minY
+            )
+        }
+
+        return frames
     }
 
     private func finishTutorial() {
