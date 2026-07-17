@@ -108,7 +108,7 @@ struct GroupDetailView: View {
                 }
                 .animation(.snappy, value: shouldShowPeerReview(now: context.date))
             }
-            .toolbar(shouldShowPeerReview(now: context.date) ? .hidden : .visible, for: .tabBar)
+            .toolbar(shouldShowPeerReview(now: context.date) ? .hidden : .automatic, for: .tabBar)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
