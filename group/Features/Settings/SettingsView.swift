@@ -26,25 +26,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: "一般設定") {
-                        SettingsRow(icon: "person.crop.circle.fill", title: "個人資料", subtitle: model.profileName)
-                        Divider()
-                        Toggle(isOn: Binding(
-                            get: { model.notificationsEnabled },
-                            set: { model.notificationsEnabled = $0 }
-                        )) {
-                            Label("通知設定", systemImage: "bell.fill")
-                                .font(.body.weight(.bold))
-                        }
-                        .tint(BombTheme.green)
-                        .padding(.vertical, 8)
-                        Divider()
-                        NavigationLink { GroupManagementView(model: model) } label: {
-                            SettingsRow(
-                                icon: "person.2.badge.gearshape.fill",
-                                title: "群組管理",
-                                subtitle: "邀請組員或離開群組"
-                            )
-                        }
+                        NotificationSettingsRow(model: model)
                     }
                 }
                 .padding(16)
@@ -113,6 +95,30 @@ private struct SettingsRow: View {
             }
             Spacer()
             Image(systemName: "chevron.right").font(.caption.bold())
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct NotificationSettingsRow: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "bell.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .background(BombTheme.yellow)
+                .clipShape(.circle)
+            Text("通知設定").font(.body.weight(.bold))
+            Spacer()
+            Toggle("通知設定", isOn: Binding(
+                get: { model.notificationsEnabled },
+                set: { model.notificationsEnabled = $0 }
+            ))
+            .labelsHidden()
+            .tint(BombTheme.green)
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 8)

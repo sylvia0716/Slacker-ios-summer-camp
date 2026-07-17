@@ -154,6 +154,9 @@ final class AppStore {
     /// 互評雷達圖的 mock 資料。
     let radar: [RadarMetric]
 
+    /// 聊天室 AI 機器人的溝通評分；key 是群組 ID，設定頁與聊天室共用同一份結果。
+    var communicationAnalyses: [UUID: CommunicationAnalysis]
+
     /// 顯示在舊版畫面上的最新系統事件文字。
     var lastEvent: String
 
@@ -252,6 +255,7 @@ final class AppStore {
             RadarMetric(title: "溝通", score: 0.92), RadarMetric(title: "救火", score: 0.68),
             RadarMetric(title: "合作", score: 0.88)
         ]
+        communicationAnalyses = [:]
         lastEvent = "拆彈小隊已上線"
     }
 
@@ -260,6 +264,34 @@ final class AppStore {
 
     /// 舊特工頁的平均進度；新版畫面請使用 projectProgress(for:)。
     var teamProgress: Int { agents.map(\.progress).reduce(0, +) / max(agents.count, 1) }
+
+    /// 取得最近更新的一份溝通分析，供設定頁的 AI 報告顯示。
+    var latestCommunicationAnalysis: CommunicationAnalysis? {
+        communicationAnalyses.values.max(by: { $0.updatedAt < $1.updatedAt })
+    }
+
+    /// 依聊天室訊息產生 MVP 用的溝通評分；之後可在這裡改接真正的 AI 分析 service。
+    @discardableResult
+    func analyzeCommunication(groupID: UUID, messages: [String], now: Date = .now) -> CommunicationAnalysis {
+        let joinedMessages = messages.joined(separator: " ")
+        let coordinationWords = ["收到", "完成", "確認", "連結", "幫", "截止", "今天", "明天"]
+        let matchedCount = coordinationWords.reduce(into: 0) { count, word in
+            if joinedMessages.contains(word) { count += 1 }
+        }
+        let score = min(96, max(62, 68 + messages.count * 3 + matchedCount * 4))
+        let analysis = CommunicationAnalysis(
+            id: UUID(),
+            groupID: groupID,
+            score: score,
+            summary: score >= 80 ? "溝通節奏清楚，成員有回覆、確認與交付共識。" : "已有討論，但待辦與交付時間還可以說得更明確。",
+            strength: matchedCount >= 2 ? "對話中有具體回覆與下一步安排，減少重工風險。" : "成員願意主動同步目前狀況。",
+            suggestion: "每次更新請補上負責人、完成時間與成果連結，讓全組更容易追蹤。",
+            updatedAt: now
+        )
+        communicationAnalyses[groupID] = analysis
+        lastEvent = "AI 已完成團隊溝通分析：\(score) 分"
+        return analysis
+    }
 
     /// 取得指定群組內某位成員負責的正式任務。
     func tasks(for memberID: UUID, in groupID: UUID) -> [ProjectTask] {
