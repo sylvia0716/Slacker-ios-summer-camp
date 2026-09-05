@@ -124,6 +124,14 @@ enum GroupNameError: LocalizedError {
 /// B、C、D 請只透過這個 Store 讀取與修改 mock 資料，不要在 View 內建立第二份任務或成員資料。
 @MainActor @Observable
 final class AppStore {
+    /// 聊天記錄在本機 UserDefaults 中使用的儲存鍵。
+    private static let savedChatItemsKey = "savedChatItemsByInviteCode"
+
+    /// 舊版聊天室啟動時自動建立的示範訊息 ID；載入時只移除這些內容。
+    private static let legacyMockChatItemIDs: Set<String> = [
+        "joined", "xiaoyu-update", "me-reply", "progress", "mimi-help"
+    ]
+
     /// 目前登入使用者的成員 ID；「我的任務」用它篩選任務。
     let currentUserID: UUID
 
@@ -173,6 +181,9 @@ final class AppStore {
 
     /// 聊天室 AI 機器人的溝通評分；key 是群組 ID，設定頁與聊天室共用同一份結果。
     var communicationAnalyses: [UUID: CommunicationAnalysis]
+
+    /// 每個群組的完整聊天時間軸；離開聊天室再進入時仍會讀取同一份記錄。
+    var chatItemsByGroupID: [UUID: [ChatRoomItem]] = [:]
 
     /// 顯示在舊版畫面上的最新系統事件文字。
     var lastEvent: String
@@ -289,7 +300,7 @@ final class AppStore {
             deadline: maicDeadline,
             reviewers: allMembers
         )
-        groups = [
+        let initialGroups = [
             Group(
                 id: activeGroupID,
                 name: "期末報告拆彈小隊",
@@ -323,7 +334,6 @@ final class AppStore {
                 inviteCode: "MAIC24"
             )
         ]
-
         tasks = [
             MissionTask(title: "蒐集市場數據", detail: "找到 3 個可信來源", points: 120, owner: nil),
             MissionTask(title: "製作競品分析", detail: "完成比較矩陣", points: 180, owner: "小宇"),
@@ -343,6 +353,19 @@ final class AppStore {
         ]
         communicationAnalyses = [:]
         lastEvent = "拆彈小隊已上線"
+        groups = initialGroups
+        let savedChatItems = Self.loadSavedChatItems()
+        chatItemsByGroupID = Dictionary(
+            uniqueKeysWithValues: initialGroups.map { group in
+                (group.id, savedChatItems[group.inviteCode] ?? [])
+            }
+        )
+        for (groupID, items) in chatItemsByGroupID {
+            if let analysis = items.compactMap(\.communicationAnalysis).last {
+                communicationAnalyses[groupID] = analysis
+            }
+        }
+        saveChatItems()
         publishWidgetSnapshot()
     }
 
@@ -357,26 +380,35 @@ final class AppStore {
         communicationAnalyses.values.max(by: { $0.updatedAt < $1.updatedAt })
     }
 
-    /// 依聊天室訊息產生 MVP 用的溝通評分；之後可在這裡改接真正的 AI 分析 service。
+    /// 取得指定群組目前保存的完整聊天內容。
+    func chatItems(for groupID: UUID) -> [ChatRoomItem] {
+        chatItemsByGroupID[groupID] ?? []
+    }
+
+    /// 將新訊息、系統事件或機器人回覆加入指定群組的聊天記錄。
+    func appendChatItem(_ item: ChatRoomItem, to groupID: UUID) {
+        chatItemsByGroupID[groupID, default: []].append(item)
+        saveChatItems()
+    }
+
+    /// 保存 Apple Intelligence 產生的溝通分析，供聊天室與設定頁共用。
     @discardableResult
-    func analyzeCommunication(groupID: UUID, messages: [String], now: Date = .now) -> CommunicationAnalysis {
-        let joinedMessages = messages.joined(separator: " ")
-        let coordinationWords = ["收到", "完成", "確認", "連結", "幫", "截止", "今天", "明天"]
-        let matchedCount = coordinationWords.reduce(into: 0) { count, word in
-            if joinedMessages.contains(word) { count += 1 }
-        }
-        let score = min(96, max(62, 68 + messages.count * 3 + matchedCount * 4))
+    func saveCommunicationAnalysis(
+        groupID: UUID,
+        generated: GeneratedCommunicationAnalysis,
+        now: Date = .now
+    ) -> CommunicationAnalysis {
         let analysis = CommunicationAnalysis(
             id: UUID(),
             groupID: groupID,
-            score: score,
-            summary: score >= 80 ? "溝通節奏清楚，成員有回覆、確認與交付共識。" : "已有討論，但待辦與交付時間還可以說得更明確。",
-            strength: matchedCount >= 2 ? "對話中有具體回覆與下一步安排，減少重工風險。" : "成員願意主動同步目前狀況。",
-            suggestion: "每次更新請補上負責人、完成時間與成果連結，讓全組更容易追蹤。",
+            score: generated.score,
+            summary: generated.summary,
+            strength: generated.strength,
+            suggestion: generated.suggestion,
             updatedAt: now
         )
         communicationAnalyses[groupID] = analysis
-        lastEvent = "AI 已完成團隊溝通分析：\(score) 分"
+        lastEvent = "AI 已完成團隊溝通分析：\(generated.score) 分"
         return analysis
     }
 
@@ -562,6 +594,10 @@ final class AppStore {
     func createGroup(name: String, deadline: Date) {
         let group = Group(id: UUID(), name: name, deadline: deadline, memberIDs: [currentUserID], taskIDs: [], inviteCode: String(UUID().uuidString.prefix(6)).uppercased())
         groups.append(group)
+        chatItemsByGroupID[group.id] = [
+            .systemEvent(id: UUID().uuidString, icon: "person.2.fill", text: "群組聊天室已建立")
+        ]
+        saveChatItems()
         lastEvent = "已建立「\(name)」"
     }
 
@@ -619,8 +655,34 @@ final class AppStore {
 
         let groupName = groups[index].name
         groups.remove(at: index)
+        chatItemsByGroupID[groupID] = nil
+        saveChatItems()
         lastEvent = "已離開「\(groupName)」"
         return true
+    }
+
+    /// 從本機載入各邀請碼所屬的聊天記錄；資料損毀時安全地回到預設內容。
+    private static func loadSavedChatItems() -> [String: [ChatRoomItem]] {
+        guard let data = UserDefaults.standard.data(forKey: savedChatItemsKey),
+              let items = try? JSONDecoder().decode([String: [ChatRoomItem]].self, from: data) else {
+            return [:]
+        }
+        return items.mapValues { chatItems in
+            chatItems.filter { !legacyMockChatItemIDs.contains($0.id) }
+        }
+    }
+
+    /// 以不會隨 App 重啟改變的群組邀請碼作為索引，保存完整聊天室時間軸。
+    private func saveChatItems() {
+        let itemsByInviteCode = Dictionary(
+            uniqueKeysWithValues: groups.compactMap { group -> (String, [ChatRoomItem])? in
+                guard let items = chatItemsByGroupID[group.id] else { return nil }
+                return (group.inviteCode, items)
+            }
+        )
+
+        guard let data = try? JSONEncoder().encode(itemsByInviteCode) else { return }
+        UserDefaults.standard.set(data, forKey: Self.savedChatItemsKey)
     }
 
     /// 切換子任務完成狀態；完成後所有依 progress 計算的畫面會自動更新。

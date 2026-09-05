@@ -1,7 +1,7 @@
 import Foundation
 
 /// 聊天室機器人產生的溝通分析結果；設定頁直接讀取這份資料，不在畫面內另外計分。
-struct CommunicationAnalysis: Identifiable {
+struct CommunicationAnalysis: Identifiable, Codable {
     /// 分析結果的唯一識別碼，供聊天訊息與報告列表使用。
     let id: UUID
     /// 此份分析屬於哪個群組。

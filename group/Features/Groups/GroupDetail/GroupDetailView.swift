@@ -158,7 +158,7 @@ struct GroupDetailView: View {
                 .animation(.snappy, value: shouldShowPeerReview(now: context.date))
                 .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
             }
-            .toolbar(isBlockingOverlayVisible(now: context.date) ? .hidden : .visible, for: .tabBar)
+            .toolbar(isBlockingOverlayVisible(now: context.date) ? .hidden : .automatic, for: .tabBar)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
