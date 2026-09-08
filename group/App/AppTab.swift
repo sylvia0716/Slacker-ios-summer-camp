@@ -64,7 +64,7 @@ struct BombTabBar: View {
             } action: { height in
                 barHeight = height
             }
-            .padding(.bottom, barHeight * 0.12)
+            .offset(y: safeAreaInsets.bottom * 0.6)
         }
         .frame(maxWidth: .infinity)
         .background {
