@@ -6,7 +6,8 @@ struct AppRootView: View {
     @State private var authSession = AuthSessionStore()
     @State private var tab = AppTab.groups
     @State private var tutorialStep: TutorialStep?
-    @State private var createGroupTutorialWindowFrame: CGRect?
+    @State private var isBombTabBarHidden = false
+    @State private var safeAreaInsets = EdgeInsets()
 
     var body: some View {
         SwiftUI.Group {
@@ -18,40 +19,62 @@ struct AppRootView: View {
                 AuthenticationView(session: authSession)
             }
         }
+        .environment(\.bombSafeAreaInsets, safeAreaInsets)
+        .onGeometryChange(for: EdgeInsets.self) { proxy in
+            proxy.safeAreaInsets
+        } action: { insets in
+            safeAreaInsets = insets
+        }
         .task { authSession.start() }
     }
 
     private var authenticatedContent: some View {
         ZStack {
-            TabView(selection: $tab) {
-                NavigationStack {
-                    GroupListView(
-                        model: store,
-                        isSelected: tab == .groups,
-                        tutorialStep: $tutorialStep,
-                        onReplayTutorial: replayTutorial,
-                        onCreateGroupTutorialFrameChange: {
-                            createGroupTutorialWindowFrame = $0
-                        }
-                    )
-                }
-                .tabItem { Label(AppTab.groups.title, systemImage: AppTab.groups.symbol) }
-                .tag(AppTab.groups)
-                NavigationStack { MyTasksView(model: store) }
-                    .tabItem { Label(AppTab.myTasks.title, systemImage: AppTab.myTasks.symbol) }
-                    .tag(AppTab.myTasks)
-                NavigationStack {
-                    SettingsView(
-                        model: store,
-                        authSession: authSession,
-                        onReplayTutorial: replayTutorial
-                    )
-                }
-                    .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
-                    .tag(AppTab.settings)
+            NavigationStack {
+                GroupListView(
+                    model: store,
+                    isSelected: tab == .groups,
+                    tutorialStep: $tutorialStep,
+                    onReplayTutorial: replayTutorial
+                )
             }
-            .tint(BombTheme.ink)
+            .opacity(tab == .groups ? 1 : 0)
+            .allowsHitTesting(tab == .groups)
+            .accessibilityHidden(tab != .groups)
+            .transformPreference(BombTabBarHiddenPreferenceKey.self) { hidden in
+                if tab != .groups { hidden = false }
+            }
 
+            NavigationStack { MyTasksView(model: store) }
+                .opacity(tab == .myTasks ? 1 : 0)
+                .allowsHitTesting(tab == .myTasks)
+                .accessibilityHidden(tab != .myTasks)
+                .transformPreference(BombTabBarHiddenPreferenceKey.self) { hidden in
+                    if tab != .myTasks { hidden = false }
+                }
+
+            NavigationStack {
+                SettingsView(
+                    model: store,
+                    authSession: authSession,
+                    onReplayTutorial: replayTutorial
+                )
+            }
+            .opacity(tab == .settings ? 1 : 0)
+            .allowsHitTesting(tab == .settings)
+            .accessibilityHidden(tab != .settings)
+            .transformPreference(BombTabBarHiddenPreferenceKey.self) { hidden in
+                if tab != .settings { hidden = false }
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !isBombTabBarHidden {
+                BombTabBar(selection: $tab)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onPreferenceChange(BombTabBarHiddenPreferenceKey.self) { hidden in
+            withAnimation(.snappy) { isBombTabBarHidden = hidden }
         }
         .overlayPreferenceValue(TutorialTargetPreferenceKey.self) { targetAnchors in
             GeometryReader { proxy in
@@ -84,17 +107,7 @@ struct AppRootView: View {
         from targets: [TutorialTarget: Anchor<CGRect>],
         in proxy: GeometryProxy
     ) -> [TutorialTarget: CGRect] {
-        let overlayFrame = proxy.frame(in: .global)
-        var frames = targets.mapValues { proxy[$0] }
-
-        if let createGroupTutorialWindowFrame {
-            frames[.createGroupButton] = createGroupTutorialWindowFrame.offsetBy(
-                dx: -overlayFrame.minX,
-                dy: -overlayFrame.minY
-            )
-        }
-
-        return frames
+        targets.mapValues { proxy[$0] }
     }
 
     private func finishTutorial() {

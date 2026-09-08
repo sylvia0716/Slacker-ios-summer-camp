@@ -46,7 +46,6 @@ struct GroupDetailView: View {
 
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 18) {
-                                topBar
                                 if shouldShowContinueReviewBanner(now: context.date) {
                                     continueReviewBanner(now: context.date)
                                 }
@@ -158,10 +157,12 @@ struct GroupDetailView: View {
                 .animation(.snappy, value: shouldShowPeerReview(now: context.date))
                 .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
             }
-            .toolbar(isBlockingOverlayVisible(now: context.date) ? .hidden : .automatic, for: .tabBar)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            topBar
+        }
         .onAppear { deadlineDraft = currentGroup.deadline }
         .task {
             model.startAttachmentSync(
@@ -193,44 +194,36 @@ struct GroupDetailView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Label("返回", systemImage: "chevron.left")
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .padding(.vertical, 8)
+        BombHeader(title: "專案任務", subtitle: currentGroup.name) {
+            Button(action: dismiss.callAsFunction) {
+                Image(systemName: "chevron.left")
             }
-            .buttonStyle(.plain)
-
-            Spacer()
-
+            .buttonStyle(BombHeaderButtonStyle())
+            .accessibilityLabel("返回群組")
+        } trailing: {
+            HStack(spacing: 8) {
 #if DEBUG
-            debugMenu
+                debugMenu
 #endif
-
-            NavigationLink {
-                ChatRoomView(model: model, group: currentGroup, tutorialStep: tutorialStep)
-            } label: {
-                Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .tutorialTarget(
-                .chatButton,
-                enabled: tutorialStep?.wrappedValue == .chatEntry
-            )
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    if tutorialStep?.wrappedValue == .chatEntry {
-                        tutorialStep?.wrappedValue = .aiChat
-                    }
+                NavigationLink {
+                    ChatRoomView(model: model, group: currentGroup, tutorialStep: tutorialStep)
+                } label: {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
                 }
-            )
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("聊天室")
+                .tutorialTarget(
+                    .chatButton,
+                    enabled: tutorialStep?.wrappedValue == .chatEntry
+                )
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        if tutorialStep?.wrappedValue == .chatEntry {
+                            tutorialStep?.wrappedValue = .aiChat
+                        }
+                    }
+                )
+            }
         }
     }
 

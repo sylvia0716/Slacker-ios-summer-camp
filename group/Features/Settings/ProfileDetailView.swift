@@ -43,9 +43,19 @@ struct ProfileDetailView: View {
                 .padding(.bottom, 28)
             }
         }
-        .navigationTitle("編輯個人資料")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "編輯個人資料") {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回設定")
+            } trailing: {
+                EmptyView()
+            }
+        }
         .onChange(of: selectedAvatarItem) { _, newItem in
             guard let newItem else { return }
             isLoadingAvatar = true

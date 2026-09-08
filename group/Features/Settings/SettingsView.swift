@@ -14,9 +14,6 @@ struct SettingsView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("設定")
-                        .font(.system(.largeTitle, design: .rounded, weight: .black))
-
                     NavigationLink {
                         ProfileDetailView(model: model)
                     } label: {
@@ -82,8 +79,14 @@ struct SettingsView: View {
                 .padding(.bottom, 24)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "設定") {
+                EmptyView()
+            } trailing: {
+                EmptyView()
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showsNotificationTest) {
             NotificationTestView(model: model)
         }
@@ -224,6 +227,7 @@ private struct NotificationSettingsRow: View {
 }
 
 private struct NotificationTestView: View {
+    @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     @State private var selectedGroupID: UUID?
     @State private var pokeCount = 0
@@ -267,9 +271,19 @@ private struct NotificationTestView: View {
             }
             .padding(24)
         }
-        .navigationTitle("通知測試")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "通知測試") {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回設定")
+            } trailing: {
+                EmptyView()
+            }
+        }
         .onAppear {
             selectedGroupID = selectedGroupID ?? model.groups.first?.id
         }

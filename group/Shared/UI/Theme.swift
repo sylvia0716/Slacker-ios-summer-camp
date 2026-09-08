@@ -9,6 +9,17 @@ enum BombTheme {
     static let green = Color(red: 0.16, green: 0.55, blue: 0.32)
 }
 
+private struct BombSafeAreaInsetsKey: EnvironmentKey {
+    static let defaultValue = EdgeInsets()
+}
+
+extension EnvironmentValues {
+    var bombSafeAreaInsets: EdgeInsets {
+        get { self[BombSafeAreaInsetsKey.self] }
+        set { self[BombSafeAreaInsetsKey.self] = newValue }
+    }
+}
+
 /// Shared comic-style card treatment. Keep feature-specific layout out of this file.
 struct ComicCard: ViewModifier {
     func body(content: Content) -> some View {
@@ -31,5 +42,89 @@ struct HazardStripe: View {
                 Rectangle().fill(index.isMultiple(of: 2) ? BombTheme.yellow : BombTheme.ink)
             }
         }.frame(height: 10)
+    }
+}
+
+/// 固定在畫面頂端的主題標題列；漸層會覆蓋內容頂端，避免硬切出長方形邊界。
+struct BombHeader<Leading: View, Trailing: View>: View {
+    @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
+    @State private var headerHeight: CGFloat = 0
+
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            leading
+                .frame(minWidth: 44, alignment: .leading)
+
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.65))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            trailing
+                .frame(minWidth: 44, alignment: .trailing)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            headerHeight = height
+        }
+        .background {
+            BombTheme.yellow
+                .padding(.top, -safeAreaInsets.top)
+                .padding(.leading, -safeAreaInsets.leading)
+                .padding(.trailing, -safeAreaInsets.trailing)
+        }
+        .overlay(alignment: .bottom) {
+            LinearGradient(
+                colors: [BombTheme.yellow, BombTheme.yellow.opacity(0.82), BombTheme.yellow.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: max(headerHeight, safeAreaInsets.top) * 0.55)
+            .offset(y: max(headerHeight, safeAreaInsets.top) * 0.55)
+            .allowsHitTesting(false)
+        }
+        .zIndex(50)
+    }
+}
+
+struct BombHeaderButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline.weight(.black))
+            .foregroundStyle(BombTheme.yellow)
+            .frame(width: 42, height: 42)
+            .background(BombTheme.ink)
+            .clipShape(.circle)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
     }
 }

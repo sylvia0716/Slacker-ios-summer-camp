@@ -6,7 +6,6 @@ struct GroupListView: View {
     let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
     private let onReplayTutorial: (() -> Void)?
-    private let onCreateGroupTutorialFrameChange: ((CGRect?) -> Void)?
 
     @State private var isAddGroupPresented = false
     @State private var enteredGroup: Group?
@@ -16,14 +15,12 @@ struct GroupListView: View {
         model: GroupBombModel,
         isSelected: Bool = true,
         tutorialStep: Binding<TutorialStep?>? = nil,
-        onReplayTutorial: (() -> Void)? = nil,
-        onCreateGroupTutorialFrameChange: ((CGRect?) -> Void)? = nil
+        onReplayTutorial: (() -> Void)? = nil
     ) {
         self.model = model
         self.isSelected = isSelected
         self.tutorialStep = tutorialStep
         self.onReplayTutorial = onReplayTutorial
-        self.onCreateGroupTutorialFrameChange = onCreateGroupTutorialFrameChange
     }
 
     var body: some View {
@@ -55,34 +52,31 @@ struct GroupListView: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .navigationTitle("我的群組")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "我的群組") {
+#if DEBUG
+                debugMenu
+                    .buttonStyle(BombHeaderButtonStyle())
+#else
+                EmptyView()
+#endif
+            } trailing: {
                 Button("新增", systemImage: "plus") {
                     if tutorialStep?.wrappedValue == .createGroup {
                         tutorialStep?.wrappedValue = .createGroupForm
                     }
                     isAddGroupPresented = true
                 }
+                .labelStyle(.iconOnly)
+                .buttonStyle(BombHeaderButtonStyle())
                 .accessibilityIdentifier("tutorial.createGroupButton")
-            }
-
-#if DEBUG
-            ToolbarItem(placement: .topBarLeading) {
-                debugMenu
-            }
-#endif
-        }
-        .background {
-            if tutorialStep?.wrappedValue == .createGroup {
-                ToolbarTargetFrameReader(
-                    identifier: "tutorial.createGroupButton",
-                    accessibilityLabel: "新增"
-                ) {
-                    onCreateGroupTutorialFrameChange?($0)
-                }
+                .tutorialTarget(
+                    .createGroupButton,
+                    enabled: tutorialStep?.wrappedValue == .createGroup
+                )
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
             AddGroupSheet(model: model) { group in
                 enteredGroup = group
@@ -203,10 +197,9 @@ struct GroupListView: View {
                 }
             }
         } label: {
-            Text("測試")
-                .font(.caption.weight(.black))
-                .foregroundStyle(BombTheme.ink)
+            Image(systemName: "wrench.and.screwdriver.fill")
         }
+        .accessibilityLabel("測試工具")
     }
 
     private func resetReviews(inviteCode: String) {

@@ -98,6 +98,7 @@ struct ChatRoomView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .bombTabBarHidden()
         .onAppear {
             if tutorialStep?.wrappedValue == .chatEntry {
                 tutorialStep?.wrappedValue = .aiChat
@@ -107,34 +108,20 @@ struct ChatRoomView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 12) {
+        BombHeader(title: "小隊聊天室", subtitle: group.name) {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .frame(width: 38, height: 38)
-                    .background(BombTheme.paper)
-                    .clipShape(.circle)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BombHeaderButtonStyle())
             .accessibilityLabel("返回群組")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("小隊聊天室")
-                    .font(.system(.title3, design: .rounded, weight: .black))
-                Text(group.name)
-                    .font(.caption.weight(.bold))
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
+        } trailing: {
             Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.title3.weight(.black))
+                .font(.headline.weight(.black))
+                .foregroundStyle(BombTheme.yellow)
+                .frame(width: 42, height: 42)
+                .background(BombTheme.ink)
+                .clipShape(.circle)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
     }
 
     private var memberStatus: some View {
