@@ -5,6 +5,7 @@ struct ChatRoomView: View {
     private static let bottomAnchorID = "chat-room-bottom"
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let model: GroupBombModel
     let group: Group
     private let tutorialStep: Binding<TutorialStep?>?
@@ -56,6 +57,9 @@ struct ChatRoomView: View {
                         .onTapGesture {
                             isComposerFocused = false
                         }
+                        .onAppear {
+                            scrollToBottom(using: proxy, animated: false)
+                        }
                         .onScrollGeometryChange(for: Bool.self, of: { geometry in
                             geometry.contentSize.height - geometry.visibleRect.maxY > 80
                         }) { _, isAway in
@@ -66,6 +70,10 @@ struct ChatRoomView: View {
                         .onChange(of: model.chatItems(for: group.id).count) {
                             guard !isAwayFromLatest else { return }
                             scrollToBottom(using: proxy)
+                        }
+                        .onChange(of: model.isChatMessageSyncReady(for: group.id)) { _, isReady in
+                            guard isReady else { return }
+                            scrollToBottom(using: proxy, animated: false)
                         }
                         .onChange(of: isComposerFocused) { _, isFocused in
                             guard isFocused else { return }
@@ -103,6 +111,19 @@ struct ChatRoomView: View {
                 tutorialStep?.wrappedValue = .aiChat
             }
         }
+        .task(id: group.id) {
+            await model.startChatSync(groupID: group.id, displayName: model.profileName)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            model.updateChatPresence(
+                groupID: group.id,
+                displayName: model.profileName,
+                isOnline: phase == .active
+            )
+        }
+        .onDisappear {
+            model.stopChatSync(groupID: group.id, displayName: model.profileName)
+        }
         .toolbar(.hidden, for: .tabBar)
     }
 
@@ -119,18 +140,11 @@ struct ChatRoomView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("返回群組")
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("小隊聊天室")
-                    .font(.system(.title3, design: .rounded, weight: .black))
-                Text(group.name)
-                    .font(.caption.weight(.bold))
-                    .lineLimit(1)
-            }
+            Text(group.name)
+                .font(.system(.title3, design: .rounded, weight: .black))
+                .lineLimit(1)
 
             Spacer()
-
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.title3.weight(.black))
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -138,28 +152,69 @@ struct ChatRoomView: View {
     }
 
     private var memberStatus: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(BombTheme.green)
-                .frame(width: 9, height: 9)
-            Text("\(group.memberIDs.count) 位群組成員")
-                .font(.caption.weight(.black))
-            Spacer()
-            Text("今天")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(BombTheme.ink.opacity(0.6))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(onlineMembers.isEmpty ? BombTheme.ink.opacity(0.3) : BombTheme.green)
+                    .frame(width: 9, height: 9)
+                Text("\(onlineMembers.count) 人在線")
+                    .font(.caption.weight(.black))
+
+                if !onlineMembers.isEmpty {
+                    ScrollView(.horizontal) {
+                        Text(onlineMembers.map(\.displayName).joined(separator: "、"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(BombTheme.ink.opacity(0.65))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .scrollIndicators(.hidden)
+                } else {
+                    Spacer()
+                }
+
+                Text("今天")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.6))
+            }
+
+            if let syncError = model.chatMessageSyncError(for: group.id) {
+                Label("訊息同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+                    .lineLimit(2)
+            }
+
+            if let syncError = model.chatPresenceSyncError(for: group.id) {
+                Label("在線狀態：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+                    .lineLimit(2)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(BombTheme.paper.opacity(0.75))
     }
 
+    private var onlineMembers: [ChatPresence] {
+        model.onlineMembers(for: group.id)
+    }
+
     @ViewBuilder
     private func chatItem(_ item: ChatRoomItem) -> some View {
         switch item {
-        case let .message(_, sender, text, time, isCurrentUser):
-            messageBubble(sender: sender, text: text, time: time, isCurrentUser: isCurrentUser)
-        case let .systemEvent(_, icon, text):
+        case let .message(id, sender, text, time, isCurrentUser, _, deliveryState):
+            messageBubble(
+                id: id,
+                sender: sender,
+                text: text,
+                time: time,
+                isCurrentUser: isCurrentUser,
+                deliveryState: deliveryState
+            )
+        case let .systemEvent(_, icon, text, _):
             Label(text, systemImage: icon)
                 .font(.caption.weight(.black))
                 .foregroundStyle(BombTheme.ink.opacity(0.72))
@@ -171,12 +226,19 @@ struct ChatRoomView: View {
                 .frame(maxWidth: .infinity)
         case let .botAnalysis(_, analysis):
             ChatBotAnalysisCard(analysis: analysis)
-        case let .botReply(_, text):
-            ChatBotReplyBubble(text: text)
+        case let .botReply(_, text, createdAt):
+            ChatBotReplyBubble(text: text, createdAt: createdAt)
         }
     }
 
-    private func messageBubble(sender: String, text: String, time: String, isCurrentUser: Bool) -> some View {
+    private func messageBubble(
+        id: String,
+        sender: String,
+        text: String,
+        time: String,
+        isCurrentUser: Bool,
+        deliveryState: ChatMessageDeliveryState
+    ) -> some View {
         HStack(alignment: .bottom, spacing: 8) {
             if isCurrentUser { Spacer(minLength: 42) }
 
@@ -201,12 +263,46 @@ struct ChatRoomView: View {
                         }
                     }
 
-                Text(time)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+                if isCurrentUser, deliveryState != .sent {
+                    messageDeliveryStatus(id: id, text: text, deliveryState: deliveryState)
+                } else {
+                    Text(time)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.5))
+                }
             }
 
             if !isCurrentUser { Spacer(minLength: 42) }
+        }
+    }
+
+    @ViewBuilder
+    private func messageDeliveryStatus(
+        id: String,
+        text: String,
+        deliveryState: ChatMessageDeliveryState
+    ) -> some View {
+        switch deliveryState {
+        case .sending:
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("傳送中")
+            }
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(BombTheme.ink.opacity(0.55))
+        case .failed:
+            Button {
+                retryMessage(id: id, text: text)
+            } label: {
+                Label("傳送失敗・重試", systemImage: "arrow.clockwise")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("訊息傳送失敗，點兩下重試")
+        case .sent:
+            EmptyView()
         }
     }
 
@@ -295,21 +391,13 @@ struct ChatRoomView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let conversation = model.chatItems(for: group.id).compactMap(\.humanConversationLine)
-
-        model.appendChatItem(
-            .message(
-                id: UUID().uuidString,
-                sender: "我",
-                text: text,
-                time: Date.now.formatted(date: .omitted, time: .shortened),
-                isCurrentUser: true
-            ),
-            to: group.id
-        )
         draft = ""
 
-        guard let command = botCommand(in: text) else { return }
-        handleBotCommand(command, conversation: conversation)
+        Task { @MainActor in
+            guard await sendCloudMessage(text) else { return }
+            guard let command = botCommand(in: text) else { return }
+            await handleBotCommand(command, conversation: conversation)
+        }
     }
 
     /// 同時支援半形與全形 @，讓直接輸入提及和快捷按鈕採用相同 AI 流程。
@@ -320,23 +408,23 @@ struct ChatRoomView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func handleBotCommand(_ command: String, conversation: [String]) {
+    private func handleBotCommand(_ command: String, conversation: [String]) async {
         guard !isAIResponding else {
-            appendBotReply("我正在處理上一個請求，請稍後再試一次。")
+            await appendBotReply("我正在處理上一個請求，請稍後再試一次。")
             return
         }
 
         guard !command.isEmpty else {
-            appendBotReply("請問需要我幫忙什麼？你可以輸入「@機器人 你的問題」。")
+            await appendBotReply("請問需要我幫忙什麼？你可以輸入「@機器人 你的問題」。")
             return
         }
 
         if command.contains("分析溝通") {
             guard conversation.count >= 2 else {
-                appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
+                await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
                 return
             }
-            requestAICommunicationAnalysis(conversation: conversation)
+            await requestAICommunicationAnalysis(conversation: conversation)
             return
         }
 
@@ -351,20 +439,24 @@ struct ChatRoomView: View {
 
         if explicitQuestion.isEmpty {
             guard let latestMessage = conversation.last else {
-                appendBotReply("請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。")
+                await appendBotReply("請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。")
                 return
             }
-            requestAIAnswer(question: latestMessage, conversation: conversation)
+            await requestAIAnswer(question: latestMessage, conversation: conversation)
         } else {
-            requestAIAnswer(question: explicitQuestion, conversation: conversation)
+            await requestAIAnswer(question: explicitQuestion, conversation: conversation)
         }
     }
 
     /// 等待鍵盤造成的版面更新套用後，再將最新訊息對齊聊天室底部。
-    private func scrollToBottom(using proxy: ScrollViewProxy) {
+    private func scrollToBottom(using proxy: ScrollViewProxy, animated: Bool = true) {
         Task { @MainActor in
             await Task.yield()
-            withAnimation(.snappy) {
+            if animated {
+                withAnimation(.snappy) {
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                }
+            } else {
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
         }
@@ -373,76 +465,130 @@ struct ChatRoomView: View {
     private func sendShortcut(_ shortcut: ChatShortcut) {
         guard !isAIResponding else { return }
         let conversation = model.chatItems(for: group.id).compactMap(\.humanConversationLine)
+        withAnimation(.snappy) { showsShortcuts = false }
 
+        Task { @MainActor in
+            guard await sendCloudMessage(shortcut.command) else { return }
+            switch shortcut {
+            case .query:
+                guard let latestMessage = conversation.last else {
+                    await appendBotReply("請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。")
+                    return
+                }
+                await requestAIAnswer(question: latestMessage, conversation: conversation)
+            case .analyze:
+                guard conversation.count >= 2 else {
+                    await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
+                    return
+                }
+                await requestAICommunicationAnalysis(conversation: conversation)
+            }
+        }
+    }
+
+    private func sendCloudMessage(_ text: String) async -> Bool {
+        let messageID = UUID().uuidString.lowercased()
         model.appendChatItem(
             .message(
-                id: UUID().uuidString,
-                sender: "我",
-                text: shortcut.command,
+                id: messageID,
+                sender: model.profileName,
+                text: text,
                 time: Date.now.formatted(date: .omitted, time: .shortened),
-                isCurrentUser: true
+                isCurrentUser: true,
+                createdAt: .now,
+                deliveryState: .sending
             ),
             to: group.id
         )
-        withAnimation(.snappy) { showsShortcuts = false }
-
-        switch shortcut {
-        case .query:
-            guard let latestMessage = conversation.last else {
-                appendBotReply("請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。")
-                return
-            }
-            requestAIAnswer(question: latestMessage, conversation: conversation)
-        case .analyze:
-            guard conversation.count >= 2 else {
-                appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
-                return
-            }
-            requestAICommunicationAnalysis(conversation: conversation)
-        }
+        let didSend = await model.sendChatMessage(
+            id: messageID,
+            text: text,
+            groupID: group.id,
+            displayName: model.profileName
+        )
+        model.updateChatMessageDeliveryState(
+            id: messageID,
+            groupID: group.id,
+            deliveryState: didSend ? .sent : .failed
+        )
+        return didSend
     }
 
-    private func requestAIAnswer(question: String, conversation: [String]) {
-        isAIResponding = true
+    private func retryMessage(id: String, text: String) {
+        model.updateChatMessageDeliveryState(
+            id: id,
+            groupID: group.id,
+            deliveryState: .sending
+        )
+
         Task { @MainActor in
-            defer { isAIResponding = false }
-            do {
-                let answer = try await AppleIntelligenceService().answer(
-                    question: question,
-                    conversation: conversation
-                )
-                appendBotReply(answer)
-            } catch {
-                appendBotReply(aiErrorMessage(error))
-            }
+            let didSend = await model.sendChatMessage(
+                id: id,
+                text: text,
+                groupID: group.id,
+                displayName: model.profileName
+            )
+            model.updateChatMessageDeliveryState(
+                id: id,
+                groupID: group.id,
+                deliveryState: didSend ? .sent : .failed
+            )
+
+            guard didSend, let command = botCommand(in: text) else { return }
+            let conversation = model.chatItems(for: group.id).compactMap(\.humanConversationLine)
+            await handleBotCommand(command, conversation: conversation)
         }
     }
 
-    private func requestAICommunicationAnalysis(conversation: [String]) {
+    private func requestAIAnswer(question: String, conversation: [String]) async {
         isAIResponding = true
-        Task { @MainActor in
-            defer { isAIResponding = false }
-            do {
-                let generated = try await AppleIntelligenceService()
-                    .analyzeCommunication(conversation: conversation)
-                let analysis = model.saveCommunicationAnalysis(
-                    groupID: group.id,
-                    generated: generated
-                )
-                model.appendChatItem(
-                    .botAnalysis(id: analysis.id.uuidString, analysis: analysis),
-                    to: group.id
-                )
-            } catch {
-                appendBotReply(aiErrorMessage(error))
-            }
+        defer { isAIResponding = false }
+        do {
+            let answer = try await AppleIntelligenceService().answer(
+                question: question,
+                conversation: conversation
+            )
+            await appendBotReply(answer)
+        } catch {
+            await appendBotReply(aiErrorMessage(error))
         }
     }
 
-    private func appendBotReply(_ text: String) {
+    private func requestAICommunicationAnalysis(conversation: [String]) async {
+        isAIResponding = true
+        defer { isAIResponding = false }
+        do {
+            let generated = try await AppleIntelligenceService()
+                .analyzeCommunication(conversation: conversation)
+            let analysis = model.saveCommunicationAnalysis(
+                groupID: group.id,
+                generated: generated
+            )
+            let analysisID = analysis.id.uuidString.lowercased()
+            model.appendChatItem(
+                .botAnalysis(id: analysisID, analysis: analysis),
+                to: group.id
+            )
+            _ = await model.sendChatBotAnalysis(
+                id: analysisID,
+                analysis: analysis,
+                groupID: group.id
+            )
+        } catch {
+            await appendBotReply(aiErrorMessage(error))
+        }
+    }
+
+    private func appendBotReply(_ text: String) async {
+        let replyID = UUID().uuidString.lowercased()
         model.appendChatItem(
-            .botReply(id: UUID().uuidString, text: text),
+            .botReply(id: replyID, text: text, createdAt: .now),
             to: group.id
+        )
+        _ = await model.sendChatBotReply(
+            id: replyID,
+            text: text,
+            groupID: group.id
         )
     }
 
@@ -523,14 +669,20 @@ private struct ChatBotAnalysisCard: View {
             Text("完整報告已送至「設定 > 戰力報告」。")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.65))
+            Text(analysis.updatedAt.formatted(date: .omitted, time: .shortened))
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(BombTheme.ink.opacity(0.5))
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .comicCard()
+        .accessibilityElement(children: .combine)
     }
 }
 
 /// 一般查詢指令的機器人回覆泡泡。
 private struct ChatBotReplyBubble: View {
     let text: String
+    let createdAt: Date
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -540,19 +692,39 @@ private struct ChatBotReplyBubble: View {
                 .frame(width: 32, height: 32)
                 .background(BombTheme.ink)
                 .clipShape(.circle)
-            Text(text)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(BombTheme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .background(BombTheme.paper)
-                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        .stroke(BombTheme.ink, lineWidth: 2)
-                }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("拆彈 AI 通訊官")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(BombTheme.ink.opacity(0.62))
+
+                Text(displayText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(BombTheme.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(BombTheme.paper)
+                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            .stroke(BombTheme.ink, lineWidth: 2)
+                    }
+
+                Text(createdAt.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+            }
             Spacer(minLength: 42)
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 舊 AI 回覆可能包含 Markdown 標記；保留項目符號但不直接顯示星號語法。
+    private var displayText: String {
+        text
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "* ", with: "• ")
+            .replacingOccurrences(of: "*", with: "")
     }
 }
 
