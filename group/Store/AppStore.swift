@@ -132,6 +132,15 @@ final class AppStore {
     /// 各任務只保留一個 Firestore 即時監聽，讓群組頁與我的任務共用同一份成果。
     @ObservationIgnored private var attachmentListeners: [UUID: ListenerRegistration] = [:]
     @ObservationIgnored private var attachmentRepository: AttachmentRepository?
+    @ObservationIgnored private var groupRepository: GroupRepository?
+    @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var cloudGeneration = UUID()
+    @ObservationIgnored private var syncIsActive = false
+    private(set) var firebaseUID: String?
+    private(set) var isLoadingCloudGroups = false
+    var cloudErrorMessage: String?
+    private(set) var attachmentsByTaskID: [UUID: [TaskAttachment]] = [:]
+    private(set) var attachmentErrors: [UUID: String] = [:]
 
     /// 舊版聊天室啟動時自動建立的示範訊息 ID；載入時只移除這些內容。
     private static let legacyMockChatItemIDs: Set<String> = [
@@ -139,10 +148,10 @@ final class AppStore {
     ]
 
     /// 目前登入使用者的成員 ID；「我的任務」用它篩選任務。
-    let currentUserID: UUID
+    private(set) var currentUserID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     /// 目前登入使用者的顯示名稱；舊版任務看板仍會使用。
-    let userName: String
+    var userName = ""
 
     /// 設定頁顯示並可由個人資料頁修改的公開資料。
     var profileName = "Peach"
@@ -161,42 +170,43 @@ final class AppStore {
     private var pokeCounts: [PokeCountKey: Int] = [:]
 
     /// 所有已加入的群組，群組列表直接讀取這個陣列。
-    var groups: [Group] {
+    var groups: [Group] = [] {
         didSet { publishWidgetSnapshot() }
     }
 
     /// 所有成員；以 Group.memberIDs 決定某群組要顯示哪些人。
-    var members: [Member]
+    var members: [Member] = []
 
     /// 所有正式任務；任務與群組、負責人的關係都用 ID 連結。
-    var projectTasks: [ProjectTask] {
+    var projectTasks: [ProjectTask] = [] {
         didSet { publishWidgetSnapshot() }
     }
 
     /// 截止後送出的匿名隊員互評；MVP 僅保留於目前 App 執行期間。
-    var peerReviews: [PeerReview]
+    var peerReviews: [PeerReview] = []
 
     /// 舊版任務看板資料；等 C 完成新群組詳細頁後再移除。
-    var tasks: [MissionTask]
+    var tasks: [MissionTask] = []
 
     /// 舊版特工頁資料；等 C 完成新版成員進度卡後再移除。
-    var agents: [Agent]
+    var agents: [Agent] = []
 
     /// 互評雷達圖的 mock 資料。
-    let radar: [RadarMetric]
+    var radar: [RadarMetric] = []
 
     /// 聊天室 AI 機器人的溝通評分；key 是群組 ID，設定頁與聊天室共用同一份結果。
-    var communicationAnalyses: [UUID: CommunicationAnalysis]
+    var communicationAnalyses: [UUID: CommunicationAnalysis] = [:]
 
     /// 每個群組的完整聊天時間軸；離開聊天室再進入時仍會讀取同一份記錄。
     var chatItemsByGroupID: [UUID: [ChatRoomItem]] = [:]
 
     /// 顯示在舊版畫面上的最新系統事件文字。
-    var lastEvent: String
+    var lastEvent = ""
 
-    init() {
+    init(debugDemo: Bool = false) {
         pokeNotifications.requestAuthorization()
-
+#if DEBUG
+        guard debugDemo else { return }
         let me = Member(id: UUID(), name: "我", role: .leader, avatarSymbol: "person.fill")
         let xiaoYu = Member(id: UUID(), name: "小宇", role: .member, avatarSymbol: "person.fill")
         let miMi = Member(id: UUID(), name: "米米", role: .member, avatarSymbol: "person.fill")
@@ -204,7 +214,7 @@ final class AppStore {
         let allMembers = [me, xiaoYu, miMi, aKai]
 
         let initialCreatedAt = Date.now
-        // Firebase attachment paths need stable IDs so two devices resolve the same mock group/task.
+        // Debug-only presentation IDs. Never used for authenticated cloud loading.
         let activeGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000101")!
         let summerCampGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000102")!
         let circuitGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000103")!
@@ -380,6 +390,7 @@ final class AppStore {
         }
         saveChatItems()
         publishWidgetSnapshot()
+#endif
     }
 
     /// 舊任務看板中「我已認領幾項任務」的數值。
@@ -647,7 +658,152 @@ final class AppStore {
         return groups[index]
     }
 
-    /// 以邀請碼加入 MVP mock 群組；成功時回傳 true，輸入空白則回傳 false。
+    /// 將 Callable Function 回傳的可存取群組合併進既有單一資料來源。
+    func mergeAccessibleCloudGroups(_ cloudGroups: [CloudGroupSummary]) {
+        for cloudGroup in cloudGroups {
+            if let index = groups.firstIndex(where: { $0.id == cloudGroup.id }) {
+                groups[index].name = cloudGroup.name
+                groups[index].deadline = cloudGroup.deadline
+                if !cloudGroup.inviteCode.isEmpty {
+                    groups[index].inviteCode = cloudGroup.inviteCode
+                }
+            } else {
+                groups.append(Group(
+                    id: cloudGroup.id,
+                    name: cloudGroup.name,
+                    deadline: cloudGroup.deadline,
+                    memberIDs: [],
+                    taskIDs: [],
+                    inviteCode: cloudGroup.inviteCode,
+                    firestoreDocumentID: cloudGroup.pathID
+                ))
+            }
+        }
+    }
+
+    /// Called synchronously before AuthSession publishes a different UID.
+    func changeCloudAccount(to uid: String?) {
+        guard uid != firebaseUID else { return }
+        suspendCloudSync()
+        groups = []
+        projectTasks = []
+        members = []
+        peerReviews = []
+        tasks = []
+        agents = []
+        radar = []
+        chatItemsByGroupID = [:]
+        communicationAnalyses = [:]
+        pokeCounts = [:]
+        attachmentsByTaskID = [:]
+        attachmentErrors = [:]
+        cloudErrorMessage = nil
+        profileName = ""
+        profileBio = ""
+        profileRole = ""
+        profileAvatarSymbol = "person.fill"
+        profileAvatarData = nil
+        userName = ""
+        lastEvent = ""
+        firebaseUID = uid
+        currentUserID = uid.map(FirebaseMemberIdentity.uiID(for:))
+            ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        publishWidgetSnapshot()
+    }
+
+    func resumeCloudSync() {
+        guard firebaseUID != nil, !syncIsActive else { return }
+        syncIsActive = true
+        cloudLoadTask = Task { [weak self] in _ = await self?.reloadCloudGroups() }
+    }
+
+    func suspendCloudSync() {
+        syncIsActive = false
+        cloudGeneration = UUID()
+        cloudLoadTask?.cancel()
+        cloudLoadTask = nil
+        stopAttachmentSync()
+        attachmentsByTaskID = [:]
+        attachmentErrors = [:]
+        for index in projectTasks.indices where projectTasks[index].firestoreDocumentID != nil {
+            projectTasks[index].deliverable = nil
+        }
+        isLoadingCloudGroups = false
+    }
+
+    private func stopAttachmentSync() {
+        attachmentListeners.values.forEach { $0.remove() }
+        attachmentListeners.removeAll()
+    }
+
+    @discardableResult
+    func reloadCloudGroups(reportError: Bool = true) async -> Bool {
+        guard let uid = firebaseUID, syncIsActive, FirebaseApp.app() != nil else { return false }
+        let generation = UUID()
+        cloudGeneration = generation
+        stopAttachmentSync()
+        isLoadingCloudGroups = true
+        defer { if cloudGeneration == generation { isLoadingCloudGroups = false } }
+        do {
+            let repository = groupRepository ?? GroupRepository.firebase()
+            groupRepository = repository
+            let loaded = try await repository.load()
+            guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation, syncIsActive else { return false }
+            // Replace, never append stale account/group/task rows.
+            projectTasks = loaded.flatMap(\.tasks)
+            groups = loaded.map(\.group)
+            var byID: [UUID: Member] = [:]
+            for member in loaded.flatMap(\.members) { byID[member.id] = member }
+            members = byID.values.sorted { $0.id.uuidString < $1.id.uuidString }
+            userName = byID[currentUserID]?.name ?? ""
+            let taskIDs = Set(projectTasks.map(\.id))
+            attachmentsByTaskID = attachmentsByTaskID.filter { taskIDs.contains($0.key) }
+            attachmentErrors = [:]
+            cloudErrorMessage = nil
+            // Tasks now exist in the single source of truth; only now attach listeners.
+            startAttachmentSync(for: projectTasks.map(\.id))
+            return true
+        } catch {
+            guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
+            // Invalidate task/attachment cache on a failed authoritative refresh.
+            // Joined summaries remain visible so success is never presented as failure.
+            projectTasks = []
+            members = []
+            attachmentsByTaskID = [:]
+            attachmentErrors = [:]
+            for index in groups.indices {
+                groups[index].taskIDs = []
+                groups[index].memberIDs = []
+                groups[index].memberRoles = [:]
+            }
+            if reportError { cloudErrorMessage = Self.cloudMessage(error) }
+            return false
+        }
+    }
+
+    func acceptJoinedGroup(_ result: GroupJoinResult) -> Bool {
+        guard firebaseUID == result.firebaseUID else { return false }
+        cloudErrorMessage = nil
+        mergeAccessibleCloudGroups([result.group])
+        lastEvent = result.wasAlreadyMember
+            ? "你已經是「\(result.group.name)」的成員"
+            : "已加入「\(result.group.name)」"
+        return true
+    }
+
+    private static func cloudMessage(_ error: Error) -> String {
+        if let error = error as? GroupLoadError { return error.localizedDescription }
+        if let error = error as? GroupJoinError { return error.localizedDescription }
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain, nsError.code == FirestoreErrorCode.permissionDenied.rawValue {
+            return GroupLoadError.permissionDenied.localizedDescription
+        }
+        if error is DecodingError { return GroupLoadError.invalidData.localizedDescription }
+        return "雲端資料同步失敗，請確認網路後重新整理。"
+    }
+
+#if DEBUG
+    /// 僅供 Debug 原型資料使用；正式邀請碼加入流程由 Callable Function 處理。
     @discardableResult
     func joinGroup(inviteCode: String) -> Bool {
         let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -659,6 +815,7 @@ final class AppStore {
         lastEvent = "已加入「\(groups[index].name)」"
         return true
     }
+#endif
 
     /// 離開目前使用者已加入的群組；群組列表只保留目前使用者仍加入的群組。
     @discardableResult
@@ -714,36 +871,53 @@ final class AppStore {
     }
 
     /// 啟動指定任務的附件監聽；重複進入畫面不會重複註冊 listener。
-    func startAttachmentSync(for taskID: UUID) {
+    private func startAttachmentSync(for taskID: UUID) {
         guard attachmentListeners[taskID] == nil,
+              syncIsActive, let uid = firebaseUID,
               FirebaseApp.app() != nil,
-              let task = projectTasks.first(where: { $0.id == taskID }) else { return }
+              let task = projectTasks.first(where: { $0.id == taskID }),
+              let path = task.firestoreDocumentID,
+              let groupPath = groups.first(where: { $0.id == task.groupID })?.firestoreDocumentID else { return }
+        let generation = cloudGeneration
 
         let repository = attachmentRepository ?? AttachmentRepository()
         attachmentRepository = repository
         attachmentListeners[taskID] = repository.listen(
-            groupID: task.groupID.uuidString.lowercased(),
-            taskID: task.id.uuidString.lowercased()
+            groupID: groupPath,
+            taskID: path
         ) { [weak self] result in
-            guard case let .success(attachments) = result else { return }
             Task { @MainActor in
-                self?.applyCloudAttachments(attachments, to: taskID)
+                guard let self, self.firebaseUID == uid, self.cloudGeneration == generation,
+                      self.syncIsActive else { return }
+                switch result {
+                case .success(let attachments):
+                    do {
+                        let collection = try CloudAttachmentCollection(attachments, groupID: groupPath, taskID: path)
+                        self.attachmentErrors[taskID] = nil
+                        self.applyCloudAttachments(collection.attachments, to: taskID)
+                    } catch {
+                        self.applyCloudAttachments([], to: taskID)
+                        self.attachmentErrors[taskID] = Self.cloudMessage(error)
+                        self.cloudErrorMessage = Self.cloudMessage(error)
+                    }
+                case .failure(let error):
+                    self.applyCloudAttachments([], to: taskID)
+                    let message = Self.cloudMessage(error)
+                    self.attachmentErrors[taskID] = message
+                    self.cloudErrorMessage = message
+                }
             }
         }
     }
 
-    func startAttachmentSync(for taskIDs: [UUID]) {
+    private func startAttachmentSync(for taskIDs: [UUID]) {
         taskIDs.forEach(startAttachmentSync(for:))
     }
 
     private func applyCloudAttachments(_ attachments: [TaskAttachment], to taskID: UUID) {
-        guard let latest = attachments.first(where: { $0.status == .ready }),
-              let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
-
-        if projectTasks[taskIndex].deliverable?.attachmentID != latest.id {
-            projectTasks[taskIndex].deliverable = Deliverable(attachment: latest)
-            lastEvent = "已同步「\(projectTasks[taskIndex].title)」成果"
-        }
+        guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
+        attachmentsByTaskID[taskID] = attachments
+        projectTasks[taskIndex].deliverable = attachments.first(where: { $0.status == .ready }).map { Deliverable(attachment: $0) }
     }
 
     /// 由群組成員確認已看到任務成果；同一位成員不可重複確認。

@@ -76,13 +76,21 @@ final class AttachmentRepository {
         taskID: String,
         onChange: @escaping (Result<[TaskAttachment], Error>) -> Void
     ) -> ListenerRegistration {
-        attachmentsCollection(groupID: groupID, taskID: taskID)
+        var receivedServerSnapshot = false
+        return attachmentsCollection(groupID: groupID, taskID: taskID)
             .order(by: "createdAt", descending: true)
-            .addSnapshotListener { snapshot, error in
+            .addSnapshotListener(includeMetadataChanges: true) { snapshot, error in
                 if let error {
                     onChange(.failure(error))
                     return
                 }
+
+                // Do not expose another session's persisted cache before server authorization.
+                if snapshot?.metadata.isFromCache == true {
+                    if receivedServerSnapshot { onChange(.failure(GroupLoadError.network)) }
+                    return
+                }
+                receivedServerSnapshot = true
 
                 do {
                     let attachments = try (snapshot?.documents ?? []).map {
@@ -113,15 +121,17 @@ final class AttachmentRepository {
     func delete(
         groupID: String,
         taskID: String,
-        attachmentID: String,
-        uploaderID: String
+        attachmentID: String
     ) async throws {
-        try validateCurrentUser(as: uploaderID)
-        try await attachmentReference(
+        guard Auth.auth().currentUser?.uid != nil else { throw AttachmentOperationError.signedOut }
+        let reference = attachmentReference(
             groupID: groupID,
             taskID: taskID,
             attachmentID: attachmentID
-        ).delete()
+        )
+        // A missing metadata document is already deleted; reads are still subject to Rules.
+        guard try await reference.getDocument(source: .server).exists else { return }
+        try await reference.delete()
     }
 
     private func attachmentsCollection(groupID: String, taskID: String) -> CollectionReference {

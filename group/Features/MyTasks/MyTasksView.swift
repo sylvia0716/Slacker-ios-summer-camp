@@ -54,11 +54,6 @@ struct MyTasksView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
-        .task {
-            model.startAttachmentSync(
-                for: model.projectTasks.filter { $0.ownerMemberID == model.currentUserID }.map(\.id)
-            )
-        }
     }
 
     private var personalProgress: Int {
@@ -350,7 +345,6 @@ private struct MyTaskDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .task { model.startAttachmentSync(for: taskID) }
         .sheet(isPresented: $showsSubmissionSheet) {
             if let task {
                 DeliverableSubmissionSheet(task: task) { deliverable in

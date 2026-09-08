@@ -11,58 +11,6 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid));
     }
 
-    function isCurrentUser(userID) {
-      return isSignedIn() && request.auth.uid == userID;
-    }
-
-    function hasValidMessageShape(messageID) {
-      let data = request.resource.data;
-      let baseKeys = ['id', 'senderID', 'senderName', 'text', 'kind', 'createdAt'];
-      let analysisKeys = [
-        'id', 'senderID', 'senderName', 'text', 'kind', 'createdAt',
-        'analysisScore', 'analysisStrength', 'analysisSuggestion'
-      ];
-      return data.keys().hasAll(baseKeys)
-        && data.id == messageID
-        && data.senderID == request.auth.uid
-        && data.senderName is string
-        && data.senderName.size() > 0
-        && data.senderName.size() <= 60
-        && data.text is string
-        && data.text.size() > 0
-        && data.text.size() <= 4000
-        && data.kind in ['message', 'botReply', 'botAnalysis']
-        && data.createdAt == request.time
-        && (
-          (data.kind in ['message', 'botReply'] && data.keys().hasOnly(baseKeys))
-          ||
-          (data.kind == 'botAnalysis'
-            && data.keys().hasAll(analysisKeys)
-            && data.keys().hasOnly(analysisKeys)
-            && data.analysisScore is int
-            && data.analysisScore >= 0
-            && data.analysisScore <= 100
-            && data.analysisStrength is string
-            && data.analysisStrength.size() > 0
-            && data.analysisStrength.size() <= 4000
-            && data.analysisSuggestion is string
-            && data.analysisSuggestion.size() > 0
-            && data.analysisSuggestion.size() <= 4000)
-        );
-    }
-
-    function hasValidPresenceShape(userID) {
-      let data = request.resource.data;
-      return data.keys().hasAll(['userID', 'displayName', 'isOnline', 'lastSeenAt'])
-        && data.keys().hasOnly(['userID', 'displayName', 'isOnline', 'lastSeenAt'])
-        && data.userID == userID
-        && data.displayName is string
-        && data.displayName.size() > 0
-        && data.displayName.size() <= 60
-        && data.isOnline is bool
-        && data.lastSeenAt == request.time;
-    }
-
     function isGroupLeader(groupID) {
       return isGroupMember(groupID)
         && get(
@@ -189,36 +137,9 @@ service cloud.firestore {
       allow write: if false;
 
       match /members/{userID} {
-        allow read: if isGroupMember(groupID) || isCurrentUser(userID);
-
-        // Only trusted Admin SDK / Cloud Functions may grant membership or roles.
-        allow create: if false;
-
-        // Preserve the deployed chat profile update; identity and role stay immutable.
-        allow update: if isCurrentUser(userID)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
-          && request.resource.data.displayName is string
-          && request.resource.data.displayName.size() > 0
-          && request.resource.data.displayName.size() <= 60;
-
-        // Preserve leaving a group; deletion does not allow recreating membership.
-        allow delete: if isCurrentUser(userID);
-      }
-
-      match /messages/{messageID} {
         allow read: if isGroupMember(groupID);
-        allow create: if isGroupMember(groupID)
-          && hasValidMessageShape(messageID);
-        allow update, delete: if false;
-      }
-
-      match /presence/{userID} {
-        allow read: if isGroupMember(groupID);
-        allow create, update: if isGroupMember(groupID)
-          && isCurrentUser(userID)
-          && hasValidPresenceShape(userID);
-        // Keep self-presence cleanup working even after leaving the group.
-        allow delete: if isCurrentUser(userID);
+        // Membership and role changes must come from a trusted backend/admin.
+        allow write: if false;
       }
 
       match /tasks/{taskID} {

@@ -1,7 +1,7 @@
 import Foundation
 
 /// 任務中最小的可完成單位；完成狀態會自動推進個人與群組進度。
-struct Subtask: Identifiable, Hashable {
+struct Subtask: Identifiable, Hashable, Codable {
     /// 子任務唯一識別碼。
     let id: UUID
     /// 顯示給負責人勾選的子任務名稱。

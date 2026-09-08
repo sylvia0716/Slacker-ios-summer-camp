@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import FirebaseAppCheck
 import FirebaseCore
 import OSLog
 
@@ -25,6 +26,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            #if DEBUG
+            AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+            #else
+            AppCheck.setAppCheckProviderFactory(AppAttestProviderFactory())
+            #endif
             FirebaseApp.configure()
         } else {
             logger.error("Firebase was not configured because GoogleService-Info.plist is missing from the group app target.")
