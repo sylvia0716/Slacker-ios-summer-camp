@@ -920,7 +920,7 @@ private struct ExplosionMemeOverlay: View {
 }
 
 private struct GroupDetailPreview: View {
-    @State private var model = AppStore()
+    @State private var model = AppStore(dataMode: .demo)
 
     var body: some View {
         NavigationStack {

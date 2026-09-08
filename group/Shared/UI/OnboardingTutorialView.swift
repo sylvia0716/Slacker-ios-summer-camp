@@ -159,6 +159,7 @@ struct OnboardingTutorialView: View {
     @Binding var step: TutorialStep?
     let targets: [TutorialTarget: CGRect]
     let onFinish: () -> Void
+    let onSkip: () -> Void
 
     var body: some View {
         if let step {
@@ -168,10 +169,12 @@ struct OnboardingTutorialView: View {
                     targetFrame: nil,
                     title: "💣 歡迎來到 Group Bomb",
                     description: "一起建立任務、\n分配工作、\n避免專案爆炸！",
-                    actionTitle: "開始拆彈"
-                ) {
-                    self.step = .createGroup
-                }
+                    actionTitle: "開始拆彈",
+                    action: {
+                        self.step = .createGroup
+                    },
+                    onSkip: onSkip
+                )
 
             case .createGroup:
                 SpotlightOverlay(
@@ -180,6 +183,7 @@ struct OnboardingTutorialView: View {
                     description: "點選右上角的「新增」，設定專案名稱與 Deadline。",
                     actionTitle: nil,
                     action: nil,
+                    onSkip: onSkip,
                     cardPlacement: .belowTarget
                 )
 
@@ -195,6 +199,7 @@ struct OnboardingTutorialView: View {
                     action: {
                         self.step = .publishTask
                     },
+                    onSkip: onSkip,
                     cardPlacement: .belowTarget
                 )
 
@@ -203,10 +208,12 @@ struct OnboardingTutorialView: View {
                     targetFrame: targets[.publishTask],
                     title: "分配工作給隊友",
                     description: "設定工作內容、負責人與 Deadline。好的分工，是避免爆炸的第一步。",
-                    actionTitle: "下一步"
-                ) {
-                    self.step = .memberProgress
-                }
+                    actionTitle: "下一步",
+                    action: {
+                        self.step = .memberProgress
+                    },
+                    onSkip: onSkip
+                )
 
             case .memberProgress:
                 SpotlightOverlay(
@@ -217,6 +224,7 @@ struct OnboardingTutorialView: View {
                     action: {
                         self.step = .chatEntry
                     },
+                    onSkip: onSkip,
                     cardPlacement: .aboveTarget
                 )
 
@@ -226,7 +234,8 @@ struct OnboardingTutorialView: View {
                     title: "開啟小隊聊天室",
                     description: "點擊聊天室，認識 Bomb AI 協作方式。",
                     actionTitle: nil,
-                    action: nil
+                    action: nil,
+                    onSkip: onSkip
                 )
 
             case .aiChat:
@@ -234,10 +243,12 @@ struct OnboardingTutorialView: View {
                     targetFrame: targets[.chatInput],
                     title: "🤖 @Bomb AI",
                     description: "輸入：@Bomb AI 幫我們整理目前任務\n\nAI 可以協助發想點子、整理討論與提供下一步建議。",
-                    actionTitle: "完成訓練"
-                ) {
-                    self.step = .completed
-                }
+                    actionTitle: "完成訓練",
+                    action: {
+                        self.step = .completed
+                    },
+                    onSkip: onSkip
+                )
 
             case .completed:
                 SpotlightOverlay(
@@ -264,6 +275,7 @@ struct SpotlightOverlay: View {
     let description: String
     let actionTitle: String?
     let action: (() -> Void)?
+    let onSkip: (() -> Void)?
     let cardPlacement: SpotlightCardPlacement
 
     init(
@@ -272,6 +284,7 @@ struct SpotlightOverlay: View {
         description: String,
         actionTitle: String?,
         action: (() -> Void)?,
+        onSkip: (() -> Void)? = nil,
         cardPlacement: SpotlightCardPlacement = .automatic
     ) {
         self.targetFrame = targetFrame
@@ -279,6 +292,7 @@ struct SpotlightOverlay: View {
         self.description = description
         self.actionTitle = actionTitle
         self.action = action
+        self.onSkip = onSkip
         self.cardPlacement = cardPlacement
     }
 
@@ -353,6 +367,14 @@ struct SpotlightOverlay: View {
                 Text("請點擊聚光燈位置繼續")
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.red)
+            }
+
+            if let onSkip {
+                Button("跳過教學", action: onSkip)
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(BombTheme.ink.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.plain)
             }
         }
         .padding(18)

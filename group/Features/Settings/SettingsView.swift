@@ -5,6 +5,7 @@ import UIKit
 struct SettingsView: View {
     let model: GroupBombModel
     let authSession: AuthSessionStore
+    let onReplayTutorial: () -> Void
     @State private var showsNotificationTest = false
     @State private var showsSignOutConfirmation = false
 
@@ -20,8 +21,11 @@ struct SettingsView: View {
                         ProfileDetailView(model: model)
                     } label: {
                         ProfileCard(
-                            name: model.profileName,
+                            name: model.profileName.isEmpty
+                                ? (authSession.currentUserEmail ?? "我的帳號")
+                                : model.profileName,
                             role: model.profileRole,
+                            groupName: model.groups.first?.name,
                             avatarSymbol: model.profileAvatarSymbol,
                             avatarData: model.profileAvatarData
                         )
@@ -43,6 +47,23 @@ struct SettingsView: View {
                             showsNotificationTest = true
                         }
                     }
+
+                    SettingsSection(title: "教學專區") {
+                        Button(action: onReplayTutorial) {
+                            SettingsRow(
+                                icon: "book.pages.fill",
+                                title: "新手入門",
+                                subtitle: "建立專案、分配任務與查看進度"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+#if DEBUG
+                    SettingsSection(title: "開發工具") {
+                        TestModeSettingsRow(model: model)
+                    }
+#endif
 
                     SettingsSection(title: "帳號") {
                         Button {
@@ -78,6 +99,7 @@ struct SettingsView: View {
 private struct ProfileCard: View {
     let name: String
     let role: String
+    let groupName: String?
     let avatarSymbol: String
     let avatarData: Data?
 
@@ -89,9 +111,13 @@ private struct ProfileCard: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(name).font(.title2.weight(.black))
-                Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
-                Label("期末報告拆彈小隊", systemImage: "person.3.fill")
-                    .font(.caption.bold())
+                if !role.isEmpty {
+                    Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
+                }
+                if let groupName {
+                    Label(groupName, systemImage: "person.3.fill")
+                        .font(.caption.bold())
+                }
             }
             Spacer()
             Image(systemName: "pencil.circle.fill").font(.title2)
@@ -99,6 +125,32 @@ private struct ProfileCard: View {
         .comicCard()
     }
 }
+
+#if DEBUG
+private struct TestModeSettingsRow: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "wrench.and.screwdriver.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .background(BombTheme.yellow)
+                .clipShape(.circle)
+            Text("測試模式").font(.body.weight(.bold))
+            Spacer()
+            Toggle("測試模式", isOn: Binding(
+                get: { model.isDemoMode },
+                set: { model.setDemoMode($0) }
+            ))
+            .labelsHidden()
+            .tint(BombTheme.green)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 8)
+    }
+}
+#endif
 
 private struct SettingsSection<Content: View>: View {
     let title: String

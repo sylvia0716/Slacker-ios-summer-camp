@@ -557,7 +557,7 @@ private struct ChatBotReplyBubble: View {
 }
 
 #Preview("Chat room") {
-    @Previewable @State var model = AppStore()
+    @Previewable @State var model = AppStore(dataMode: .demo)
     NavigationStack {
         if let group = model.groups.first {
             ChatRoomView(model: model, group: group)

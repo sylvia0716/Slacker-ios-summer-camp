@@ -7,7 +7,6 @@ struct AppRootView: View {
     @State private var tab = AppTab.groups
     @State private var tutorialStep: TutorialStep?
     @State private var createGroupTutorialWindowFrame: CGRect?
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
         SwiftUI.Group {
@@ -41,7 +40,13 @@ struct AppRootView: View {
                 NavigationStack { MyTasksView(model: store) }
                     .tabItem { Label(AppTab.myTasks.title, systemImage: AppTab.myTasks.symbol) }
                     .tag(AppTab.myTasks)
-                NavigationStack { SettingsView(model: store, authSession: authSession) }
+                NavigationStack {
+                    SettingsView(
+                        model: store,
+                        authSession: authSession,
+                        onReplayTutorial: replayTutorial
+                    )
+                }
                     .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
                     .tag(AppTab.settings)
             }
@@ -54,17 +59,15 @@ struct AppRootView: View {
                     OnboardingTutorialView(
                         step: $tutorialStep,
                         targets: tutorialFrames(from: targetAnchors, in: proxy),
-                        onFinish: finishTutorial
+                        onFinish: finishTutorial,
+                        onSkip: finishTutorial
                     )
                 }
             }
             .ignoresSafeArea()
         }
         .onAppear {
-            if !hasCompletedOnboarding, tutorialStep == nil {
-                tab = .groups
-                tutorialStep = .welcome
-            }
+            presentTutorialIfNeeded()
         }
     }
 
@@ -95,14 +98,28 @@ struct AppRootView: View {
     }
 
     private func finishTutorial() {
-        hasCompletedOnboarding = true
+        if let userID = authSession.currentUserID {
+            UserDefaults.standard.set(true, forKey: onboardingKey(for: userID))
+        }
         tutorialStep = nil
     }
 
     private func replayTutorial() {
-        hasCompletedOnboarding = false
         tab = .groups
         tutorialStep = .welcome
+    }
+
+    private func presentTutorialIfNeeded() {
+        guard let userID = authSession.currentUserID,
+              !UserDefaults.standard.bool(forKey: onboardingKey(for: userID)),
+              tutorialStep == nil else { return }
+
+        tab = .groups
+        tutorialStep = .welcome
+    }
+
+    private func onboardingKey(for userID: String) -> String {
+        "hasCompletedOnboarding.\(userID)"
     }
 }
 
