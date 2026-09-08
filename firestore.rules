@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isGroupMember(groupID) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid));
+    }
+
+    function hasValidAttachmentShape(groupID, taskID, attachmentID) {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && data.id == attachmentID
+        && data.taskID == taskID
+        && data.groupID == groupID
+        && data.uploaderID is string
+        && data.title is string
+        && data.title.size() > 0
+        && data.detail is string
+        && data.kind in [
+          'image', 'pdf', 'presentation', 'document', 'spreadsheet',
+          'archive', 'externalLink', 'other'
+        ]
+        && (data.originalFilename == null || data.originalFilename is string)
+        && (data.storagePath == null || data.storagePath is string)
+        && (data.externalURL == null
+          || (data.externalURL is string && data.externalURL.matches('^https://.*')))
+        && (data.contentType == null || data.contentType is string)
+        && (data.byteSize == null || (data.byteSize is int && data.byteSize >= 0))
+        && data.status in ['pending', 'uploading', 'ready', 'failed']
+        && data.createdAt is timestamp
+        && (
+          (data.kind == 'externalLink'
+            && data.externalURL is string
+            && data.externalURL.matches('^https://.*')
+            && data.originalFilename == null
+            && data.storagePath == null
+            && data.contentType == null
+            && data.byteSize == null)
+          ||
+          (data.kind != 'externalLink'
+            && data.externalURL == null
+            && data.originalFilename is string
+            && data.storagePath is string
+            && data.storagePath.matches(
+              '^groups/' + groupID + '/tasks/' + taskID
+                + '/attachments/' + attachmentID + '/.*'
+            )
+            && data.contentType is string
+            && data.byteSize is int
+            && data.byteSize <= 20 * 1024 * 1024)
+        );
+    }
+
+    match /groups/{groupID} {
+      allow read: if isGroupMember(groupID);
+      allow write: if false;
+
+      match /members/{userID} {
+        allow read: if isGroupMember(groupID);
+        allow write: if false;
+      }
+
+      match /tasks/{taskID} {
+        allow read: if isGroupMember(groupID);
+        allow write: if false;
+
+        match /attachments/{attachmentID} {
+          allow read: if isGroupMember(groupID);
+
+          allow create: if isGroupMember(groupID)
+            && request.resource.data.uploaderID == request.auth.uid
+            && request.resource.data.createdAt == request.time
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow update: if isGroupMember(groupID)
+            && resource.data.uploaderID == request.auth.uid
+            && request.resource.data.uploaderID == resource.data.uploaderID
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'detail', 'originalFilename', 'storagePath',
+              'externalURL', 'contentType', 'byteSize', 'status'
+            ])
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow delete: if isGroupMember(groupID)
+            && resource.data.uploaderID == request.auth.uid;
+        }
+      }
+    }
+  }
+}

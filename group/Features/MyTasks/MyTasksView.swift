@@ -54,6 +54,11 @@ struct MyTasksView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .task {
+            model.startAttachmentSync(
+                for: model.projectTasks.filter { $0.ownerMemberID == model.currentUserID }.map(\.id)
+            )
+        }
     }
 
     private var personalProgress: Int {
@@ -252,6 +257,7 @@ private struct MyTaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     let taskID: UUID
+    @State private var showsSubmissionSheet = false
 
     private var task: ProjectTask? { model.projectTasks.first { $0.id == taskID } }
 
@@ -324,13 +330,7 @@ private struct MyTaskDetailView: View {
                                 }
                             }
                             Button {
-                                model.submitDeliverable(
-                                    taskID: task.id,
-                                    deliverable: Deliverable(
-                                        id: UUID(), title: "新增成果連結", url: URL(string: "https://example.com"),
-                                        submittedAt: .now, isApproved: false
-                                    )
-                                )
+                                showsSubmissionSheet = true
                             } label: {
                                 Label("上傳檔案或貼上連結", systemImage: "paperclip")
                                     .frame(maxWidth: .infinity)
@@ -350,5 +350,13 @@ private struct MyTaskDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .task { model.startAttachmentSync(for: taskID) }
+        .sheet(isPresented: $showsSubmissionSheet) {
+            if let task {
+                DeliverableSubmissionSheet(task: task) { deliverable in
+                    model.submitDeliverable(taskID: task.id, deliverable: deliverable)
+                }
+            }
+        }
     }
 }

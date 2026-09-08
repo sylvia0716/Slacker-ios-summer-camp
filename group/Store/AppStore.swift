@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import FirebaseCore
+import FirebaseFirestore
 
 /// 舊版任務看板暫時使用的任務型別。
 /// 新畫面請改用 Models/ProjectTask.swift；保留此型別是為了不破壞既有 demo。
@@ -127,6 +129,10 @@ final class AppStore {
     /// 聊天記錄在本機 UserDefaults 中使用的儲存鍵。
     private static let savedChatItemsKey = "savedChatItemsByInviteCode"
 
+    /// 各任務只保留一個 Firestore 即時監聽，讓群組頁與我的任務共用同一份成果。
+    @ObservationIgnored private var attachmentListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var attachmentRepository: AttachmentRepository?
+
     /// 舊版聊天室啟動時自動建立的示範訊息 ID；載入時只移除這些內容。
     private static let legacyMockChatItemIDs: Set<String> = [
         "joined", "xiaoyu-update", "me-reply", "progress", "mimi-help"
@@ -198,15 +204,17 @@ final class AppStore {
         let allMembers = [me, xiaoYu, miMi, aKai]
 
         let initialCreatedAt = Date.now
-        let activeGroupID = UUID()
-        let summerCampGroupID = UUID()
-        let circuitGroupID = UUID()
-        let maicGroupID = UUID()
+        // Firebase attachment paths need stable IDs so two devices resolve the same mock group/task.
+        let activeGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000101")!
+        let summerCampGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000102")!
+        let circuitGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000103")!
+        let maicGroupID = UUID(uuidString: "00000000-0000-4000-8000-000000000104")!
         let activeDeadline = initialCreatedAt.addingTimeInterval(48 * 60 * 60)
         let summerCampDeadline = initialCreatedAt.addingTimeInterval(-24 * 60 * 60)
         let circuitDeadline = initialCreatedAt.addingTimeInterval(-12 * 60 * 60)
         let maicDeadline = initialCreatedAt.addingTimeInterval(-7 * 24 * 60 * 60)
 
+        var nextMockTaskID = 1
         func makeTask(
             groupID: UUID,
             title: String,
@@ -224,8 +232,13 @@ final class AppStore {
                 subtasks.append(Subtask(id: UUID(), title: "待完成工作", isComplete: false, weight: 100 - progress))
             }
 
+            let taskID = UUID(
+                uuidString: String(format: "00000000-0000-4000-8001-%012d", nextMockTaskID)
+            )!
+            nextMockTaskID += 1
+
             return ProjectTask(
-                id: UUID(),
+                id: taskID,
                 groupID: groupID,
                 title: title,
                 detail: detail,
@@ -698,6 +711,39 @@ final class AppStore {
         guard let index = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
         projectTasks[index].deliverable = deliverable
         lastEvent = "已送出「\(projectTasks[index].title)」成果"
+    }
+
+    /// 啟動指定任務的附件監聽；重複進入畫面不會重複註冊 listener。
+    func startAttachmentSync(for taskID: UUID) {
+        guard attachmentListeners[taskID] == nil,
+              FirebaseApp.app() != nil,
+              let task = projectTasks.first(where: { $0.id == taskID }) else { return }
+
+        let repository = attachmentRepository ?? AttachmentRepository()
+        attachmentRepository = repository
+        attachmentListeners[taskID] = repository.listen(
+            groupID: task.groupID.uuidString.lowercased(),
+            taskID: task.id.uuidString.lowercased()
+        ) { [weak self] result in
+            guard case let .success(attachments) = result else { return }
+            Task { @MainActor in
+                self?.applyCloudAttachments(attachments, to: taskID)
+            }
+        }
+    }
+
+    func startAttachmentSync(for taskIDs: [UUID]) {
+        taskIDs.forEach(startAttachmentSync(for:))
+    }
+
+    private func applyCloudAttachments(_ attachments: [TaskAttachment], to taskID: UUID) {
+        guard let latest = attachments.first(where: { $0.status == .ready }),
+              let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
+
+        if projectTasks[taskIndex].deliverable?.attachmentID != latest.id {
+            projectTasks[taskIndex].deliverable = Deliverable(attachment: latest)
+            lastEvent = "已同步「\(projectTasks[taskIndex].title)」成果"
+        }
     }
 
     /// 由群組成員確認已看到任務成果；同一位成員不可重複確認。

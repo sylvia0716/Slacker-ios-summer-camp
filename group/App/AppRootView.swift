@@ -3,12 +3,26 @@ import SwiftUI
 /// App shell: owns the prototype's shared store and the primary app navigation.
 struct AppRootView: View {
     @State private var store = GroupBombModel()
+    @State private var authSession = AuthSessionStore()
     @State private var tab = AppTab.groups
     @State private var tutorialStep: TutorialStep?
     @State private var createGroupTutorialWindowFrame: CGRect?
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
+        SwiftUI.Group {
+            if authSession.isCheckingSession {
+                authenticationLoadingView
+            } else if authSession.isAuthenticated {
+                authenticatedContent
+            } else {
+                AuthenticationView(session: authSession)
+            }
+        }
+        .task { authSession.start() }
+    }
+
+    private var authenticatedContent: some View {
         ZStack {
             TabView(selection: $tab) {
                 NavigationStack {
@@ -27,7 +41,7 @@ struct AppRootView: View {
                 NavigationStack { MyTasksView(model: store) }
                     .tabItem { Label(AppTab.myTasks.title, systemImage: AppTab.myTasks.symbol) }
                     .tag(AppTab.myTasks)
-                NavigationStack { SettingsView(model: store) }
+                NavigationStack { SettingsView(model: store, authSession: authSession) }
                     .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
                     .tag(AppTab.settings)
             }
@@ -51,6 +65,15 @@ struct AppRootView: View {
                 tab = .groups
                 tutorialStep = .welcome
             }
+        }
+    }
+
+    private var authenticationLoadingView: some View {
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
+            ProgressView()
+                .controlSize(.large)
+                .tint(BombTheme.ink)
         }
     }
 

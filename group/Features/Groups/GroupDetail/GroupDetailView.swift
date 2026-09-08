@@ -163,6 +163,11 @@ struct GroupDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear { deadlineDraft = currentGroup.deadline }
+        .task {
+            model.startAttachmentSync(
+                for: model.projectTasks.filter { $0.groupID == group.id }.map(\.id)
+            )
+        }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
         }

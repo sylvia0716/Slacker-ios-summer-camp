@@ -2,3 +2,6 @@
 xcuserdata/
 *.xcuserstate
 *.xcuserdatad/
+
+# macOS metadata
+.DS_Store

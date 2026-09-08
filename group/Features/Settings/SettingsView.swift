@@ -4,7 +4,9 @@ import UIKit
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
     let model: GroupBombModel
+    let authSession: AuthSessionStore
     @State private var showsNotificationTest = false
+    @State private var showsSignOutConfirmation = false
 
     var body: some View {
         ZStack {
@@ -41,6 +43,19 @@ struct SettingsView: View {
                             showsNotificationTest = true
                         }
                     }
+
+                    SettingsSection(title: "帳號") {
+                        Button {
+                            showsSignOutConfirmation = true
+                        } label: {
+                            SettingsRow(
+                                icon: "rectangle.portrait.and.arrow.right",
+                                title: "登出",
+                                subtitle: authSession.currentUserEmail ?? "目前帳號"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(16)
                 .padding(.bottom, 24)
@@ -50,6 +65,12 @@ struct SettingsView: View {
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
         .navigationDestination(isPresented: $showsNotificationTest) {
             NotificationTestView(model: model)
+        }
+        .confirmationDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
+            Button("登出", role: .destructive) {
+                authSession.signOut()
+            }
+            Button("取消", role: .cancel) { }
         }
     }
 }
