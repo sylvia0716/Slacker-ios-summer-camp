@@ -57,9 +57,9 @@ struct MyTasksView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
-            model.startAttachmentSync(
-                for: model.projectTasks.filter { $0.ownerMemberID == model.currentUserID }.map(\.id)
-            )
+            for task in model.projectTasks where task.ownerMemberID == model.currentUserID {
+                model.startAttachmentSync(for: task.id)
+            }
         }
     }
 

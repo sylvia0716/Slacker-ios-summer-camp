@@ -164,11 +164,6 @@ struct GroupDetailView: View {
             topBar
         }
         .onAppear { deadlineDraft = currentGroup.deadline }
-        .task {
-            model.startAttachmentSync(
-                for: model.projectTasks.filter { $0.groupID == group.id }.map(\.id)
-            )
-        }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
         }
@@ -668,7 +663,9 @@ struct GroupDetailView: View {
 
     private var groupMembers: [Member] {
         currentGroup.memberIDs.compactMap { memberID in
-            model.members.first(where: { $0.id == memberID })
+            guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
+            member.role = currentGroup.memberRoles[memberID] ?? member.role
+            return member
         }
     }
 
