@@ -560,11 +560,11 @@ final class AppStore {
         return groups[index]
     }
 
-    /// 以邀請碼加入 MVP mock 群組；成功時回傳 true，輸入空白則回傳 false。
+    /// 以六位英數邀請碼加入本機群組；無效或找不到時回傳 false。
     @discardableResult
     func joinGroup(inviteCode: String) -> Bool {
-        let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !code.isEmpty else { return false }
+        let code = GroupInviteCode.normalized(inviteCode)
+        guard GroupInviteCode.isValid(code) else { return false }
         guard let index = groups.firstIndex(where: { $0.inviteCode == code }) else { return false }
         if !groups[index].memberIDs.contains(currentUserID) {
             groups[index].memberIDs.append(currentUserID)

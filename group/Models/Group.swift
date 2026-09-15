@@ -1,5 +1,18 @@
 import Foundation
 
+enum GroupInviteCode {
+    static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    static func isValid(_ value: String) -> Bool {
+        let code = normalized(value)
+        return code.count == 6 && code.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0)
+        }
+    }
+}
+
 /// 一個分組報告小隊；群組名稱、死線、成員與任務關係都集中在這裡。
 struct Group: Identifiable, Hashable {
     /// 群組唯一識別碼，供任務、畫面導航與資料查詢使用。

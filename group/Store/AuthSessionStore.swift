@@ -14,6 +14,9 @@ final class AuthSessionStore {
 
     @ObservationIgnored private var authStateHandle: AuthStateDidChangeListenerHandle?
     @ObservationIgnored private var hasStarted = false
+#if DEBUG
+    @ObservationIgnored private var isPreviewSession = false
+#endif
 
     var isAuthenticated: Bool { currentUserID != nil }
 
@@ -83,7 +86,48 @@ final class AuthSessionStore {
         }
     }
 
+    func sendPasswordReset(email: String) async -> Bool {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedEmail.isEmpty, normalizedEmail.contains("@") else {
+            errorMessage = "請輸入有效的電子郵件地址。"
+            return false
+        }
+        guard FirebaseApp.app() != nil else {
+            errorMessage = "Firebase 尚未設定完成，請稍後再試。"
+            return false
+        }
+
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
+            return true
+        } catch {
+            errorMessage = Self.localizedMessage(for: error)
+            return false
+        }
+    }
+
+#if DEBUG
+    /// 本機 UI 驗證專用；不建立 Firebase 帳號，也不會出現在正式版本。
+    func enterPreviewSession() {
+        isPreviewSession = true
+        updateSession(userID: "debug-preview", email: "preview@local")
+        errorMessage = nil
+    }
+#endif
+
     func signOut() {
+#if DEBUG
+        if isPreviewSession {
+            isPreviewSession = false
+            updateSession(userID: nil, email: nil)
+            errorMessage = nil
+            return
+        }
+#endif
         guard FirebaseApp.app() != nil else { return }
 
         do {
@@ -113,6 +157,12 @@ final class AuthSessionStore {
     }
 
     private func updateSession(userID: String?, email: String?) {
+#if DEBUG
+        if isPreviewSession, userID == nil {
+            isCheckingSession = false
+            return
+        }
+#endif
         // 此 UID 直接來自 Firebase Auth；不以本機 UUID 或電子郵件代替。
         currentUserID = userID
         currentUserEmail = email
