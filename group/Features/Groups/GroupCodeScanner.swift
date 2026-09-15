@@ -109,7 +109,7 @@ private struct ScannerController: UIViewControllerRepresentable {
                 case .text(let text): value = text.transcript
                 @unknown default: value = nil
                 }
-                guard let value, GroupInviteCode.isValid(value) else { continue }
+                guard let value, GroupInviteCode.isValid(GroupInviteCode.normalized(value)) else { continue }
                 hasFinished = true
                 scanner.stopScanning()
                 onRecognized(GroupInviteCode.normalized(value))

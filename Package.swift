@@ -8,10 +8,12 @@ let package = Package(
     products: [],
     targets: [
         .target(name: "GroupCloudData", path: "group", sources: [
-            "Models/CloudGroupData.swift", "Models/CloudAttachmentCollection.swift",
+            "Models/CloudGroupData.swift", "Models/CloudAttachmentCollection.swift", "Models/GroupInviteCode.swift",
             "Models/Member.swift", "Models/Group.swift", "Models/ProjectTask.swift",
             "Models/Subtask.swift", "Models/Deliverable.swift", "Models/TaskAttachment.swift",
-            "Shared/Services/GroupRepository.swift"
+            "Shared/Services/GroupRepository.swift", "Models/AttachmentOperationError.swift",
+            "Shared/Services/AttachmentDownloadService.swift", "Shared/Services/AttachmentDeletionService.swift",
+            "Store/AttachmentActionStore.swift"
         ]),
         .testTarget(name: "GroupCloudDataTests", dependencies: ["GroupCloudData"], path: "ios-cloud-tests")
     ],

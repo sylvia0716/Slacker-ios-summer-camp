@@ -2,11 +2,17 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
+const { getAuth } = require("firebase-admin/auth");
 
 initializeApp();
 
 const db = getFirestore();
 const region = "asia-east1";
+
+async function accountName(uid) {
+  const user = await getAuth().getUser(uid);
+  return (user.displayName?.trim() || user.email?.split('@')[0] || `成員 ${uid.slice(0, 8)}`).slice(0, 60);
+}
 
 function callableError(code, message, reason) {
   return new HttpsError(code, message, { reason });
@@ -139,6 +145,7 @@ exports.createGroup = onCall({ region }, async (request) => {
 exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
   const inviteCode = normalizedInviteCode(request.data);
+  const displayName = await accountName(userID);
   const inviteRef = db.collection("groupInviteCodes").doc(inviteCode);
 
   const result = await db.runTransaction(async (transaction) => {
@@ -181,6 +188,7 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
         userID,
         role: "member",
         joinedAt: FieldValue.serverTimestamp(),
+        displayName,
       });
     }
 
@@ -217,6 +225,17 @@ exports.listMyGroups = onCall({ region }, async (request) => {
   }
 
   if (groupRefs.length === 0) return { groups: [] };
+  // Repair the caller's legacy membership name using trusted Auth data, never a client UID.
+  const displayName = await accountName(userID);
+  for (const groupRef of groupRefs) {
+    await db.runTransaction(async tx => {
+      const ref = groupRef.collection('members').doc(userID);
+      const member = await tx.get(ref);
+      if (member.exists && member.data().userID === userID && !member.data().displayName?.trim()) {
+        tx.update(ref, {displayName});
+      }
+    });
+  }
   const groupSnapshots = await db.getAll(...groupRefs);
   return {
     groups: groupSnapshots
@@ -224,3 +243,5 @@ exports.listMyGroups = onCall({ region }, async (request) => {
       .map((snapshot) => groupPayload(snapshot.id, snapshot.data())),
   };
 });
+
+Object.assign(exports, require('./task-progress'));
