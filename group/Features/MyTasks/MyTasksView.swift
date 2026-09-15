@@ -333,10 +333,10 @@ private struct MyTaskDetailView: View {
 
                     Text(task.lifecycleStatus.title)
                         .font(.caption.weight(.black))
-                        .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.red)
+                        .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.ink)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background((task.isCompleted ? BombTheme.green : BombTheme.red).opacity(0.12))
+                        .background(task.isCompleted ? BombTheme.green.opacity(0.12) : BombTheme.yellow)
                         .clipShape(.capsule)
                 }
 
