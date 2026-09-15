@@ -76,7 +76,7 @@ struct SettingsView: View {
                     }
                 }
                 .padding(16)
-                .padding(.bottom, 24)
+                .padding(.bottom, 132)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
