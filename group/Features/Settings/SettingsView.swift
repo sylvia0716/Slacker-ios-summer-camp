@@ -8,26 +8,35 @@ struct SettingsView: View {
     let onReplayTutorial: () -> Void
     @State private var showsNotificationTest = false
     @State private var showsSignOutConfirmation = false
+    @State private var showsPasswordReset = false
 
     var body: some View {
         ZStack {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    NavigationLink {
-                        ProfileDetailView(model: model)
-                    } label: {
-                        ProfileCard(
-                            name: model.profileName.isEmpty
-                                ? (authSession.currentUserEmail ?? "我的帳號")
-                                : model.profileName,
-                            role: model.profileRole,
-                            groupName: model.groups.first?.name,
-                            avatarSymbol: model.profileAvatarSymbol,
-                            avatarData: model.profileAvatarData
-                        )
+                    if authSession.isAuthenticated {
+                        NavigationLink {
+                            ProfileDetailView(model: model)
+                        } label: {
+                            ProfileCard(
+                                name: model.profileName.isEmpty
+                                    ? (authSession.currentUserEmail ?? "我的帳號")
+                                    : model.profileName,
+                                role: model.profileRole,
+                                groupName: model.groups.first?.name,
+                                avatarSymbol: model.profileAvatarSymbol,
+                                avatarData: model.profileAvatarData
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button { authSession.signOut() } label: {
+                            SettingsRow(icon: "person.crop.circle", title: "尚未登入", subtitle: "登入以編輯個人資料")
+                                .comicCard()
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     SettingsSection(title: "工作空間") {
                         NavigationLink { PeerReviewReportView(model: model) } label: {
@@ -64,13 +73,24 @@ struct SettingsView: View {
 #endif
 
                     SettingsSection(title: "帳號") {
+                        if authSession.isAuthenticated {
+                            Button { showsPasswordReset = true } label: {
+                                SettingsRow(icon: "lock.rotation", title: "重設密碼", subtitle: "透過電子郵件重設密碼")
+                            }
+                            .buttonStyle(.plain)
+                            SettingsDivider()
+                        }
                         Button {
-                            showsSignOutConfirmation = true
+                            if authSession.isAuthenticated {
+                                showsSignOutConfirmation = true
+                            } else {
+                                authSession.signOut()
+                            }
                         } label: {
                             SettingsRow(
                                 icon: "rectangle.portrait.and.arrow.right",
-                                title: "登出",
-                                subtitle: authSession.currentUserEmail ?? "目前帳號"
+                                title: authSession.isAuthenticated ? "登出" : "登入",
+                                subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? "目前帳號") : "目前未登入"
                             )
                         }
                         .buttonStyle(.plain)
@@ -90,6 +110,9 @@ struct SettingsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showsNotificationTest) {
             NotificationTestView(model: model)
+        }
+        .sheet(isPresented: $showsPasswordReset) {
+            PasswordResetView(session: authSession, initialEmail: authSession.currentUserEmail ?? "", completionTitle: "完成")
         }
         .bombDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
             Button("取消", role: .cancel) { }

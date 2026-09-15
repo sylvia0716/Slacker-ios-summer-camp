@@ -7,6 +7,7 @@ struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var authSession = AuthSessionStore()
     @State private var tab = AppTab.groups
+    @State private var settingsNavigationID = UUID()
     @State private var tutorialStep: TutorialStep?
     @State private var isBombTabBarHidden = false
     @State private var safeAreaInsets = EdgeInsets()
@@ -17,7 +18,7 @@ struct AppRootView: View {
         SwiftUI.Group {
             if authSession.isCheckingSession {
                 authenticationLoadingView
-            } else if authSession.isAuthenticated, store.firebaseUID == authSession.currentUserID {
+            } else if authSession.canEnterApp, store.firebaseUID == authSession.currentUserID {
                 authenticatedContent
                     .id(authSession.currentUserID)
             } else {
@@ -99,6 +100,7 @@ struct AppRootView: View {
                     onReplayTutorial: replayTutorial
                 )
             }
+            .id(settingsNavigationID)
             .opacity(tab == .settings ? 1 : 0)
             .allowsHitTesting(tab == .settings)
             .accessibilityHidden(tab != .settings)
@@ -111,6 +113,9 @@ struct AppRootView: View {
                 BombTabBar(selection: $tab)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .onChange(of: tab) { oldTab, _ in
+            if oldTab == .settings { settingsNavigationID = UUID() }
         }
         .onPreferenceChange(BombTabBarHiddenPreferenceKey.self) { hidden in
             withAnimation(.snappy) { isBombTabBarHidden = hidden }

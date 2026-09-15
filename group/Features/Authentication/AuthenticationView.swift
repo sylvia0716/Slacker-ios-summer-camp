@@ -195,14 +195,16 @@ struct AuthenticationView: View {
     }
 }
 
-private struct PasswordResetView: View {
+struct PasswordResetView: View {
+    let completionTitle: String
     let session: AuthSessionStore
     @Environment(\.dismiss) private var dismiss
     @State private var email: String
     @State private var isSent = false
     @FocusState private var isEmailFocused: Bool
 
-    init(session: AuthSessionStore, initialEmail: String) {
+    init(session: AuthSessionStore, initialEmail: String, completionTitle: String = "返回登入") {
+        self.completionTitle = completionTitle
         self.session = session
         _email = State(initialValue: initialEmail)
     }
@@ -220,7 +222,7 @@ private struct PasswordResetView: View {
                         .foregroundStyle(BombTheme.ink.opacity(0.65))
                         .multilineTextAlignment(.center)
 
-                    Button("返回登入") { dismiss() }
+                    Button(completionTitle) { dismiss() }
                         .font(.headline.weight(.black))
                         .foregroundStyle(BombTheme.yellow)
                         .frame(maxWidth: .infinity)
@@ -284,10 +286,12 @@ private struct PasswordResetView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
+                        .disabled(session.isWorking)
                 }
             }
         }
-        .presentationDetents([.medium])
+        .interactiveDismissDisabled(session.isWorking)
+        .presentationDetents([.medium, .large])
         .presentationBackground(BombTheme.paper)
         .onAppear {
             session.clearError()
