@@ -29,51 +29,57 @@ struct MemberProgressCard: View {
     @State private var previewDeliverable: Deliverable?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 12) {
-                header
-
-                HStack(alignment: .center, spacing: 10) {
-                    Text(member.currentTask)
-                        .font(.subheadline.weight(.black))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .layoutPriority(1)
-
-                    Spacer(minLength: 4)
-
-                    Text(member.status)
-                        .font(.caption2.weight(.black))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .foregroundStyle(BombTheme.ink)
-                        .background(BombTheme.yellow)
-                        .clipShape(.capsule)
-                        .fixedSize()
+        VStack(alignment: .leading, spacing: 16) {
+            Button(action: onToggleExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    Text(tasks.isEmpty ? "尚未指派任務" : "\(tasks.count) 項任務 · 已完成 \(tasks.filter(\.isCompleted).count) 項")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    GeometryReader { geometry in
+                        Capsule().fill(BombTheme.ink.opacity(0.12))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(BombTheme.ink)
+                                    .frame(width: geometry.size.width * Double(min(100, max(0, member.progress))) / 100)
+                            }
+                    }
+                    .frame(height: 3)
+                    .accessibilityLabel("任務進度")
+                    .accessibilityValue(tasks.isEmpty ? "尚未指派任務" : "\(member.progress)%")
                 }
-
-                ProgressView(value: Double(member.progress), total: 100)
-                    .tint(progressColor)
-                    .scaleEffect(y: 1.15)
-                    .padding(.horizontal, 4)
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onToggleExpanded)
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "收合\(member.name)的任務" : "展開\(member.name)的任務")
 
-            if member.showsNudge {
+            ForEach(tasks) { task in
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(task.title)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
+                        .strikethrough(task.isCompleted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if isExpanded {
+                        checklistSection(for: task)
+                        deliverableSection(for: task)
+                    }
+                }
+                if task.id != tasks.last?.id {
+                    Divider().overlay(BombTheme.ink.opacity(0.2))
+                }
+            }
+
+            if member.showsNudge && !isCurrentUser {
                 HStack {
                     Spacer()
                     PokeActionButton(onPoke: onPoke)
                 }
             }
-
-            if isExpanded {
-                Divider().overlay(BombTheme.ink)
-                expandedContent
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
-        .comicCard()
+        .foregroundStyle(BombTheme.ink)
+        .padding(16)
+        .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
         .animation(.snappy, value: isExpanded)
         .sheet(item: $uploadTask) { task in
             DeliverableSubmissionSheet(task: task) { deliverable in
@@ -87,138 +93,101 @@ struct MemberProgressCard: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             avatar
-            VStack(alignment: .leading, spacing: 3) {
-                Text(member.name).font(.system(.headline, design: .rounded, weight: .black))
-                Text(member.role).font(.caption.weight(.bold)).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            Text("\(member.progress)%").font(.system(.title3, design: .rounded, weight: .black))
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.black))
-                .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                .accessibilityLabel(isExpanded ? "收合成員任務" : "展開成員任務")
+            Text("\(Text(member.name).font(.system(.title2, design: .rounded, weight: .black))) \(roleLabel)")
+                .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(tasks.isEmpty ? "—" : "\(member.progress)%")
+                .font(.system(.title2, design: .rounded, weight: .black))
+                .monospacedDigit()
+                .fixedSize()
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.subheadline.weight(.black))
         }
     }
 
-    private var expandedContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if tasks.isEmpty {
-                Text("尚未指派任務").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
-            } else {
-                ForEach(tasks) { task in
-                    VStack(alignment: .leading, spacing: 14) {
-                        checklistSection(for: task)
-
-                        Divider().overlay(BombTheme.ink.opacity(0.45))
-                        deliverableSection(for: task)
-                    }
-                    if task.id != tasks.last?.id { Divider().overlay(BombTheme.ink.opacity(0.45)) }
-                }
-            }
-        }
-    }
-
-    private func checklistSection(for task: ProjectTask) -> some View {
-        let pendingSubtasks = task.subtasks.filter { !$0.isComplete }
-        let completedSubtasks = task.subtasks.filter(\.isComplete)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("今日目標（待完成）")
-                    .font(.subheadline.weight(.black))
-
-                if pendingSubtasks.isEmpty {
-                    Text("今日目標已完成")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(pendingSubtasks) { subtask in
-                        if isCurrentUser {
-                            Button {
-                                onToggleSubtask(task.id, subtask.id)
-                            } label: {
-                                checklistRow(subtask, isInteractive: true)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            checklistRow(subtask, isInteractive: false)
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("已完成事項")
-                    .font(.subheadline.weight(.black))
-
-                if completedSubtasks.isEmpty {
-                    Text("尚無完成紀錄")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(completedSubtasks) { subtask in
-                        checklistRow(subtask, isInteractive: false)
-                    }
-                }
-            }
-
-            Text("已完成 \(completedSubtasks.count) / \(task.subtasks.count)")
-                .font(.caption.weight(.black))
-        }
-    }
-
-    private func checklistRow(_ subtask: Subtask, isInteractive: Bool) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: subtask.isComplete ? "checkmark.square.fill" : "square")
-                .font(.body.weight(.bold))
-                .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink)
-            Text(subtask.title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
-                .strikethrough(subtask.isComplete)
-            Spacer(minLength: 4)
-            if isInteractive {
-                Text("勾選")
-                    .font(.caption2.weight(.black))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .contentShape(Rectangle())
-        .accessibilityHint(isInteractive ? "標記這項工作為完成" : "唯讀")
+    private var roleLabel: Text {
+        let label = member.role == MemberRole.leader.title
+            ? Text(Image(systemName: "crown.fill"))
+            : Text(member.role)
+        return label
+            .font(.subheadline.weight(.bold))
+            .foregroundColor(.secondary)
+            .baselineOffset(2)
     }
 
     @ViewBuilder
-    private func deliverableSection(for task: ProjectTask) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("成果證明").font(.subheadline.weight(.black))
-            if let deliverable = task.deliverable {
-                HStack(alignment: .top, spacing: 12) {
-                    AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
-                                           localPreview: { previewDeliverable = deliverable }) {
-                        deliverableThumbnail(deliverable, taskID: task.id)
+    private func checklistSection(for task: ProjectTask) -> some View {
+        if !task.subtasks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("子任務 \(task.subtasks.filter(\.isComplete).count)/\(task.subtasks.count)")
+                    .font(.subheadline.weight(.black))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(BombTheme.yellow, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(BombTheme.ink).frame(height: 2)
                     }
-                    .buttonStyle(.plain)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(deliverable.title).font(.subheadline.weight(.black))
-                        if !deliverable.detail.isEmpty {
-                            Text(deliverable.detail).font(.caption).foregroundStyle(.secondary)
+                ForEach(task.subtasks) { subtask in
+                    if isCurrentUser {
+                        Button { onToggleSubtask(task.id, subtask.id) } label: {
+                            checklistRow(subtask)
                         }
-                        Text(deliverable.submittedAt.formatted(date: .abbreviated, time: .shortened))
-                            .font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .disabled(model.pendingTaskUpdates.contains(task.id))
+                        .accessibilityValue(subtask.isComplete ? "已完成" : "未完成")
+                        .accessibilityHint("切換子任務完成狀態")
+                    } else {
+                        checklistRow(subtask)
                     }
+                }
+            }
+        }
+    }
+
+    private func checklistRow(_ subtask: Subtask) -> some View {
+        Text(subtask.title)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
+            .strikethrough(subtask.isComplete)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+
+    private func deliverableSection(for task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("成果附件").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+            if let deliverable = task.deliverable {
+                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
+                                       localPreview: { previewDeliverable = deliverable }) {
+                    HStack(spacing: 12) {
+                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: deliverable)
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(deliverable.originalFilename ?? deliverable.title)
+                                .font(.subheadline.weight(.black))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(deliverable.submittedAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.footnote.weight(.bold)).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.title3.weight(.bold))
+                    }
+                    .padding(10)
+                    .background(BombTheme.paper.mix(with: .white, by: 0.25), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(BombTheme.ink.opacity(0.12), lineWidth: 1))
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
-                Text("尚未上傳成果").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Text("尚未上傳成果").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
             }
-
             if isCurrentUser {
                 Button { uploadTask = task } label: {
                     Text(task.deliverable == nil ? "＋ 上傳成果" : "更換成果")
-                        .font(.caption.weight(.black))
+                        .font(.subheadline.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(BombTheme.ink).clipShape(.capsule)
@@ -234,67 +203,67 @@ struct MemberProgressCard: View {
         let isFullyConfirmed = !groupMemberIDs.isEmpty && confirmedCount == groupMemberIDs.count
         let hasCurrentUserConfirmed = confirmedIDs.contains(currentUserID)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            Label("已確認", systemImage: "person.2.fill")
-                .font(.caption.weight(.black))
-
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                ForEach(groupMemberIDs, id: \.self) { memberID in
-                    Circle()
-                        .fill(confirmedIDs.contains(memberID) ? BombTheme.ink : Color.clear)
-                        .frame(width: 13, height: 13)
-                        .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
-                        .accessibilityLabel(confirmedIDs.contains(memberID) ? "已確認" : "尚未確認")
-                }
+                Text("成員確認").foregroundStyle(BombTheme.ink)
+                Text("\(confirmedCount)/\(groupMemberIDs.count)").foregroundStyle(.secondary)
             }
-
-            if isFullyConfirmed {
-                Label("全部組員已確認", systemImage: "checkmark.circle.fill")
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(BombTheme.green)
-            } else {
-                Text("\(confirmedCount) / \(groupMemberIDs.count) 位組員已確認")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-
-                if !hasCurrentUserConfirmed {
-                    Button { onConfirmDeliverable(task.id) } label: {
-                        Label("我已確認", systemImage: "checkmark")
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(BombTheme.ink)
-                            .clipShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(model.pendingTaskUpdates.contains(task.id))
+            .font(.subheadline.weight(.black))
+            ViewThatFits(in: .horizontal) {
+                confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
+                ScrollView(.horizontal) {
+                    confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
                 }
+                .scrollIndicators(.hidden)
+            }
+            if !hasCurrentUserConfirmed && groupMemberIDs.contains(currentUserID) {
+                Button { onConfirmDeliverable(task.id) } label: {
+                    Text("確認這項成果")
+                        .font(.subheadline.weight(.black))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.pendingTaskUpdates.contains(task.id))
             }
         }
-        .padding(.top, 2)
     }
 
-    private func deliverableThumbnail(_ deliverable: Deliverable, taskID: UUID) -> some View {
-        AttachmentPhotoThumbnail(model: model, taskID: taskID, deliverable: deliverable)
-        .frame(width: 92, height: 82)
-        .background(.white.opacity(0.55))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(BombTheme.ink, lineWidth: 2))
-        .clipped()
+    private func confirmationAvatars(confirmedIDs: Set<UUID>, isFullyConfirmed: Bool) -> some View {
+        HStack(spacing: 7) {
+            ForEach(groupMemberIDs, id: \.self) { id in
+                let confirmed = confirmedIDs.contains(id)
+                let name = model.members.first(where: { $0.id == id })?.name ?? "成員"
+                Circle()
+                    .fill(confirmed ? BombTheme.ink : Color(uiColor: .systemGray4))
+                    .frame(width: 32, height: 32)
+                    .overlay {
+                        if confirmed {
+                            Text(String(name.prefix(1)).uppercased())
+                                .font(.subheadline.weight(.black))
+                                .foregroundStyle(BombTheme.yellow)
+                        }
+                    }
+                    .accessibilityLabel("\(name)：\(confirmed ? "已確認" : "尚未確認")")
+            }
+            Text(isFullyConfirmed ? "已全部確認" : "待確認")
+                .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                .fixedSize()
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var avatar: some View {
-        ZStack {
-            Circle().fill(BombTheme.ink)
-            Text(String(member.name.prefix(1)).uppercased()).font(.title3.weight(.black)).foregroundStyle(BombTheme.yellow)
-        }
-        .frame(width: 50, height: 50)
-        .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
-        .accessibilityHidden(true)
+        Circle().fill(BombTheme.ink)
+            .frame(width: 50, height: 50)
+            .overlay {
+                Text(String(member.name.prefix(1)).uppercased())
+                    .font(.title2.weight(.black)).foregroundStyle(BombTheme.yellow)
+            }
+            .accessibilityHidden(true)
     }
-
-    private var progressColor: Color { member.showsNudge ? BombTheme.red : BombTheme.ink }
 }
 
 private struct PokeActionButton: View {
@@ -313,7 +282,7 @@ private struct PokeActionButton: View {
     var body: some View {
         ZStack {
             Label(isCoolingDown ? "讓他喘口氣" : "戳一下", systemImage: "hand.tap.fill")
-                .font(.caption.weight(.black))
+                .font(.subheadline.weight(.black))
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
                 .foregroundStyle(.white)
@@ -370,6 +339,7 @@ private struct PokeActionButton: View {
                 .opacity(showsExplosion ? 1 : 0)
                 .allowsHitTesting(false)
         }
+        .frame(height: 38)
         .animation(.bouncy, value: showsBomb)
         .animation(.snappy, value: showsExplosion)
         .sensoryFeedback(.impact(weight: .light), trigger: lightFeedbackID)

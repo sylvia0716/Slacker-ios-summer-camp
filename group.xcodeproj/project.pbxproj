@@ -523,16 +523,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F100000B000000000000000B /* FirebaseAppCheck */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAppCheck;
-		};
-		F100000D000000000000000D /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
-		};
 		F10000020000000000000002 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
@@ -552,6 +542,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		F100000B000000000000000B /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		F100000D000000000000000D /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

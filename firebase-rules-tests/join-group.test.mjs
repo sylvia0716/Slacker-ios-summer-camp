@@ -109,7 +109,17 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await testEnv.clearFirestore();
+  // Background Firestore triggers may still hold a transaction from the prior test.
+  // Retry only this emulator cleanup conflict; assertion failures are never retried.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await testEnv.clearFirestore();
+      break;
+    } catch (error) {
+      if (attempt >= 4 || !String(error).includes('Transaction lock timeout')) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
   await seedData();
 });
 

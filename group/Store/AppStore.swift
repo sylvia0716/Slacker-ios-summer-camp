@@ -140,6 +140,7 @@ final class AppStore {
     @ObservationIgnored private var attachmentRepository: AttachmentRepository?
     @ObservationIgnored private var progressSubscriptions: [UUID: GroupProgressSubscription] = [:]
     private(set) var pendingTaskUpdates: Set<UUID> = []
+    private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
@@ -957,6 +958,9 @@ final class AppStore {
         userName = ""
         lastEvent = ""
         firebaseUID = uid
+        if let uid, Auth.auth().currentUser?.uid == uid {
+            profileName = Auth.auth().currentUser?.displayName ?? ""
+        }
         currentUserID = uid.map(FirebaseMemberIdentity.uiID(for:))
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         publishWidgetSnapshot()
@@ -1115,6 +1119,22 @@ final class AppStore {
         UserDefaults.standard.set(data, forKey: Self.savedChatItemsKey)
     }
 
+    func saveProfileNickname(_ value: String) async throws {
+        guard !isSavingNickname else { return }
+        if dataMode != .live {
+            profileName = try ProfileNicknameRepository.normalized(value)
+            return
+        }
+        guard let uid = firebaseUID, Auth.auth().currentUser?.uid == uid else { throw NicknameError.signedOut }
+        isSavingNickname = true
+        defer { isSavingNickname = false }
+        let name = try await ProfileNicknameRepository.firebase().save(value, groupIDs: groups.compactMap(\.firestoreDocumentID))
+        guard firebaseUID == uid else { throw NicknameError.accountChanged }
+        profileName = name
+        userName = name
+        if let index = members.firstIndex(where: { $0.firebaseUID == uid }) { members[index].name = name }
+    }
+
     private func sendTaskUpdate(taskID: UUID, action: String, subtaskID: String? = nil,
                                 isComplete: Bool? = nil, attachmentID: String? = nil) {
         guard let uid = firebaseUID, !pendingTaskUpdates.contains(taskID),
@@ -1165,6 +1185,7 @@ final class AppStore {
                 for member in loaded.members {
                     if let i = self.members.firstIndex(where: { $0.id == member.id }) { self.members[i] = member }
                     else { self.members.append(member) }
+                    if member.id == self.currentUserID { self.userName = member.name }
                 }
                 self.projectTasks.removeAll { $0.groupID == group.id }
                 self.projectTasks.append(contentsOf: loaded.tasks)
@@ -1276,7 +1297,10 @@ final class AppStore {
             var result = Deliverable(attachment: attachment)
             if task.confirmedAttachmentID == attachment.id {
                 result.confirmedMemberIDs = task.confirmedMemberUIDs.map(FirebaseMemberIdentity.uiID(for:))
-                result.isApproved = task.status == .completed
+                let memberIDs = groups.first(where: { $0.id == task.groupID })?.memberIDs ?? []
+                result.isApproved = task.status == .completed && !memberIDs.isEmpty
+                    && memberIDs.allSatisfy { result.confirmedMemberIDs.contains($0) }
+                    && task.subtasks.allSatisfy(\.isComplete)
             }
             return result
         }
