@@ -64,9 +64,10 @@ struct GroupDetailView: View {
                                 } label: {
                                     Label(isLeaving ? "退出中…" : "退出群組", systemImage: "rectangle.portrait.and.arrow.right")
                                         .font(.headline.weight(.black))
-                                        .foregroundStyle(BombTheme.ink)
+                                        .foregroundStyle(BombTheme.paper)
                                         .frame(width: (proxy.size.width - 32) * 0.6, height: 52)
-                                        .background(BombTheme.red, in: RoundedRectangle(cornerRadius: 14))
+                                        .background(BombTheme.red, in: Capsule())
+                                        .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                                 }
                                 .buttonStyle(.plain)
                                 .frame(maxWidth: .infinity, alignment: .center)

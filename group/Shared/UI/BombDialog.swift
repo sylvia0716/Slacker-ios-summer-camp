@@ -66,12 +66,12 @@ private struct BombDialogButtonStyle: PrimitiveButtonStyle {
         } label: {
             configuration.label
                 .font(.headline.weight(.black))
-                .foregroundStyle(BombTheme.ink)
+                .foregroundStyle(configuration.role == .destructive && destructiveIsRed ? BombTheme.paper : BombTheme.ink)
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .padding(.horizontal, 12)
-                .background(background(for: configuration.role), in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
-                .contentShape(RoundedRectangle(cornerRadius: 14))
+                .background(background(for: configuration.role), in: Capsule())
+                .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
