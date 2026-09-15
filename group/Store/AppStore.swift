@@ -725,8 +725,10 @@ final class AppStore {
     /// 在群組內提醒進度較慢的成員，並以本機系統通知模擬送達被戳隊員。
     @discardableResult
     func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) -> Int? {
-        guard let group = groups.first(where: { $0.id == groupID }), group.memberIDs.contains(memberID),
-              let member = members.first(where: { $0.id == memberID }) else { return nil }
+        guard memberID != currentUserID,
+              let group = groups.first(where: { $0.id == groupID }), group.memberIDs.contains(memberID),
+              let member = members.first(where: { $0.id == memberID }),
+              memberProgress(for: memberID, in: groupID) <= 90 else { return nil }
         lastEvent = "用「\(style.rawValue)」戳了 \(member.name)"
 
         let key = PokeCountKey(groupID: groupID, memberID: memberID)

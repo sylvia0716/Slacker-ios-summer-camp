@@ -22,6 +22,9 @@ struct GroupDetailView: View {
     @State private var showsNameSheet = false
     @State private var nameDraft = ""
     @State private var nameError: String?
+    @State private var pokeEffect: PokeVisualEffect?
+    @State private var pokeEffectLift: CGFloat = 0
+    @State private var pokeEffectMemberID: String?
 
     init(
         group: Group,
@@ -47,7 +50,6 @@ struct GroupDetailView: View {
 
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 18) {
-                                topBar
                                 if shouldShowContinueReviewBanner(now: context.date) {
                                     continueReviewBanner(now: context.date)
                                 }
@@ -179,10 +181,29 @@ struct GroupDetailView: View {
                 .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
                 .animation(.snappy, value: shouldShowSuccessMeme(now: context.date))
             }
-            .toolbar(isBlockingOverlayVisible(now: context.date) ? .hidden : .automatic, for: .tabBar)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            topBar
+        }
+        .overlayPreferenceValue(PokeButtonAnchorKey.self) { anchors in
+            GeometryReader { proxy in
+                if let pokeEffect,
+                   let pokeEffectMemberID,
+                   let anchor = anchors[pokeEffectMemberID] {
+                    let buttonFrame = proxy[anchor]
+                    Text(pokeEffect.symbol)
+                        .font(.system(size: pokeEffect.size))
+                        .position(x: buttonFrame.midX, y: buttonFrame.midY)
+                        .offset(y: pokeEffectLift)
+                        .scaleEffect(pokeEffectLift == 0 ? 0.15 : 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .zIndex(100)
+        }
+        .animation(.bouncy, value: pokeEffectLift)
         .onAppear { deadlineDraft = currentGroup.deadline }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
@@ -209,44 +230,36 @@ struct GroupDetailView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Label("返回", systemImage: "chevron.left")
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .padding(.vertical, 8)
+        BombHeader(title: "專案任務", subtitle: currentGroup.name) {
+            Button(action: dismiss.callAsFunction) {
+                Image(systemName: "chevron.left")
             }
-            .buttonStyle(.plain)
-
-            Spacer()
-
+            .buttonStyle(BombHeaderButtonStyle())
+            .accessibilityLabel("返回群組")
+        } trailing: {
+            HStack(spacing: 8) {
 #if DEBUG
-            debugMenu
+                debugMenu
 #endif
-
-            NavigationLink {
-                ChatRoomView(model: model, group: currentGroup, tutorialStep: tutorialStep)
-            } label: {
-                Label("聊天室", systemImage: "bubble.left.and.bubble.right.fill")
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .tutorialTarget(
-                .chatButton,
-                enabled: tutorialStep?.wrappedValue == .chatEntry
-            )
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    if tutorialStep?.wrappedValue == .chatEntry {
-                        tutorialStep?.wrappedValue = .aiChat
-                    }
+                NavigationLink {
+                    ChatRoomView(model: model, group: currentGroup, tutorialStep: tutorialStep)
+                } label: {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
                 }
-            )
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("聊天室")
+                .tutorialTarget(
+                    .chatButton,
+                    enabled: tutorialStep?.wrappedValue == .chatEntry
+                )
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        if tutorialStep?.wrappedValue == .chatEntry {
+                            tutorialStep?.wrappedValue = .aiChat
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -702,7 +715,8 @@ struct GroupDetailView: View {
                     },
                     onPoke: { style in
                         model.poke(memberID: member.id, in: group.id, style: style)
-                    }
+                    },
+                    onPokeEffect: showPokeEffect
                 )
                 .tutorialTarget(
                     .memberProgress,
@@ -715,7 +729,21 @@ struct GroupDetailView: View {
 
     private var groupMembers: [Member] {
         currentGroup.memberIDs.compactMap { memberID in
-            model.members.first(where: { $0.id == memberID })
+            guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
+            member.role = currentGroup.memberRoles[memberID] ?? member.role
+            return member
+        }
+    }
+
+    private func showPokeEffect(for memberID: String, effect: PokeVisualEffect?) {
+        pokeEffect = effect
+        pokeEffectLift = 0
+        pokeEffectMemberID = effect == nil ? nil : memberID
+
+        guard effect != nil else { return }
+        Task {
+            await Task.yield()
+            pokeEffectLift = -72
         }
     }
 
@@ -762,7 +790,7 @@ struct GroupDetailView: View {
             progress: progress,
             currentTask: currentTask?.title ?? "尚未指派任務",
             status: currentTask?.status.title ?? "待命",
-            showsNudge: currentTask != nil && progress < 50
+            showsNudge: member.id != model.currentUserID && progress <= 90
         )
     }
 
@@ -1208,7 +1236,7 @@ private struct MemeCaption: View {
 }
 
 private struct GroupDetailPreview: View {
-    @State private var model = AppStore()
+    @State private var model = AppStore(dataMode: .demo)
 
     var body: some View {
         NavigationStack {

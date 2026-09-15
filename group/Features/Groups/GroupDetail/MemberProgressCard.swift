@@ -11,6 +11,25 @@ struct MemberProgressPreviewItem: Identifiable {
     let showsNudge: Bool
 }
 
+enum PokeVisualEffect {
+    case bomb
+    case explosion
+
+    var symbol: String { self == .bomb ? "💣" : "💥" }
+    var size: CGFloat { self == .bomb ? 52 : 62 }
+}
+
+struct PokeButtonAnchorKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+
+    static func reduce(
+        value: inout [String: Anchor<CGRect>],
+        nextValue: () -> [String: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
 struct MemberProgressCard: View {
     let member: MemberProgressPreviewItem
     let tasks: [ProjectTask]
@@ -23,6 +42,7 @@ struct MemberProgressCard: View {
     let onToggleSubtask: (UUID, UUID) -> Void
     let onConfirmDeliverable: (UUID) -> Void
     let onPoke: (PokeStyle) -> Int?
+    let onPokeEffect: (String, PokeVisualEffect?) -> Void
 
     @State private var uploadTask: ProjectTask?
     @State private var previewDeliverable: Deliverable?
@@ -59,13 +79,6 @@ struct MemberProgressCard: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: onToggleExpanded)
 
-            if member.showsNudge {
-                HStack {
-                    Spacer()
-                    PokeActionButton(onPoke: onPoke)
-                }
-            }
-
             if isExpanded {
                 Divider().overlay(BombTheme.ink)
                 expandedContent
@@ -93,6 +106,15 @@ struct MemberProgressCard: View {
                 Text(member.role).font(.caption.weight(.bold)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
+            if member.showsNudge {
+                PokeActionButton(
+                    onPoke: onPoke,
+                    onPokeEffect: { onPokeEffect(member.id, $0) }
+                )
+                .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
+                    [member.id: $0]
+                }
+            }
             Text("\(member.progress)%").font(.system(.title3, design: .rounded, weight: .black))
             Image(systemName: "chevron.down")
                 .font(.caption.weight(.black))
@@ -303,12 +325,11 @@ struct MemberProgressCard: View {
 
 private struct PokeActionButton: View {
     let onPoke: (PokeStyle) -> Int?
+    let onPokeEffect: (PokeVisualEffect?) -> Void
 
     @State private var isCharging = false
     @State private var suppressNextTap = false
     @State private var hasChargedBomb = false
-    @State private var showsBomb = false
-    @State private var showsExplosion = false
     @State private var isCoolingDown = false
     @State private var showsLimitAlert = false
     @State private var lightFeedbackID = 0
@@ -316,66 +337,56 @@ private struct PokeActionButton: View {
 
     var body: some View {
         ZStack {
-            Label(isCoolingDown ? "讓他喘口氣" : "戳一下", systemImage: "hand.tap.fill")
-                .font(.caption.weight(.black))
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
+            Image(systemName: "hand.tap.fill")
+                .font(.subheadline.weight(.black))
                 .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
                 .background(BombTheme.ink)
-                .clipShape(.capsule)
+                .clipShape(.circle)
                 .scaleEffect(isCharging ? 0.92 : 1)
                 .rotationEffect(.degrees(isCharging ? 2 : 0))
                 .animation(
                     isCharging ? .easeInOut(duration: 0.12).repeatForever(autoreverses: true) : .snappy,
                     value: isCharging
                 )
-                .contentShape(.capsule)
+                .contentShape(.circle)
                 .onTapGesture {
                     guard !suppressNextTap, !isCoolingDown else { return }
-                    sendPoke(style: .gentle, isBombPoke: false)
+                    _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
                 .onLongPressGesture(minimumDuration: 0.6) {
                     guard !isCoolingDown else { return }
                     suppressNextTap = true
+                    guard sendPoke(style: .alarm, isBombPoke: true) else {
+                        suppressNextTap = false
+                        return
+                    }
                     hasChargedBomb = true
-                    sendPoke(style: .alarm, isBombPoke: true)
+                    showPokeEffect(.bomb)
                 } onPressingChanged: { isPressing in
                     guard !isCoolingDown else { return }
                     isCharging = isPressing
 
                     guard !isPressing, hasChargedBomb else { return }
                     hasChargedBomb = false
-                    showsBomb = false
-                    showsExplosion = true
+                    showPokeEffect(.explosion)
 
                     Task {
                         try? await Task.sleep(for: .seconds(0.6))
-                        showsExplosion = false
+                        onPokeEffect(nil)
                         suppressNextTap = false
                     }
                 }
                 .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(isCoolingDown ? "讓他喘口氣" : "戳一下")
+                .accessibilityHint("長按可發送加強提醒")
                 .accessibilityAction {
                     guard !isCoolingDown else { return }
-                    sendPoke(style: .gentle, isBombPoke: false)
+                    _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
 
-            Text("💣")
-                .font(.system(size: 52))
-                .offset(y: -58)
-                .scaleEffect(showsBomb ? 1 : 0.1)
-                .opacity(showsBomb ? 1 : 0)
-                .allowsHitTesting(false)
-
-            Text("💥")
-                .font(.system(size: 62))
-                .offset(y: -58)
-                .scaleEffect(showsExplosion ? 1 : 0.1)
-                .opacity(showsExplosion ? 1 : 0)
-                .allowsHitTesting(false)
         }
-        .animation(.bouncy, value: showsBomb)
-        .animation(.snappy, value: showsExplosion)
+        .frame(width: 34, height: 34)
         .sensoryFeedback(.impact(weight: .light), trigger: lightFeedbackID)
         .sensoryFeedback(.impact(weight: .heavy), trigger: heavyFeedbackID)
         .alert("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
@@ -383,12 +394,11 @@ private struct PokeActionButton: View {
         }
     }
 
-    private func sendPoke(style: PokeStyle, isBombPoke: Bool) {
-        guard let pokeCount = onPoke(style) else { return }
+    private func sendPoke(style: PokeStyle, isBombPoke: Bool) -> Bool {
+        guard let pokeCount = onPoke(style) else { return false }
 
         if isBombPoke {
             heavyFeedbackID += 1
-            showsBomb = true
         } else {
             lightFeedbackID += 1
         }
@@ -401,7 +411,13 @@ private struct PokeActionButton: View {
                 isCoolingDown = false
             }
         }
+        return true
     }
+
+    private func showPokeEffect(_ effect: PokeVisualEffect) {
+        onPokeEffect(effect)
+    }
+
 }
 private struct DeliverablePhotoPreview: View {
     @Environment(\.dismiss) private var dismiss
