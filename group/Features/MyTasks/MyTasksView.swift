@@ -177,7 +177,11 @@ private struct ProgressDial: View, Animatable {
 
             for marker in [0, 100] {
                 let angle = startAngle + sweep * Double(marker) / 100
-                let location = point(center: center, radius: radius + 22, angle: angle)
+                let endpoint = point(center: center, radius: radius, angle: angle)
+                let location = CGPoint(
+                    x: min(max(endpoint.x, 18), size.width - 18),
+                    y: endpoint.y + 22
+                )
                 context.draw(
                     Text("\(marker)")
                         .font(.caption2.weight(.bold))
