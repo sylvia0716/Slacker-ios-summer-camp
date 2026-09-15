@@ -66,7 +66,9 @@ struct AppRootView: View {
                 if tab != .groups { hidden = false }
             }
 
-            NavigationStack { MyTasksView(model: store) }
+            NavigationStack {
+                MyTasksView(model: store, isSelected: tab == .myTasks)
+            }
                 .opacity(tab == .myTasks ? 1 : 0)
                 .allowsHitTesting(tab == .myTasks)
                 .accessibilityHidden(tab != .myTasks)

@@ -41,8 +41,6 @@ struct ProjectTask: Identifiable, Hashable {
     var createdByMemberID: UUID? = nil
     /// 任務建立時間。
     var createdAt: Date = .now
-    /// 任務目前狀態。
-    var status: ProjectTaskStatus = .pending
     var firestoreDocumentID: String? = nil
     var firestoreGroupID: String? = nil
 
@@ -59,8 +57,8 @@ struct ProjectTask: Identifiable, Hashable {
         progress == 100
     }
 
-    /// 畫面使用的任務狀態以子任務進度為唯一來源，避免舊資料狀態不同步。
-    var lifecycleStatus: ProjectTaskStatus {
+    /// 任務狀態以子任務進度為唯一來源，避免儲存值與畫面狀態不同步。
+    var status: ProjectTaskStatus {
         isCompleted ? .completed : .inProgress
     }
 }

@@ -53,7 +53,28 @@ final class GroupRepository {
                           name: data.displayName?.isEmpty == false ? data.displayName! : "組員",
                           role: data.role, avatarSymbol: data.avatarSymbol ?? "person.fill", firebaseUID: data.userID)
         }
-        let byUID = Dictionary(uniqueKeysWithValues: members.map { ($0.firebaseUID!, $0.id) })
+        let tasks = try mapTasks(
+            groupID: summary.id,
+            pathID: summary.pathID,
+            documents: taskDocuments,
+            members: members
+        )
+        let group = Group(id: summary.id, name: summary.name, deadline: summary.deadline,
+                          memberIDs: members.map(\.id), taskIDs: tasks.map(\.id), inviteCode: summary.inviteCode,
+                          firestoreDocumentID: summary.pathID,
+                          memberRoles: Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0.role) }))
+        return LoadedCloudGroup(group: group, members: members, tasks: tasks)
+    }
+
+    static func mapTasks(
+        groupID: UUID,
+        pathID: String,
+        documents taskDocuments: [CloudDocument<CloudTaskDocument>],
+        members: [Member]
+    ) throws -> [ProjectTask] {
+        let byUID = Dictionary(uniqueKeysWithValues: members.compactMap { member in
+            member.firebaseUID.map { ($0, member.id) }
+        })
         func memberID(_ uid: String?) throws -> UUID? {
             guard let uid else { return nil }
             guard let id = byUID[uid] else { throw GroupLoadError.invalidData }
@@ -62,23 +83,19 @@ final class GroupRepository {
         let tasks = try taskDocuments.map { document in
             let data = document.value
             guard let id = UUID(uuidString: document.id),
-                  data.groupID == nil || data.groupID == summary.pathID,
+                  data.groupID == nil || data.groupID == pathID,
                   !data.title.isEmpty, (data.weight ?? 1) > 0 else { throw GroupLoadError.invalidData }
             let subtasks = data.subtasks ?? []
             guard Set(subtasks.map(\.id)).count == subtasks.count,
                   subtasks.allSatisfy({ $0.weight > 0 }) else { throw GroupLoadError.invalidData }
-            return ProjectTask(id: id, groupID: summary.id, title: data.title, detail: data.detail ?? "",
+            return ProjectTask(id: id, groupID: groupID, title: data.title, detail: data.detail ?? "",
                                weight: data.weight ?? 1, ownerMemberID: try memberID(data.ownerMemberID),
-                               subtasks: subtasks, deliverable: nil, deadline: data.deadline ?? summary.deadline,
+                               subtasks: subtasks, deliverable: nil, deadline: data.deadline ?? .distantFuture,
                                createdByMemberID: try memberID(data.createdByMemberID),
-                               createdAt: data.createdAt ?? .distantPast, status: data.status ?? .pending,
-                               firestoreDocumentID: document.id, firestoreGroupID: summary.pathID)
+                               createdAt: data.createdAt ?? .distantPast,
+                               firestoreDocumentID: document.id, firestoreGroupID: pathID)
         }
         guard Set(tasks.map(\.id)).count == tasks.count else { throw GroupLoadError.invalidData }
-        let group = Group(id: summary.id, name: summary.name, deadline: summary.deadline,
-                          memberIDs: members.map(\.id), taskIDs: tasks.map(\.id), inviteCode: summary.inviteCode,
-                          firestoreDocumentID: summary.pathID,
-                          memberRoles: Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0.role) }))
-        return LoadedCloudGroup(group: group, members: members, tasks: tasks)
+        return tasks
     }
 }

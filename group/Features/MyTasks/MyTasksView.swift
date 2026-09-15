@@ -3,20 +3,36 @@ import SwiftUI
 /// Second tab: aggregates the current user's tasks and opens task delivery details.
 struct MyTasksView: View {
     let model: GroupBombModel
+    let isSelected: Bool
     @State private var showCompleted = false
+
+    init(model: GroupBombModel, isSelected: Bool = true) {
+        self.model = model
+        self.isSelected = isSelected
+    }
 
     private var pendingTasks: [ProjectTask] {
         model.projectTasks.filter {
             $0.ownerMemberID == model.currentUserID && !$0.isCompleted
         }
+        .sorted(by: deadlineAscending)
+    }
+
+    private var completedTasks: [ProjectTask] {
+        model.projectTasks.filter {
+            $0.ownerMemberID == model.currentUserID && $0.isCompleted
+        }
+        .sorted(by: deadlineAscending)
     }
 
     private var visibleTasks: [ProjectTask] {
-        showCompleted
-            ? model.projectTasks.filter {
-                $0.ownerMemberID == model.currentUserID && $0.isCompleted
-            }
-            : pendingTasks
+        showCompleted ? completedTasks : pendingTasks
+    }
+
+    private func deadlineAscending(_ lhs: ProjectTask, _ rhs: ProjectTask) -> Bool {
+        if lhs.deadline != rhs.deadline { return lhs.deadline < rhs.deadline }
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     var body: some View {
@@ -25,7 +41,11 @@ struct MyTasksView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if !pendingTasks.isEmpty {
-                        TaskProgressDashboard(progress: personalProgress)
+                        TaskProgressDashboard(progress: personalProgress, isActive: isSelected)
+                    }
+
+                    if model.cloudGroupSyncErrorMessage != nil && !model.projectTasks.isEmpty {
+                        staleTasksBanner
                     }
 
                     Picker("任務狀態", selection: $showCompleted) {
@@ -35,7 +55,26 @@ struct MyTasksView: View {
                     .pickerStyle(.segmented)
                     .tint(.white)
 
-                    if visibleTasks.isEmpty {
+                    if model.isLoadingCloudGroups && model.projectTasks.isEmpty {
+                        ProgressView("正在同步任務…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 42)
+                    } else if let syncError = model.cloudGroupSyncErrorMessage,
+                              model.projectTasks.isEmpty {
+                        ContentUnavailableView {
+                            Label("無法載入任務", systemImage: "exclamationmark.triangle.fill")
+                        } description: {
+                            Text(syncError)
+                        } actions: {
+                            Button("重新整理") {
+                                Task { await model.reloadCloudGroups() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(BombTheme.ink)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 42)
+                    } else if visibleTasks.isEmpty {
                         ContentUnavailableView(
                             showCompleted ? "還沒有完成任務" : "目前沒有待完成任務",
                             systemImage: showCompleted ? "checkmark.seal.fill" : "bolt.fill"
@@ -48,7 +87,7 @@ struct MyTasksView: View {
                             NavigationLink {
                                 MyTaskDetailView(model: model, taskID: task.id)
                             } label: {
-                                MyTaskCard(task: task, groupName: group?.name ?? "", deadline: group?.deadline)
+                                MyTaskCard(task: task, groupName: group?.name ?? "")
                             }
                             .buttonStyle(.plain)
                         }
@@ -73,15 +112,32 @@ struct MyTasksView: View {
         }
     }
 
+    private var staleTasksBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("任務同步失敗，顯示上次同步資料")
+                .font(.subheadline.weight(.bold))
+            Spacer(minLength: 8)
+            Button("重試") {
+                Task { await model.reloadCloudGroups() }
+            }
+            .font(.subheadline.weight(.black))
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(12)
+        .background(.white.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private var personalProgress: Int {
-        guard let group = model.groups.first else { return 0 }
-        return model.memberProgress(for: model.currentUserID, in: group.id)
+        model.overallMemberProgress(for: model.currentUserID)
     }
 }
 
 /// 半圓進度儀表板由新版子任務完成比例驅動，不再建立第二份進度資料。
 private struct TaskProgressDashboard: View {
     let progress: Int
+    let isActive: Bool
     @State private var animatedProgress = 0.0
     @State private var animationTask: Task<Void, Never>?
 
@@ -108,15 +164,31 @@ private struct TaskProgressDashboard: View {
         }
         .frame(height: 260)
         .onAppear {
-            animateProgress(fromZero: true)
+            if isActive { animateProgress(fromZero: true) }
         }
         .onDisappear {
-            animationTask?.cancel()
-            animatedProgress = 0
+            resetAnimation()
+        }
+        .onChange(of: isActive) { _, isActive in
+            if isActive {
+                animateProgress(fromZero: true)
+            } else {
+                resetAnimation()
+            }
         }
         .onChange(of: progress) {
-            animateProgress(fromZero: false)
+            if isActive {
+                animateProgress(fromZero: false)
+            } else {
+                animatedProgress = 0
+            }
         }
+    }
+
+    private func resetAnimation() {
+        animationTask?.cancel()
+        animationTask = nil
+        animatedProgress = 0
     }
 
     private func animateProgress(fromZero: Bool) {
@@ -222,7 +294,6 @@ private struct ProgressDial: View, Animatable {
 private struct MyTaskCard: View {
     let task: ProjectTask
     let groupName: String
-    let deadline: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -243,8 +314,8 @@ private struct MyTaskCard: View {
                 .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
                 .scaleEffect(y: 1.6)
             HStack {
-                if let deadline {
-                    Label { Text(TaskRemainingTime(deadline: deadline).text) } icon: { Image(systemName: "clock.fill") }
+                if task.deadline != .distantFuture {
+                    Label { Text(TaskRemainingTime(deadline: task.deadline).text) } icon: { Image(systemName: "clock.fill") }
                 }
                 Spacer()
                 Label("查看任務", systemImage: "chevron.right")
@@ -260,7 +331,9 @@ private struct TaskRemainingTime {
     let deadline: Date
 
     var text: String {
-        let seconds = max(0, Int(deadline.timeIntervalSinceNow))
+        let remainingInterval = deadline.timeIntervalSinceNow
+        guard remainingInterval > 0 else { return "已逾期" }
+        let seconds = Int(remainingInterval)
         let days = seconds / 86_400
         let hours = seconds % 86_400 / 3_600
         let minutes = seconds % 3_600 / 60
@@ -344,7 +417,7 @@ private struct MyTaskDetailView: View {
                         .font(.system(.title2, design: .rounded, weight: .black))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(task.lifecycleStatus.title)
+                    Text(task.status.title)
                         .font(.caption.weight(.black))
                         .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.ink)
                         .padding(.horizontal, 10)
@@ -399,7 +472,7 @@ private struct MyTaskDetailView: View {
 
             ForEach(task.subtasks) { subtask in
                 Button {
-                    model.toggleSubtask(taskID: task.id, subtaskID: subtask.id)
+                    Task { await model.toggleSubtask(taskID: task.id, subtaskID: subtask.id) }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")

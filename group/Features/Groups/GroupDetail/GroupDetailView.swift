@@ -71,7 +71,7 @@ struct GroupDetailView: View {
                             group: currentGroup,
                             members: groupMembers,
                             onPublish: { title, detail, subtaskTitles, assigneeID, deadline in
-                                try model.publishTask(
+                                try await model.publishTask(
                                     title: title,
                                     detail: detail,
                                     subtaskTitles: subtaskTitles,
@@ -689,7 +689,7 @@ struct GroupDetailView: View {
                         model.submitDeliverable(taskID: taskID, deliverable: deliverable)
                     },
                     onToggleSubtask: { taskID, subtaskID in
-                        model.toggleSubtask(taskID: taskID, subtaskID: subtaskID)
+                        Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
                     },
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
@@ -757,7 +757,7 @@ struct GroupDetailView: View {
             role: member.role.title,
             progress: progress,
             currentTask: currentTask?.title ?? "尚未指派任務",
-            status: currentTask?.lifecycleStatus.title ?? "待命",
+            status: currentTask?.status.title ?? "待命",
             showsNudge: currentTask != nil && progress < 50
         )
     }

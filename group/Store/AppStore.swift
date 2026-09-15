@@ -141,12 +141,18 @@ final class AppStore {
     @ObservationIgnored private var attachmentListeners: [UUID: ListenerRegistration] = [:]
     @ObservationIgnored private var attachmentRepository: AttachmentRepository?
     @ObservationIgnored private var groupRepository: GroupRepository?
+    @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
+    @ObservationIgnored private var taskSyncRepository: TaskSyncRepository?
+    @ObservationIgnored private var taskListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var taskSyncErrorsByGroupID: [UUID: String] = [:]
+    @ObservationIgnored private var pendingSubtaskUpdates: Set<String> = []
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
     @ObservationIgnored private var syncIsActive = false
     private(set) var firebaseUID: String?
     private(set) var isLoadingCloudGroups = false
     var cloudErrorMessage: String?
+    private(set) var cloudGroupSyncErrorMessage: String?
     private(set) var attachmentsByTaskID: [UUID: [TaskAttachment]] = [:]
     private(set) var attachmentErrors: [UUID: String] = [:]
 
@@ -278,6 +284,7 @@ final class AppStore {
             agents = demo.agents
             radar = demo.radar
             communicationAnalyses = [:]
+            cloudGroupSyncErrorMessage = nil
             lastEvent = "測試資料已載入"
             dataMode = .demo
 
@@ -310,6 +317,7 @@ final class AppStore {
             radar = []
             communicationAnalyses = [:]
             chatItemsByGroupID = [:]
+            cloudGroupSyncErrorMessage = nil
             lastEvent = ""
             dataMode = .live
         }
@@ -720,6 +728,14 @@ final class AppStore {
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
     }
 
+    /// 依目前可存取的所有群組任務計算成員整體進度。
+    func overallMemberProgress(for memberID: UUID) -> Int {
+        let tasks = projectTasks.filter { $0.ownerMemberID == memberID }
+        let totalWeight = tasks.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return 0 }
+        return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+    }
+
     /// 取得指定群組已送出的匿名互評。
     func reviews(for groupID: UUID) -> [PeerReview] {
         peerReviews.filter { $0.groupID == groupID }
@@ -828,7 +844,7 @@ final class AppStore {
         assigneeMemberID: UUID,
         deadline: Date,
         now: Date = .now
-    ) throws -> ProjectTask {
+    ) async throws -> ProjectTask {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedSubtaskTitles = subtaskTitles.map {
@@ -862,8 +878,9 @@ final class AppStore {
             )
         }
 
-        let task = ProjectTask(
-            id: UUID(),
+        let taskID = UUID()
+        var task = ProjectTask(
+            id: taskID,
             groupID: groupID,
             title: trimmedTitle,
             detail: trimmedDetail,
@@ -873,9 +890,31 @@ final class AppStore {
             deliverable: nil,
             deadline: deadline,
             createdByMemberID: currentUserID,
-            createdAt: now,
-            status: .inProgress
+            createdAt: now
         )
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let assigneeUID = members.first(where: { $0.id == assigneeMemberID })?.firebaseUID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.create(
+                expectedUserID: uid,
+                groupID: groupPath,
+                taskID: taskID,
+                title: trimmedTitle,
+                detail: trimmedDetail,
+                assigneeUserID: assigneeUID,
+                subtasks: subtasks,
+                deadline: deadline
+            )
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+            task.firestoreDocumentID = taskID.uuidString.lowercased()
+            task.firestoreGroupID = groupPath
+        }
 
         projectTasks.append(task)
         groups[groupIndex].taskIDs.append(task.id)
@@ -997,6 +1036,7 @@ final class AppStore {
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         cloudErrorMessage = nil
+        cloudGroupSyncErrorMessage = nil
         profileName = ""
         profileBio = ""
         profileRole = ""
@@ -1021,6 +1061,7 @@ final class AppStore {
         cloudGeneration = UUID()
         cloudLoadTask?.cancel()
         cloudLoadTask = nil
+        stopTaskSync()
         stopAttachmentSync()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
@@ -1035,6 +1076,92 @@ final class AppStore {
         attachmentListeners.removeAll()
     }
 
+    private func stopTaskSync() {
+        taskListeners.values.forEach { $0.remove() }
+        taskListeners.removeAll()
+        taskSyncErrorsByGroupID = [:]
+    }
+
+    private func startTaskSync(userID: String, generation: UUID) {
+        let repository = taskSyncRepository ?? TaskSyncRepository()
+        taskSyncRepository = repository
+
+        for group in groups {
+            guard let groupPath = group.firestoreDocumentID,
+                  taskListeners[group.id] == nil else { continue }
+            taskListeners[group.id] = repository.listen(
+                groupID: groupPath,
+                expectedUserID: userID
+            ) { [weak self] result in
+                Task { @MainActor in
+                    self?.applyTaskSync(
+                        result,
+                        groupID: group.id,
+                        userID: userID,
+                        generation: generation
+                    )
+                }
+            }
+        }
+    }
+
+    private func applyTaskSync(
+        _ result: Result<[CloudDocument<CloudTaskDocument>], Error>,
+        groupID: UUID,
+        userID: String,
+        generation: UUID
+    ) {
+        guard firebaseUID == userID, cloudGeneration == generation, syncIsActive,
+              let groupIndex = groups.firstIndex(where: { $0.id == groupID }),
+              let groupPath = groups[groupIndex].firestoreDocumentID else { return }
+
+        switch result {
+        case .success(let documents):
+            do {
+                let groupMemberIDs = Set(groups[groupIndex].memberIDs)
+                let groupMembers = members.filter { groupMemberIDs.contains($0.id) }
+                var syncedTasks = try GroupRepository.mapTasks(
+                    groupID: groupID,
+                    pathID: groupPath,
+                    documents: documents,
+                    members: groupMembers
+                )
+                for index in syncedTasks.indices {
+                    syncedTasks[index].deliverable = attachmentsByTaskID[syncedTasks[index].id]?
+                        .first(where: { $0.status == .ready })
+                        .map { Deliverable(attachment: $0) }
+                }
+
+                let otherGroupTaskIDs = Set(projectTasks.filter { $0.groupID != groupID }.map(\.id))
+                guard otherGroupTaskIDs.isDisjoint(with: Set(syncedTasks.map(\.id))) else {
+                    throw GroupLoadError.invalidData
+                }
+                let previousTaskIDs = Set(projectTasks.filter { $0.groupID == groupID }.map(\.id))
+                let syncedTaskIDs = Set(syncedTasks.map(\.id))
+                projectTasks = projectTasks.filter { $0.groupID != groupID } + syncedTasks
+                groups[groupIndex].taskIDs = syncedTasks.map(\.id)
+
+                for removedID in previousTaskIDs.subtracting(syncedTaskIDs) {
+                    attachmentListeners.removeValue(forKey: removedID)?.remove()
+                    attachmentsByTaskID[removedID] = nil
+                    attachmentErrors[removedID] = nil
+                }
+                startAttachmentSync(for: syncedTasks.map(\.id))
+                taskSyncErrorsByGroupID[groupID] = nil
+                cloudGroupSyncErrorMessage = taskSyncErrorsByGroupID.values.first
+            } catch {
+                recordTaskSyncError(error, groupID: groupID)
+            }
+        case .failure(let error):
+            recordTaskSyncError(error, groupID: groupID)
+        }
+    }
+
+    private func recordTaskSyncError(_ error: Error, groupID: UUID) {
+        taskSyncErrorsByGroupID[groupID] = Self.cloudMessage(error)
+        cloudGroupSyncErrorMessage = taskSyncErrorsByGroupID.values.first
+    }
+
     @discardableResult
     func reloadCloudGroups(reportError: Bool = true) async -> Bool {
         guard dataMode == .live,
@@ -1043,6 +1170,7 @@ final class AppStore {
               FirebaseApp.app() != nil else { return false }
         let generation = UUID()
         cloudGeneration = generation
+        stopTaskSync()
         stopAttachmentSync()
         isLoadingCloudGroups = true
         defer { if cloudGeneration == generation { isLoadingCloudGroups = false } }
@@ -1062,23 +1190,17 @@ final class AppStore {
             attachmentsByTaskID = attachmentsByTaskID.filter { taskIDs.contains($0.key) }
             attachmentErrors = [:]
             cloudErrorMessage = nil
+            cloudGroupSyncErrorMessage = nil
             // Tasks now exist in the single source of truth; only now attach listeners.
             startAttachmentSync(for: projectTasks.map(\.id))
+            startTaskSync(userID: uid, generation: generation)
             return true
         } catch {
             guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
-            // Invalidate task/attachment cache on a failed authoritative refresh.
-            // Joined summaries remain visible so success is never presented as failure.
-            projectTasks = []
-            members = []
-            attachmentsByTaskID = [:]
-            attachmentErrors = [:]
-            for index in groups.indices {
-                groups[index].taskIDs = []
-                groups[index].memberIDs = []
-                groups[index].memberRoles = [:]
-            }
-            if reportError { cloudErrorMessage = Self.cloudMessage(error) }
+            // Keep the last successful snapshot so a transient failure is not mistaken for an empty account.
+            let message = Self.cloudMessage(error)
+            cloudGroupSyncErrorMessage = message
+            if reportError { cloudErrorMessage = message }
             return false
         }
     }
@@ -1160,12 +1282,46 @@ final class AppStore {
     }
 
     /// 切換子任務完成狀態；完成後所有依 progress 計算的畫面會自動更新。
-    func toggleSubtask(taskID: UUID, subtaskID: UUID) {
+    func toggleSubtask(taskID: UUID, subtaskID: UUID) async {
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
               let subtaskIndex = projectTasks[taskIndex].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
-        projectTasks[taskIndex].subtasks[subtaskIndex].isComplete.toggle()
-        projectTasks[taskIndex].status = projectTasks[taskIndex].lifecycleStatus
+        let updateKey = "\(taskID.uuidString)/\(subtaskID.uuidString)"
+        guard !pendingSubtaskUpdates.contains(updateKey) else { return }
+        let previousValue = projectTasks[taskIndex].subtasks[subtaskIndex].isComplete
+        let desiredValue = !previousValue
+        projectTasks[taskIndex].subtasks[subtaskIndex].isComplete = desiredValue
         lastEvent = "已更新「\(projectTasks[taskIndex].title)」進度"
+
+        guard dataMode == .live else { return }
+        guard let uid = firebaseUID,
+              let taskPath = projectTasks[taskIndex].firestoreDocumentID,
+              let groupPath = projectTasks[taskIndex].firestoreGroupID else {
+            projectTasks[taskIndex].subtasks[subtaskIndex].isComplete = previousValue
+            cloudErrorMessage = TaskMutationError.invalidData.localizedDescription
+            return
+        }
+
+        pendingSubtaskUpdates.insert(updateKey)
+        defer { pendingSubtaskUpdates.remove(updateKey) }
+        let repository = taskMutationRepository ?? TaskMutationRepository()
+        taskMutationRepository = repository
+        do {
+            try await repository.setSubtaskCompletion(
+                expectedUserID: uid,
+                groupID: groupPath,
+                taskID: taskPath,
+                subtaskID: subtaskID,
+                isComplete: desiredValue
+            )
+            guard firebaseUID == uid else { return }
+        } catch {
+            guard firebaseUID == uid,
+                  let currentTaskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
+                  let currentSubtaskIndex = projectTasks[currentTaskIndex].subtasks.firstIndex(where: { $0.id == subtaskID }),
+                  projectTasks[currentTaskIndex].subtasks[currentSubtaskIndex].isComplete == desiredValue else { return }
+            projectTasks[currentTaskIndex].subtasks[currentSubtaskIndex].isComplete = previousValue
+            cloudErrorMessage = error.localizedDescription
+        }
     }
 
     /// 為任務送出成果；畫面傳入的 Deliverable 可來自 mock 檔案或連結。
