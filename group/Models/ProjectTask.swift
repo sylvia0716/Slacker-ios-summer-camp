@@ -45,17 +45,20 @@ struct ProjectTask: Identifiable, Hashable {
     var status: ProjectTaskStatus = .pending
     var firestoreDocumentID: String? = nil
     var firestoreGroupID: String? = nil
+    var confirmedAttachmentID: String? = nil
+    var confirmedMemberUIDs: [String] = []
+    var cloudStatus: ProjectTaskStatus? = nil
 
     /// 依子任務權重算出的任務完成百分比，不應直接手動設定。
     var progress: Int {
         let totalWeight = subtasks.reduce(0) { $0 + $1.weight }
-        guard totalWeight > 0 else { return 0 }
+        guard totalWeight > 0 else { return status == .completed && deliverable != nil ? 100 : 0 }
         let completedWeight = subtasks.filter(\.isComplete).reduce(0) { $0 + $1.weight }
         return completedWeight * 100 / totalWeight
     }
 
     /// 任務是否已完成所有子任務並送出成果。
     var isCompleted: Bool {
-        progress == 100 && deliverable != nil
+        firestoreDocumentID == nil ? progress == 100 && deliverable != nil : status == .completed && deliverable != nil
     }
 }

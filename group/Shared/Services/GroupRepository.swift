@@ -50,7 +50,7 @@ final class GroupRepository {
             let data = document.value
             guard !data.userID.isEmpty, document.id == data.userID else { throw GroupLoadError.invalidData }
             return Member(id: FirebaseMemberIdentity.uiID(for: data.userID),
-                          name: data.displayName?.isEmpty == false ? data.displayName! : "組員",
+                          name: data.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? data.displayName! : "成員 \(data.userID.prefix(8))",
                           role: data.role, avatarSymbol: data.avatarSymbol ?? "person.fill", firebaseUID: data.userID)
         }
         let byUID = Dictionary(uniqueKeysWithValues: members.map { ($0.firebaseUID!, $0.id) })
@@ -72,7 +72,9 @@ final class GroupRepository {
                                subtasks: subtasks, deliverable: nil, deadline: data.deadline ?? summary.deadline,
                                createdByMemberID: try memberID(data.createdByMemberID),
                                createdAt: data.createdAt ?? .distantPast, status: data.status ?? .pending,
-                               firestoreDocumentID: document.id, firestoreGroupID: summary.pathID)
+                               firestoreDocumentID: document.id, firestoreGroupID: summary.pathID,
+                               confirmedAttachmentID: data.confirmedAttachmentID,
+                               confirmedMemberUIDs: data.confirmedMemberUIDs ?? [], cloudStatus: data.status)
         }
         guard Set(tasks.map(\.id)).count == tasks.count else { throw GroupLoadError.invalidData }
         let group = Group(id: summary.id, name: summary.name, deadline: summary.deadline,

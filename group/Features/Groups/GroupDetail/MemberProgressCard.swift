@@ -12,6 +12,7 @@ struct MemberProgressPreviewItem: Identifiable {
 }
 
 struct MemberProgressCard: View {
+    let model: GroupBombModel
     let member: MemberProgressPreviewItem
     let tasks: [ProjectTask]
     let groupMemberIDs: [UUID]
@@ -194,8 +195,9 @@ struct MemberProgressCard: View {
             Text("成果證明").font(.subheadline.weight(.black))
             if let deliverable = task.deliverable {
                 HStack(alignment: .top, spacing: 12) {
-                    Button { previewDeliverable = deliverable } label: {
-                        deliverableThumbnail(deliverable)
+                    AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
+                                           localPreview: { previewDeliverable = deliverable }) {
+                        deliverableThumbnail(deliverable, taskID: task.id)
                     }
                     .buttonStyle(.plain)
 
@@ -266,21 +268,15 @@ struct MemberProgressCard: View {
                             .clipShape(.capsule)
                     }
                     .buttonStyle(.plain)
+                    .disabled(model.pendingTaskUpdates.contains(task.id))
                 }
             }
         }
         .padding(.top, 2)
     }
 
-    private func deliverableThumbnail(_ deliverable: Deliverable) -> some View {
-        SwiftUI.Group {
-            if let filename = deliverable.localImageFilename,
-               let image = DeliverableImageStore.image(named: filename) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Image(systemName: "photo").font(.title2.weight(.bold)).foregroundStyle(.secondary)
-            }
-        }
+    private func deliverableThumbnail(_ deliverable: Deliverable, taskID: UUID) -> some View {
+        AttachmentPhotoThumbnail(model: model, taskID: taskID, deliverable: deliverable)
         .frame(width: 92, height: 82)
         .background(.white.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 12))

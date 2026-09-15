@@ -49,7 +49,7 @@ final class GroupJoinRepository {
         }
 
         let normalizedCode = Self.normalize(inviteCode)
-        guard !normalizedCode.isEmpty else { throw GroupJoinError.invalidCode }
+        guard GroupInviteCode.isValid(normalizedCode) else { throw GroupJoinError.invalidCode }
 
         do {
             let callableResult = try await functions
