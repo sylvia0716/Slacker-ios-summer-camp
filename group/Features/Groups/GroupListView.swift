@@ -259,6 +259,8 @@ private struct AddGroupSheet: View {
     @State private var groupCode = ""
     @State private var createdGroup: Group?
     @State private var joinStore = GroupJoinStore()
+    @State private var isCreating = false
+    @State private var creationError: String?
     @FocusState private var isCodeFieldFocused: Bool
 
     private var canCreate: Bool {
@@ -308,7 +310,7 @@ private struct AddGroupSheet: View {
                                     .keyboardType(.asciiCapable)
                                     .submitLabel(.join)
                                     .onSubmit(submitInviteCode)
-                                    .disabled(joinStore.isJoining)
+                                    .disabled(isBusy)
 
                                 if joinStore.isJoining {
                                     HStack(spacing: 8) {
@@ -343,8 +345,8 @@ private struct AddGroupSheet: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(joinStore.isJoining ? "加入中…" : "下一步", action: advance)
-                        .disabled(!canAdvance || joinStore.isJoining)
+                    Button(primaryButtonTitle, action: advance)
+                        .disabled(!canAdvance || isBusy)
                 }
             }
         }
@@ -361,6 +363,14 @@ private struct AddGroupSheet: View {
             if case let .failure(error) = joinStore.state {
                 Text(error.localizedDescription)
             }
+        }
+        .alert("無法建立群組", isPresented: Binding(
+            get: { creationError != nil },
+            set: { if !$0 { creationError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(creationError ?? "")
         }
         .onChange(of: entryMode) { _, mode in
             if mode == .join {
@@ -385,13 +395,21 @@ private struct AddGroupSheet: View {
         }
     }
 
+    private var isBusy: Bool {
+        isCreating || joinStore.isJoining
+    }
+
+    private var primaryButtonTitle: String {
+        if isCreating { return "建立中…" }
+        if joinStore.isJoining { return "加入中…" }
+        return "下一步"
+    }
+
     private func advance() {
         switch flow {
         case .entry:
             if entryMode == .create {
-                model.createGroup(name: groupName, deadline: groupDeadline)
-                createdGroup = model.groups.last
-                flow = .shareCode
+                submitCreateGroup()
             } else {
                 submitInviteCode()
             }
@@ -399,6 +417,30 @@ private struct AddGroupSheet: View {
             guard let createdGroup else { return }
             enterGroup(createdGroup)
             dismiss()
+        }
+    }
+
+    private func submitCreateGroup() {
+        guard canCreate, groupDeadline > .now, !isBusy else { return }
+        if model.isDemoMode {
+            model.createGroup(name: groupName, deadline: groupDeadline)
+            createdGroup = model.groups.last
+            flow = .shareCode
+            return
+        }
+
+        isCreating = true
+        Task {
+            defer { isCreating = false }
+            do {
+                createdGroup = try await model.createCloudGroup(
+                    name: groupName,
+                    deadline: groupDeadline
+                )
+                flow = .shareCode
+            } catch {
+                creationError = error.localizedDescription
+            }
         }
     }
 

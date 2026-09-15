@@ -40,22 +40,14 @@ final class ChatRepository {
         self.firestore = firestore
     }
 
-    /// 首次進入群組時建立目前帳號的成員文件；之後只同步顯示名稱。
+    /// 聊天室只驗證既有成員身分；新增成員必須由受信任的 Cloud Function 處理。
     func ensureMembership(groupID: String, displayName: String) async throws {
         let userID = try currentUserID()
         let reference = memberReference(groupID: groupID, userID: userID)
         let snapshot = try await reference.getDocument()
 
-        if snapshot.exists {
-            try await reference.updateData(["displayName": displayName])
-        } else {
-            try await reference.setData([
-                "userID": userID,
-                "displayName": displayName,
-                "role": "member",
-                "joinedAt": FieldValue.serverTimestamp()
-            ])
-        }
+        guard snapshot.exists else { throw ChatRepositoryError.notGroupMember }
+        try await reference.updateData(["displayName": displayName])
     }
 
     func sendMessage(
@@ -208,11 +200,14 @@ final class ChatRepository {
 
 enum ChatRepositoryError: LocalizedError {
     case notAuthenticated
+    case notGroupMember
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
             "請先登入再使用聊天室。"
+        case .notGroupMember:
+            "目前帳號不是這個雲端群組的成員。"
         }
     }
 }

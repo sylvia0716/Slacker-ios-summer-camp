@@ -22,6 +22,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
@@ -85,6 +86,7 @@ async function callableClient(authenticated = true) {
 
   return {
     userID,
+    create: httpsCallable(functions, "createGroup"),
     join: httpsCallable(functions, "joinGroupByInviteCode"),
     list: httpsCallable(functions, "listMyGroups"),
     close: () => deleteApp(app),
@@ -117,6 +119,80 @@ after(async () => {
 });
 
 describe("joinGroupByInviteCode Callable", () => {
+  test("已登入使用者建立群組時，同步建立 leader、邀請碼與可讀取的群組", async () => {
+    const client = await callableClient();
+    try {
+      const deadlineMillis = Date.now() + 86_400_000;
+      const response = await client.create({
+        name: " 新測試群組 ",
+        deadlineMillis,
+        displayName: "Peach",
+      });
+      const createdGroupID = response.data.group.groupID;
+      const inviteCode = response.data.group.inviteCode;
+
+      assert.match(createdGroupID, /^[0-9a-f-]{36}$/);
+      assert.match(inviteCode, /^[A-Z0-9]{8}$/);
+      assert.equal(response.data.group.name, "新測試群組");
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const firestore = context.firestore();
+        const group = await getDoc(doc(firestore, `groups/${createdGroupID}`));
+        const member = await getDoc(doc(
+          firestore,
+          `groups/${createdGroupID}/members/${client.userID}`,
+        ));
+        const invite = await getDoc(doc(firestore, `groupInviteCodes/${inviteCode}`));
+        assert.equal(group.data().name, "新測試群組");
+        assert.equal(member.data().role, "leader");
+        assert.equal(member.data().displayName, "Peach");
+        assert.equal(invite.data().groupID, createdGroupID);
+      });
+
+      const groups = await client.list({});
+      assert.ok(groups.data.groups.some(group => group.groupID === createdGroupID));
+
+      const memberFirestore = testEnv.authenticatedContext(client.userID).firestore();
+      await assertSucceeds(getDocs(collection(
+        memberFirestore,
+        `groups/${createdGroupID}/messages`,
+      )));
+      await assertSucceeds(setDoc(doc(
+        memberFirestore,
+        `groups/${createdGroupID}/presence/${client.userID}`,
+      ), {
+        userID: client.userID,
+        displayName: "Peach",
+        isOnline: true,
+        lastSeenAt: serverTimestamp(),
+      }));
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("建立群組拒絕未登入、無效欄位、空白名稱與過期期限", async () => {
+    const guest = await callableClient(false);
+    const client = await callableClient();
+    const valid = {
+      name: "測試群組",
+      deadlineMillis: Date.now() + 86_400_000,
+      displayName: "Peach",
+    };
+    try {
+      await expectCallableFailure(guest.create(valid), "functions/unauthenticated");
+      await expectCallableFailure(client.create({ ...valid, role: "leader" }), "functions/invalid-argument");
+      await expectCallableFailure(client.create({ ...valid, name: "   " }), "functions/invalid-argument");
+      await expectCallableFailure(
+        client.create({ ...valid, deadlineMillis: Date.now() - 1_000 }),
+        "functions/invalid-argument",
+      );
+    } finally {
+      await guest.close();
+      await client.close();
+    }
+  });
+
   test("已登入使用者能以有效邀請碼加入，member ID 等於 Firebase UID", async () => {
     const client = await callableClient();
     try {

@@ -348,6 +348,12 @@ final class AppStore {
     /// 進入聊天室後建立 Firebase 成員身分並開始監聽訊息與在線狀態。
     func startChatSync(groupID: UUID, displayName: String) async {
         chatMessageSyncReadyGroupIDs.remove(groupID)
+        guard dataMode == .live else {
+            chatMessageSyncErrorsByGroupID[groupID] = nil
+            chatPresenceSyncErrorsByGroupID[groupID] = nil
+            chatMessageSyncReadyGroupIDs.insert(groupID)
+            return
+        }
         guard FirebaseApp.app() != nil else {
             let message = "Firebase 尚未設定完成。"
             chatMessageSyncErrorsByGroupID[groupID] = message
@@ -870,6 +876,31 @@ final class AppStore {
         ]
         saveChatItems()
         lastEvent = "已建立「\(name)」"
+    }
+
+    /// 正式模式透過受信任的 Callable Function 建立群組、群主會員與邀請碼。
+    func createCloudGroup(name: String, deadline: Date) async throws -> Group {
+        guard dataMode == .live, let uid = firebaseUID else {
+            throw GroupJoinError.notAuthenticated
+        }
+
+        let result = try await GroupJoinRepository().create(
+            name: name,
+            deadline: deadline,
+            displayName: normalizedChatDisplayName(profileName)
+        )
+        guard firebaseUID == uid, result.firebaseUID == uid else {
+            throw GroupJoinError.notAuthenticated
+        }
+
+        mergeAccessibleCloudGroups([result.group])
+        _ = await reloadCloudGroups(reportError: false)
+        guard firebaseUID == uid,
+              let group = groups.first(where: { $0.id == result.group.id }) else {
+            throw GroupJoinError.invalidGroupData
+        }
+        lastEvent = "已建立「\(group.name)」"
+        return group
     }
 
     /// 修改群組總截止時間；任務發布會以更新後的期限驗證。

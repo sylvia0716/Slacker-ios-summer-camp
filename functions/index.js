@@ -1,6 +1,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { randomBytes, randomUUID } = require("node:crypto");
 
 initializeApp();
 
@@ -36,6 +37,47 @@ function normalizedInviteCode(data) {
   return inviteCode;
 }
 
+function normalizedCreateGroupData(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw callableError("invalid-argument", "Invalid request.", "invalid-request");
+  }
+
+  const keys = Object.keys(data).sort();
+  if (keys.join(",") !== "deadlineMillis,displayName,name") {
+    throw callableError("invalid-argument", "Only group creation fields are accepted.", "invalid-request");
+  }
+
+  const name = typeof data.name === "string" ? data.name.trim() : "";
+  if (!name || name.length > 60) {
+    throw callableError("invalid-argument", "Invalid group name.", "invalid-group-name");
+  }
+
+  const deadlineMillis = data.deadlineMillis;
+  if (typeof deadlineMillis !== "number"
+      || !Number.isFinite(deadlineMillis)
+      || deadlineMillis <= Date.now()) {
+    throw callableError("invalid-argument", "Invalid group deadline.", "invalid-group-deadline");
+  }
+
+  const requestedDisplayName = typeof data.displayName === "string"
+    ? data.displayName.trim()
+    : "";
+  if (requestedDisplayName.length > 60) {
+    throw callableError("invalid-argument", "Invalid display name.", "invalid-display-name");
+  }
+
+  return {
+    name,
+    deadlineMillis,
+    displayName: requestedDisplayName || "組員",
+  };
+}
+
+function makeInviteCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(randomBytes(8), byte => alphabet[byte % alphabet.length]).join("");
+}
+
 function millis(from) {
   if (from instanceof Timestamp) return from.toMillis();
   if (typeof from?.toMillis === "function") return from.toMillis();
@@ -52,6 +94,47 @@ function groupPayload(groupID, data, inviteCode = "") {
     inviteCode: inviteCode || (typeof data.inviteCode === "string" ? data.inviteCode : ""),
   };
 }
+
+exports.createGroup = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  const { name, deadlineMillis, displayName } = normalizedCreateGroupData(request.data);
+  const groupID = randomUUID().toLowerCase();
+  const inviteCode = makeInviteCode();
+  const deadline = Timestamp.fromMillis(deadlineMillis);
+  const groupRef = db.collection("groups").doc(groupID);
+  const memberRef = groupRef.collection("members").doc(userID);
+  const inviteRef = db.collection("groupInviteCodes").doc(inviteCode);
+
+  await db.runTransaction(async (transaction) => {
+    const inviteSnapshot = await transaction.get(inviteRef);
+    if (inviteSnapshot.exists) {
+      throw callableError("aborted", "Invite code collision.", "invite-code-collision");
+    }
+
+    transaction.create(groupRef, {
+      name,
+      deadline,
+      inviteCode,
+      createdAt: FieldValue.serverTimestamp(),
+      createdByUserID: userID,
+    });
+    transaction.create(memberRef, {
+      userID,
+      displayName,
+      role: "leader",
+      joinedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.create(inviteRef, {
+      groupID,
+      isActive: true,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return {
+    group: groupPayload(groupID, { name, deadline, inviteCode }, inviteCode),
+  };
+});
 
 exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
