@@ -92,9 +92,9 @@ enum DemoData {
 
         let activeTasks = [
             makeTask(groupID: activeGroupID, title: "蒐集市場數據", detail: "找到 3 個可信來源", weight: 25, ownerMemberID: me.id, progress: 52, deadline: activeDeadline),
-            makeTask(groupID: activeGroupID, title: "製作競品分析", detail: "完成比較矩陣", weight: 30, ownerMemberID: xiaoYu.id, progress: 52, deadline: activeDeadline),
+            makeTask(groupID: activeGroupID, title: "製作競品分析", detail: "完成比較矩陣", weight: 30, ownerMemberID: xiaoYu.id, progress: 30, deadline: activeDeadline),
             makeTask(groupID: activeGroupID, title: "簡報視覺統整", detail: "統一圖表與版面", weight: 25, ownerMemberID: miMi.id, progress: 52, deadline: activeDeadline),
-            makeTask(groupID: activeGroupID, title: "結論與建議", detail: "收斂成 3 個重點", weight: 20, ownerMemberID: aKai.id, progress: 52, deadline: activeDeadline)
+            makeTask(groupID: activeGroupID, title: "結論與建議", detail: "收斂成 3 個重點", weight: 20, ownerMemberID: aKai.id, progress: 95, deadline: activeDeadline)
         ]
         let summerCampTasks = [
             makeTask(groupID: summerCampGroupID, title: "完成 App 核心流程", detail: "整合主要操作流程", weight: 30, ownerMemberID: me.id, progress: 100, deadline: summerCampDeadline),

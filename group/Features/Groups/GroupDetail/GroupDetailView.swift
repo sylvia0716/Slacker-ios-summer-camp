@@ -22,6 +22,9 @@ struct GroupDetailView: View {
     @State private var showsNameSheet = false
     @State private var nameDraft = ""
     @State private var nameError: String?
+    @State private var pokeEffect: PokeVisualEffect?
+    @State private var pokeEffectLift: CGFloat = 0
+    @State private var pokeEffectMemberID: String?
 
     init(
         group: Group,
@@ -184,6 +187,23 @@ struct GroupDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             topBar
         }
+        .overlayPreferenceValue(PokeButtonAnchorKey.self) { anchors in
+            GeometryReader { proxy in
+                if let pokeEffect,
+                   let pokeEffectMemberID,
+                   let anchor = anchors[pokeEffectMemberID] {
+                    let buttonFrame = proxy[anchor]
+                    Text(pokeEffect.symbol)
+                        .font(.system(size: pokeEffect.size))
+                        .position(x: buttonFrame.midX, y: buttonFrame.midY)
+                        .offset(y: pokeEffectLift)
+                        .scaleEffect(pokeEffectLift == 0 ? 0.15 : 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .zIndex(100)
+        }
+        .animation(.bouncy, value: pokeEffectLift)
         .onAppear { deadlineDraft = currentGroup.deadline }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
@@ -696,7 +716,8 @@ struct GroupDetailView: View {
                     },
                     onPoke: { style in
                         model.poke(memberID: member.id, in: group.id, style: style)
-                    }
+                    },
+                    onPokeEffect: showPokeEffect
                 )
                 .tutorialTarget(
                     .memberProgress,
@@ -712,6 +733,18 @@ struct GroupDetailView: View {
             guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
             member.role = currentGroup.memberRoles[memberID] ?? member.role
             return member
+        }
+    }
+
+    private func showPokeEffect(for memberID: String, effect: PokeVisualEffect?) {
+        pokeEffect = effect
+        pokeEffectLift = 0
+        pokeEffectMemberID = effect == nil ? nil : memberID
+
+        guard effect != nil else { return }
+        Task {
+            await Task.yield()
+            pokeEffectLift = -72
         }
     }
 
@@ -758,7 +791,7 @@ struct GroupDetailView: View {
             progress: progress,
             currentTask: currentTask?.title ?? "尚未指派任務",
             status: currentTask?.status.title ?? "待命",
-            showsNudge: currentTask != nil && progress < 50
+            showsNudge: member.id != model.currentUserID && progress <= 90
         )
     }
 
