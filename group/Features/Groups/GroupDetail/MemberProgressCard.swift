@@ -1,24 +1,6 @@
 import SwiftUI
 import UIKit
 
-struct MemberProgressPreviewItem: Identifiable {
-    let id: String
-    let name: String
-    let role: String
-    let progress: Int
-    let currentTask: String
-    let status: String
-    let showsNudge: Bool
-}
-
-enum PokeVisualEffect {
-    case bomb
-    case explosion
-
-    var symbol: String { self == .bomb ? "💣" : "💥" }
-    var size: CGFloat { self == .bomb ? 52 : 62 }
-}
-
 struct PokeButtonAnchorKey: PreferenceKey {
     static var defaultValue: [String: Anchor<CGRect>] = [:]
 
@@ -28,6 +10,16 @@ struct PokeButtonAnchorKey: PreferenceKey {
     ) {
         value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
     }
+}
+
+struct MemberProgressPreviewItem: Identifiable {
+    let id: String
+    let name: String
+    let role: String
+    let progress: Int
+    let currentTask: String
+    let status: String
+    let showsNudge: Bool
 }
 
 struct MemberProgressCard: View {
@@ -43,7 +35,7 @@ struct MemberProgressCard: View {
     let onToggleSubtask: (UUID, UUID) -> Void
     let onConfirmDeliverable: (UUID) -> Void
     let onPoke: (PokeStyle) -> Int?
-    let onPokeEffect: (String, PokeVisualEffect?) -> Void
+    let onPokeEmoji: (String, String?) -> Void
 
     @State private var uploadTask: ProjectTask?
     @State private var previewDeliverable: Deliverable?
@@ -110,7 +102,7 @@ struct MemberProgressCard: View {
             if member.showsNudge {
                 PokeActionButton(
                     onPoke: onPoke,
-                    onPokeEffect: { onPokeEffect(member.id, $0) }
+                    onPokeEmoji: { onPokeEmoji(member.id, $0) }
                 )
                 .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
                     [member.id: $0]
@@ -321,7 +313,7 @@ struct MemberProgressCard: View {
 
 private struct PokeActionButton: View {
     let onPoke: (PokeStyle) -> Int?
-    let onPokeEffect: (PokeVisualEffect?) -> Void
+    let onPokeEmoji: (String?) -> Void
 
     @State private var isCharging = false
     @State private var suppressNextTap = false
@@ -330,6 +322,7 @@ private struct PokeActionButton: View {
     @State private var showsLimitAlert = false
     @State private var lightFeedbackID = 0
     @State private var heavyFeedbackID = 0
+    @State private var actionFeedbackID = 0
 
     var body: some View {
         ZStack {
@@ -339,6 +332,7 @@ private struct PokeActionButton: View {
                 .frame(width: 34, height: 34)
                 .background(BombTheme.ink)
                 .clipShape(.circle)
+                .symbolEffect(.bounce, value: actionFeedbackID)
                 .scaleEffect(isCharging ? 0.92 : 1)
                 .rotationEffect(.degrees(isCharging ? 2 : 0))
                 .animation(
@@ -358,18 +352,18 @@ private struct PokeActionButton: View {
                         return
                     }
                     hasChargedBomb = true
-                    showPokeEffect(.bomb)
+                    onPokeEmoji("💣")
                 } onPressingChanged: { isPressing in
                     guard !isCoolingDown else { return }
                     isCharging = isPressing
 
                     guard !isPressing, hasChargedBomb else { return }
                     hasChargedBomb = false
-                    showPokeEffect(.explosion)
+                    onPokeEmoji("💥")
 
                     Task {
                         try? await Task.sleep(for: .seconds(0.6))
-                        onPokeEffect(nil)
+                        onPokeEmoji(nil)
                         suppressNextTap = false
                     }
                 }
@@ -393,6 +387,7 @@ private struct PokeActionButton: View {
     private func sendPoke(style: PokeStyle, isBombPoke: Bool) -> Bool {
         guard let pokeCount = onPoke(style) else { return false }
 
+        actionFeedbackID += 1
         if isBombPoke {
             heavyFeedbackID += 1
         } else {
@@ -408,10 +403,6 @@ private struct PokeActionButton: View {
             }
         }
         return true
-    }
-
-    private func showPokeEffect(_ effect: PokeVisualEffect) {
-        onPokeEffect(effect)
     }
 
 }

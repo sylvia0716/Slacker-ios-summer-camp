@@ -22,9 +22,9 @@ struct GroupDetailView: View {
     @State private var showsNameSheet = false
     @State private var nameDraft = ""
     @State private var nameError: String?
-    @State private var pokeEffect: PokeVisualEffect?
-    @State private var pokeEffectLift: CGFloat = 0
-    @State private var pokeEffectMemberID: String?
+    @State private var pokeButtonEmoji: String?
+    @State private var pokeButtonEmojiMemberID: String?
+    @State private var isPokeButtonEmojiShaking = false
 
     init(
         group: Group,
@@ -189,21 +189,23 @@ struct GroupDetailView: View {
         }
         .overlayPreferenceValue(PokeButtonAnchorKey.self) { anchors in
             GeometryReader { proxy in
-                if let pokeEffect,
-                   let pokeEffectMemberID,
-                   let anchor = anchors[pokeEffectMemberID] {
+                if let pokeButtonEmoji,
+                   let pokeButtonEmojiMemberID,
+                   let anchor = anchors[pokeButtonEmojiMemberID] {
                     let buttonFrame = proxy[anchor]
-                    Text(pokeEffect.symbol)
-                        .font(.system(size: pokeEffect.size))
+                    Text(pokeButtonEmoji)
+                        .font(.system(size: 48))
                         .position(x: buttonFrame.midX, y: buttonFrame.midY)
-                        .offset(y: pokeEffectLift)
-                        .scaleEffect(pokeEffectLift == 0 ? 0.15 : 1)
+                        .offset(y: -46)
+                        .rotationEffect(.degrees(isPokeButtonEmojiShaking ? 12 : -12))
+                        .scaleEffect(isPokeButtonEmojiShaking ? 1.16 : 0.72)
+                        .id(pokeButtonEmoji)
                         .allowsHitTesting(false)
                 }
             }
             .zIndex(100)
         }
-        .animation(.bouncy, value: pokeEffectLift)
+        .animation(.bouncy, value: pokeButtonEmoji)
         .onAppear { deadlineDraft = currentGroup.deadline }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
@@ -289,7 +291,7 @@ struct GroupDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("互評測試")
+                        Text("測試工具")
                             .font(.title2.weight(.black))
                         Spacer()
                         Button("關閉") { showsDebugPanel = false }
@@ -298,6 +300,16 @@ struct GroupDetailView: View {
                             .buttonStyle(.plain)
                     }
 
+                    debugAction("測試被戳特效") {
+                        NotificationCenter.default.post(
+                            name: .pokeReceived,
+                            object: PokeReception(
+                                groupName: currentGroup.name,
+                                pokeCount: 1,
+                                style: .alarm
+                            )
+                        )
+                    }
                     debugAction("正常進行中") {
                         debugDeadlineOutcome = .active
                         reviewDeferred = false
@@ -717,7 +729,7 @@ struct GroupDetailView: View {
                     onPoke: { style in
                         model.poke(memberID: member.id, in: group.id, style: style)
                     },
-                    onPokeEffect: showPokeEffect
+                    onPokeEmoji: showPokeButtonEmoji
                 )
                 .tutorialTarget(
                     .memberProgress,
@@ -736,15 +748,21 @@ struct GroupDetailView: View {
         }
     }
 
-    private func showPokeEffect(for memberID: String, effect: PokeVisualEffect?) {
-        pokeEffect = effect
-        pokeEffectLift = 0
-        pokeEffectMemberID = effect == nil ? nil : memberID
+    private func showPokeButtonEmoji(for memberID: String, emoji: String?) {
+        pokeButtonEmoji = emoji
+        pokeButtonEmojiMemberID = emoji == nil ? nil : memberID
 
-        guard effect != nil else { return }
+        guard emoji != nil else {
+            isPokeButtonEmojiShaking = false
+            return
+        }
+
+        isPokeButtonEmojiShaking = false
         Task {
             await Task.yield()
-            pokeEffectLift = -72
+            withAnimation(.bouncy(duration: 0.14).repeatCount(7, autoreverses: true)) {
+                isPokeButtonEmojiShaking = true
+            }
         }
     }
 

@@ -1,21 +1,43 @@
 import Foundation
 import UserNotifications
 
+struct PokeReception: Equatable {
+    let groupName: String
+    let pokeCount: Int
+    let style: PokeStyle
+}
+
+extension Notification.Name {
+    static let pokeReceived = Notification.Name("pokeReceived")
+}
+
 /// Delivers the prototype's poke alerts as device notifications.
 @MainActor
 final class PokeNotificationService {
     private let center = UNUserNotificationCenter.current()
 
+    private enum UserInfoKey {
+        static let groupID = "groupID"
+        static let groupName = "groupName"
+        static let pokeCount = "pokeCount"
+        static let style = "style"
+    }
+
     func requestAuthorization() {
         center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
     }
 
-    func deliver(group: Group, pokeCount: Int) {
+    func deliver(group: Group, pokeCount: Int, style: PokeStyle) {
         let content = UNMutableNotificationContent()
         content.title = "有人在找你"
         content.body = message(for: group.name, pokeCount: pokeCount)
         content.sound = .default
-        content.userInfo = ["groupID": group.id.uuidString]
+        content.userInfo = [
+            UserInfoKey.groupID: group.id.uuidString,
+            UserInfoKey.groupName: group.name,
+            UserInfoKey.pokeCount: pokeCount,
+            UserInfoKey.style: style.rawValue
+        ]
 
         let request = UNNotificationRequest(
             identifier: "poke-\(group.id.uuidString)-\(pokeCount)",
@@ -23,6 +45,16 @@ final class PokeNotificationService {
             trigger: nil
         )
         center.add(request)
+    }
+
+    nonisolated static func reception(from notification: UNNotification) -> PokeReception? {
+        let userInfo = notification.request.content.userInfo
+        guard let groupName = userInfo[UserInfoKey.groupName] as? String,
+              let pokeCount = userInfo[UserInfoKey.pokeCount] as? Int,
+              let styleRawValue = userInfo[UserInfoKey.style] as? String,
+              let style = PokeStyle(rawValue: styleRawValue) else { return nil }
+
+        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style)
     }
 
     private func message(for groupName: String, pokeCount: Int) -> String {
