@@ -1158,18 +1158,37 @@ final class AppStore {
     }
 #endif
 
-    /// 離開目前使用者已加入的群組；群組列表只保留目前使用者仍加入的群組。
-    @discardableResult
-    func leaveGroup(groupID: UUID) -> Bool {
-        guard let index = groups.firstIndex(where: { $0.id == groupID }),
-              groups[index].memberIDs.contains(currentUserID) else { return false }
-
-        let groupName = groups[index].name
-        groups.remove(at: index)
+    /// Only remove local data after the server confirms the caller has left.
+    func leaveGroup(groupID: UUID) async throws {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        let uid = firebaseUID
+        if !isDemoMode {
+            guard let path = group.firestoreDocumentID else { throw GroupJoinError.invalidGroupData }
+            suspendCloudSync()
+            do {
+                try await GroupJoinRepository().leave(groupID: path)
+            } catch {
+                if firebaseUID == uid { resumeCloudSync() }
+                throw error
+            }
+            guard firebaseUID == uid else { throw GroupJoinError.notAuthenticated }
+        }
+        chatMessageListeners.removeValue(forKey: groupID)?.remove()
+        chatPresenceListeners.removeValue(forKey: groupID)?.remove()
+        chatHeartbeatTasks.removeValue(forKey: groupID)?.cancel()
+        onlineMembersByGroupID[groupID] = nil
+        chatMessageSyncErrorsByGroupID[groupID] = nil
+        chatPresenceSyncErrorsByGroupID[groupID] = nil
+        chatMessageSyncReadyGroupIDs.remove(groupID)
+        groups.removeAll { $0.id == groupID }
+        projectTasks.removeAll { $0.groupID == groupID }
+        peerReviews.removeAll { $0.groupID == groupID }
+        communicationAnalyses[groupID] = nil
         chatItemsByGroupID[groupID] = nil
         saveChatItems()
-        lastEvent = "已離開「\(groupName)」"
-        return true
+        publishWidgetSnapshot()
+        lastEvent = "已退出「\(group.name)」"
+        if !isDemoMode { resumeCloudSync() }
     }
 
     /// 從本機載入各邀請碼所屬的聊天記錄；資料損毀時安全地回到預設內容。

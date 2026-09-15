@@ -29,10 +29,11 @@ struct GroupRepositoryTests {
         #expect(result.tasks[0].firestoreDocumentID == taskID)
         #expect(result.tasks[0].subtasks.isEmpty)
     }
-    @Test func rejectsMockOwnerUUID() {
-        #expect(throws: GroupLoadError.self) {
-            try GroupRepository.map(summary, members: [member("firebase-A")], tasks: [task(owner: UUID().uuidString)], currentUID: "firebase-A")
-        }
+    @Test func departedOwnerDoesNotBreakRemainingMembersTasks() throws {
+        let result = try GroupRepository.map(summary, members: [member("firebase-A")],
+            tasks: [task(owner: "departed-member")], currentUID: "firebase-A")
+        #expect(result.tasks.count == 1)
+        #expect(result.tasks[0].ownerMemberID == nil)
     }
     @Test func rejectsMismatchedMemberDocument() {
         let forged = CloudDocument(id: "firebase-A", value: member("firebase-B").value)

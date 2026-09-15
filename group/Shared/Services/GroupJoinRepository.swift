@@ -110,6 +110,12 @@ final class GroupJoinRepository {
         }
     }
 
+    func leave(groupID: String) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { throw GroupJoinError.notAuthenticated }
+        _ = try await functions.httpsCallable("leaveGroup").call(["groupID": groupID])
+        guard Auth.auth().currentUser?.uid == uid else { throw GroupJoinError.notAuthenticated }
+    }
+
     func fetchAccessibleGroups() async throws -> [CloudGroupSummary] {
         guard Auth.auth().currentUser?.uid != nil else {
             throw GroupJoinError.notAuthenticated

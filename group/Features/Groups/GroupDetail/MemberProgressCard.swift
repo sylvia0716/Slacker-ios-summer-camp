@@ -379,8 +379,8 @@ private struct PokeActionButton: View {
         .frame(width: 34, height: 34)
         .sensoryFeedback(.impact(weight: .light), trigger: lightFeedbackID)
         .sensoryFeedback(.impact(weight: .heavy), trigger: heavyFeedbackID)
-        .alert("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
-            Button("好", role: .cancel) { }
+        .bombDialog("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
+            Button("好") { }
         }
     }
 

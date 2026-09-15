@@ -72,7 +72,7 @@ private struct GroupProgressWidgetView: View {
                 Spacer()
                 Text("LIVE")
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(red: 196.0 / 255, green: 61.0 / 255, blue: 50.0 / 255))
             }
 
             Text(entry.groupName)

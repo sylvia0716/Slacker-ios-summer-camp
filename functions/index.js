@@ -265,7 +265,7 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
       transaction.get(memberRef),
     ]);
 
-    if (!groupSnapshot.exists) {
+    if (!groupSnapshot.exists || groupSnapshot.data().deleting === true) {
       throw callableError("not-found", "Group not found.", "group-not-found");
     }
 
@@ -425,3 +425,5 @@ exports.updateSubtask = onCall({ region }, async (request) => {
 
   return { taskID: data.taskID, subtaskID: data.subtaskID, isComplete: data.isComplete, status };
 });
+
+Object.assign(exports, require('./group-membership'));

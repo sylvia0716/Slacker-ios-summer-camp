@@ -9,6 +9,9 @@ struct GroupDetailView: View {
     private let tutorialStep: Binding<TutorialStep?>?
 
     @State private var showsCopiedFeedback = false
+    @State private var showsLeaveConfirmation = false
+    @State private var isLeaving = false
+    @State private var leaveError: String?
     @State private var showsPublishTaskSheet = false
     @State private var expandedMemberID: UUID?
     @State private var reviewDeferred = false
@@ -56,6 +59,19 @@ struct GroupDetailView: View {
                                 groupIdentity
                                 countdownCard(now: context.date)
                                 memberSection
+                                Button(role: .destructive) {
+                                    showsLeaveConfirmation = true
+                                } label: {
+                                    Label(isLeaving ? "退出中…" : "退出群組", systemImage: "rectangle.portrait.and.arrow.right")
+                                        .font(.headline.weight(.black))
+                                        .foregroundStyle(BombTheme.paper)
+                                        .frame(width: (proxy.size.width - 32) * 0.6, height: 52)
+                                        .background(BombTheme.red, in: Capsule())
+                                        .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                                }
+                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .disabled(isLeaving)
                             }
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
@@ -183,6 +199,26 @@ struct GroupDetailView: View {
                 .animation(.snappy, value: shouldShowSuccessMeme(now: context.date))
             }
         }
+        .bombDialog("確定退出「\(currentGroup.name)」？", isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
+            Button("取消", role: .cancel) { }
+            Button("退出群組", role: .destructive) {
+                isLeaving = true
+                Task {
+                    defer { isLeaving = false }
+                    do {
+                        try await model.leaveGroup(groupID: group.id)
+                        dismiss()
+                    } catch { leaveError = "退出失敗，請確認網路後重試。" }
+                }
+            }
+        } message: {
+            Text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。")
+        }
+        .bombDialog("無法退出群組", isPresented: Binding(
+            get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
+        )) {
+            Button("知道了") { }
+        } message: { Text(leaveError ?? "") }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -214,19 +250,19 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showsNameSheet) {
             GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
         }
-        .alert("無法修改期限", isPresented: Binding(
+        .bombDialog("無法修改期限", isPresented: Binding(
             get: { deadlineError != nil },
             set: { if !$0 { deadlineError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(deadlineError ?? "")
         }
-        .alert("無法修改群組名稱", isPresented: Binding(
+        .bombDialog("無法修改群組名稱", isPresented: Binding(
             get: { nameError != nil },
             set: { if !$0 { nameError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(nameError ?? "")
         }

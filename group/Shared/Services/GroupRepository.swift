@@ -77,8 +77,8 @@ final class GroupRepository {
         })
         func memberID(_ uid: String?) throws -> UUID? {
             guard let uid else { return nil }
-            guard let id = byUID[uid] else { throw GroupLoadError.invalidData }
-            return id
+            // A former member may still be referenced by historical tasks.
+            return byUID[uid]
         }
         let tasks = try taskDocuments.map { document in
             let data = document.value

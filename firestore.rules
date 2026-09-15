@@ -201,8 +201,8 @@ service cloud.firestore {
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 60;
 
-        // Preserve leaving a group; deletion does not allow recreating membership.
-        allow delete: if isCurrentUser(userID);
+        // The callable serializes exits with joins and schedules empty-group cleanup.
+        allow delete: if false;
       }
 
       match /messages/{messageID} {
