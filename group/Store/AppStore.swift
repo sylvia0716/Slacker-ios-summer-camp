@@ -78,6 +78,7 @@ enum PokeStyle: String, CaseIterable, Identifiable {
 enum PublishTaskError: LocalizedError {
     case groupNotFound
     case emptyTitle
+    case invalidSubtasks
     case assigneeNotInGroup
     case deadlineNotInFuture
     case deadlineAfterGroupDeadline
@@ -86,6 +87,7 @@ enum PublishTaskError: LocalizedError {
         switch self {
         case .groupNotFound: "找不到目前群組"
         case .emptyTitle: "請輸入任務名稱"
+        case .invalidSubtasks: "請填寫 1 到 10 項子任務"
         case .assigneeNotInGroup: "負責人必須是目前群組成員"
         case .deadlineNotInFuture: "截止時間必須晚於目前時間"
         case .deadlineAfterGroupDeadline: "截止時間不可晚於群組總截止時間"
@@ -821,6 +823,7 @@ final class AppStore {
     func publishTask(
         title: String,
         detail: String,
+        subtaskTitles: [String],
         groupID: UUID,
         assigneeMemberID: UUID,
         deadline: Date,
@@ -828,7 +831,14 @@ final class AppStore {
     ) throws -> ProjectTask {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSubtaskTitles = subtaskTitles.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
+        guard (1...10).contains(trimmedSubtaskTitles.count),
+              trimmedSubtaskTitles.allSatisfy({ !$0.isEmpty }) else {
+            throw PublishTaskError.invalidSubtasks
+        }
         guard let groupIndex = groups.firstIndex(where: { $0.id == groupID }) else {
             throw PublishTaskError.groupNotFound
         }
@@ -841,6 +851,17 @@ final class AppStore {
             throw PublishTaskError.deadlineAfterGroupDeadline
         }
 
+        let baseWeight = 100 / trimmedSubtaskTitles.count
+        let remainder = 100 % trimmedSubtaskTitles.count
+        let subtasks = trimmedSubtaskTitles.enumerated().map { index, title in
+            Subtask(
+                id: UUID(),
+                title: title,
+                isComplete: false,
+                weight: baseWeight + (index < remainder ? 1 : 0)
+            )
+        }
+
         let task = ProjectTask(
             id: UUID(),
             groupID: groupID,
@@ -848,7 +869,7 @@ final class AppStore {
             detail: trimmedDetail,
             weight: 1,
             ownerMemberID: assigneeMemberID,
-            subtasks: [Subtask(id: UUID(), title: trimmedTitle, isComplete: false, weight: 100)],
+            subtasks: subtasks,
             deliverable: nil,
             deadline: deadline,
             createdByMemberID: currentUserID,

@@ -1,14 +1,20 @@
 import SwiftUI
 
+private struct SubtaskDraft: Identifiable {
+    let id = UUID()
+    var title = ""
+}
+
 /// Focused task-publishing flow: choose who should do what, and by when.
 struct PublishTaskSheet: View {
     let group: Group
     let members: [Member]
-    let onPublish: (String, String, UUID, Date) throws -> Void
+    let onPublish: (String, String, [String], UUID, Date) throws -> Void
     let onCancel: () -> Void
 
     @State private var title = ""
     @State private var detail = ""
+    @State private var subtaskDrafts = [SubtaskDraft()]
     @State private var selectedMemberID: UUID?
     @State private var deadline: Date
     @State private var submissionError: String?
@@ -16,7 +22,7 @@ struct PublishTaskSheet: View {
     init(
         group: Group,
         members: [Member],
-        onPublish: @escaping (String, String, UUID, Date) throws -> Void,
+        onPublish: @escaping (String, String, [String], UUID, Date) throws -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.group = group
@@ -44,6 +50,7 @@ struct PublishTaskSheet: View {
                         .font(.system(.title2, design: .rounded, weight: .black))
 
                     taskFields
+                    subtaskFields
                     assigneePicker
                     deadlinePicker
                     publishSummary
@@ -69,6 +76,56 @@ struct PublishTaskSheet: View {
                 .stroke(BombTheme.ink, lineWidth: 3)
         }
         .shadow(color: BombTheme.ink.opacity(0.3), radius: 14, y: 4)
+    }
+
+    private var subtaskFields: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                fieldLabel("子任務", isRequired: true)
+                Spacer()
+                Text("\(subtaskDrafts.count) / 10")
+                    .font(.caption2.monospacedDigit().weight(.black))
+                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+            }
+
+            ForEach($subtaskDrafts) { $draft in
+                HStack(spacing: 9) {
+                    TextField("例如「整理簡報架構」", text: $draft.title)
+                        .textInputAutocapitalization(.never)
+                        .inputFieldStyle()
+
+                    if subtaskDrafts.count > 1 {
+                        Button {
+                            removeSubtask(draft.id)
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.subheadline.weight(.black))
+                                .frame(width: 38, height: 38)
+                                .foregroundStyle(.white)
+                                .background(BombTheme.red)
+                                .clipShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("刪除子任務")
+                    }
+                }
+            }
+
+            if subtaskDrafts.count < 10 {
+                Button {
+                    subtaskDrafts.append(SubtaskDraft())
+                } label: {
+                    Label("新增子任務", systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.black))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(BombTheme.ink)
+            }
+
+            Text("每項子任務會平均計入任務進度")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(BombTheme.ink.opacity(0.55))
+        }
     }
 
     private var taskFields: some View {
@@ -178,6 +235,7 @@ struct PublishTaskSheet: View {
             Text("發布摘要")
                 .font(.subheadline.weight(.black))
             summaryRow(label: "任務", value: trimmedTitle.isEmpty ? "尚未填寫" : trimmedTitle)
+            summaryRow(label: "子任務", value: "\(filledSubtaskCount) 項")
             summaryRow(label: "負責人", value: selectedMember?.name ?? "尚未選擇")
             summaryRow(label: "截止", value: deadline.formatted(date: .abbreviated, time: .shortened))
         }
@@ -216,6 +274,14 @@ struct PublishTaskSheet: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedSubtaskTitles: [String] {
+        subtaskDrafts.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private var filledSubtaskCount: Int {
+        trimmedSubtaskTitles.filter { !$0.isEmpty }.count
+    }
+
     private var selectedMember: Member? {
         guard let selectedMemberID else { return nil }
         return members.first(where: { $0.id == selectedMemberID })
@@ -237,7 +303,10 @@ struct PublishTaskSheet: View {
     }
 
     private var canPublish: Bool {
-        !trimmedTitle.isEmpty && selectedMember != nil && deadlineError == nil
+        !trimmedTitle.isEmpty
+            && !trimmedSubtaskTitles.contains { $0.isEmpty }
+            && selectedMember != nil
+            && deadlineError == nil
     }
 
     private func fieldLabel(_ title: String, isRequired: Bool) -> some View {
@@ -265,11 +334,16 @@ struct PublishTaskSheet: View {
         guard canPublish, let selectedMemberID else { return }
 
         do {
-            try onPublish(title, detail, selectedMemberID, deadline)
+            try onPublish(title, detail, trimmedSubtaskTitles, selectedMemberID, deadline)
             onCancel()
         } catch {
             submissionError = error.localizedDescription
         }
+    }
+
+    private func removeSubtask(_ id: UUID) {
+        guard subtaskDrafts.count > 1 else { return }
+        subtaskDrafts.removeAll { $0.id == id }
     }
 }
 

@@ -70,10 +70,11 @@ struct GroupDetailView: View {
                         PublishTaskSheet(
                             group: currentGroup,
                             members: groupMembers,
-                            onPublish: { title, detail, assigneeID, deadline in
+                            onPublish: { title, detail, subtaskTitles, assigneeID, deadline in
                                 try model.publishTask(
                                     title: title,
                                     detail: detail,
+                                    subtaskTitles: subtaskTitles,
                                     groupID: group.id,
                                     assigneeMemberID: assigneeID,
                                     deadline: deadline
