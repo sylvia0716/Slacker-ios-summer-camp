@@ -88,7 +88,7 @@ struct MemberProgressCard: View {
         .comicCard()
         .animation(.snappy, value: isExpanded)
         .sheet(item: $uploadTask) { task in
-            DeliverablePhotoSheet(task: task) { deliverable in
+            DeliverableSubmissionSheet(task: task) { deliverable in
                 onSubmitDeliverable(task.id, deliverable)
             }
         }
@@ -232,12 +232,12 @@ struct MemberProgressCard: View {
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
-                Text("尚未上傳成果照片").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Text("尚未上傳成果").font(.caption.weight(.bold)).foregroundStyle(.secondary)
             }
 
             if isCurrentUser {
                 Button { uploadTask = task } label: {
-                    Text(task.deliverable == nil ? "＋ 上傳成果照片" : "更換成果照片")
+                    Text(task.deliverable == nil ? "＋ 上傳成果" : "更換成果")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -433,7 +433,13 @@ private struct DeliverablePhotoPreview: View {
                         .resizable().scaledToFit()
                         .padding(16)
                 } else {
-                    Text("照片無法讀取").font(.headline.weight(.black)).foregroundStyle(.white)
+                    VStack(spacing: 12) {
+                        Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
+                            .font(.system(size: 42, weight: .black))
+                        Text(deliverable.originalFilename ?? "成果附件")
+                            .font(.headline.weight(.black))
+                    }
+                    .foregroundStyle(.white)
                 }
             }
             .navigationTitle(deliverable.title)

@@ -3,6 +3,7 @@ import SwiftUI
 
 /// 已結案專案的遊戲化成果報告；MVP 內容使用本檔案內的展示資料。
 struct PostGameReviewView: View {
+    @Environment(\.dismiss) private var dismiss
     let groupName: String
 
     @State private var showsPlaceholderAlert = false
@@ -30,8 +31,19 @@ struct PostGameReviewView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .navigationTitle("賽後回顧")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "賽後回顧", subtitle: groupName) {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回群組")
+            } trailing: {
+                EmptyView()
+            }
+        }
         .alert("功能開發中", isPresented: $showsPlaceholderAlert) {
             Button("知道了", role: .cancel) {}
         } message: {

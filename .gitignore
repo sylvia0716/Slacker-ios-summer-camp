@@ -2,3 +2,14 @@
 xcuserdata/
 *.xcuserstate
 *.xcuserdatad/
+
+# macOS metadata
+.DS_Store
+
+# Firebase Emulator logs
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Node dependencies
+node_modules/

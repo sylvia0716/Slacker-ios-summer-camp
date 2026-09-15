@@ -16,10 +16,6 @@ struct MyTasksView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("我的任務")
-                        .font(.system(size: 42, weight: .black, design: .rounded))
-                        .padding(.top, 18)
-
                     TaskProgressDashboard(progress: personalProgress)
 
                     Picker("任務狀態", selection: $showCompleted) {
@@ -52,8 +48,19 @@ struct MyTasksView: View {
                 .padding(.bottom, 112)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "我的任務") {
+                EmptyView()
+            } trailing: {
+                EmptyView()
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .task {
+            for task in model.projectTasks where task.ownerMemberID == model.currentUserID {
+                model.startAttachmentSync(for: task.id)
+            }
+        }
     }
 
     private var personalProgress: Int {
@@ -252,6 +259,7 @@ private struct MyTaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     let taskID: UUID
+    @State private var showsSubmissionSheet = false
 
     private var task: ProjectTask? { model.projectTasks.first { $0.id == taskID } }
 
@@ -262,23 +270,6 @@ private struct MyTaskDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(spacing: 0) {
-                            HStack {
-                                Button(action: dismiss.callAsFunction) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.title3.weight(.black))
-                                        .foregroundStyle(BombTheme.ink)
-                                        .frame(width: 48, height: 48)
-                                        .background(BombTheme.yellow.opacity(0.72))
-                                        .clipShape(.circle)
-                                }
-                                Spacer()
-                                Text(model.groups.first { $0.id == task.groupID }?.name ?? "我的任務")
-                                    .font(.title3.weight(.black))
-                                Spacer()
-                                Color.clear.frame(width: 48, height: 48)
-                            }
-                            .padding(.bottom, 20)
-
                             VStack(alignment: .leading, spacing: 22) {
                                 HStack(alignment: .firstTextBaseline) {
                                     Text(task.title).font(.system(size: 32, weight: .black, design: .rounded))
@@ -324,13 +315,7 @@ private struct MyTaskDetailView: View {
                                 }
                             }
                             Button {
-                                model.submitDeliverable(
-                                    taskID: task.id,
-                                    deliverable: Deliverable(
-                                        id: UUID(), title: "新增成果連結", url: URL(string: "https://example.com"),
-                                        submittedAt: .now, isApproved: false
-                                    )
-                                )
+                                showsSubmissionSheet = true
                             } label: {
                                 Label("上傳檔案或貼上連結", systemImage: "paperclip")
                                     .frame(maxWidth: .infinity)
@@ -350,5 +335,30 @@ private struct MyTaskDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .bombTabBarHidden()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(
+                title: "任務詳情",
+                subtitle: task.flatMap { task in
+                    model.groups.first { $0.id == task.groupID }?.name
+                }
+            ) {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回我的任務")
+            } trailing: {
+                EmptyView()
+            }
+        }
+        .task { model.startAttachmentSync(for: taskID) }
+        .sheet(isPresented: $showsSubmissionSheet) {
+            if let task {
+                DeliverableSubmissionSheet(task: task) { deliverable in
+                    model.submitDeliverable(taskID: task.id, deliverable: deliverable)
+                }
+            }
+        }
     }
 }

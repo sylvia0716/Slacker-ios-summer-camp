@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Combined peer-review and AI report styled like a compact team report card.
 struct PeerReviewReportView: View {
+    @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
 
     private var averageScore: Int {
@@ -51,10 +52,21 @@ struct PeerReviewReportView: View {
                 .padding(.bottom, 24)
             }
         }
-        .navigationTitle("團隊戰報")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .bombTabBarHidden()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "團隊戰報") {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回設定")
+            } trailing: {
+                EmptyView()
+            }
+        }
     }
 }
 

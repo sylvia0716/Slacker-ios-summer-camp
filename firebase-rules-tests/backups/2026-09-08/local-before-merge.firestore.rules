@@ -1,0 +1,180 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isGroupMember(groupID) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid));
+    }
+
+    function isGroupLeader(groupID) {
+      return isGroupMember(groupID)
+        && get(
+          /databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid)
+        ).data.role == 'leader';
+    }
+
+    function taskExists(groupID, taskID) {
+      return exists(
+        /databases/$(database)/documents/groups/$(groupID)/tasks/$(taskID)
+      );
+    }
+
+    function hasSafeIDs(groupID, taskID, attachmentID) {
+      return groupID.matches('^[a-z0-9-]+$')
+        && taskID.matches('^[a-z0-9-]+$')
+        && attachmentID.matches('^[a-z0-9-]+$');
+    }
+
+    function hasSafeStoragePath(data, groupID, taskID, attachmentID) {
+      return data.storagePath is string
+        && data.storagePath.matches(
+          '^groups/' + groupID + '/tasks/' + taskID
+            + '/attachments/' + attachmentID
+            + '/[a-z0-9][a-z0-9-]{0,47}-[a-f0-9]{8}'
+            + '\\.(jpg|jpeg|png|pdf|docx|xlsx|pptx|zip)$'
+        );
+    }
+
+    function hasMatchingFileType(data) {
+      return
+        (data.kind == 'image'
+          && (
+            (data.contentType == 'image/jpeg'
+              && data.storagePath.matches('.*\\.(jpg|jpeg)$'))
+            || (data.contentType == 'image/png'
+              && data.storagePath.matches('.*\\.png$'))
+          ))
+        || (data.kind == 'pdf'
+          && data.contentType == 'application/pdf'
+          && data.storagePath.matches('.*\\.pdf$'))
+        || (data.kind == 'document'
+          && data.contentType ==
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          && data.storagePath.matches('.*\\.docx$'))
+        || (data.kind == 'spreadsheet'
+          && data.contentType ==
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          && data.storagePath.matches('.*\\.xlsx$'))
+        || (data.kind == 'presentation'
+          && data.contentType ==
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+          && data.storagePath.matches('.*\\.pptx$'))
+        || (data.kind == 'archive'
+          && data.contentType in [
+            'application/zip',
+            'application/x-zip-compressed'
+          ]
+          && data.storagePath.matches('.*\\.zip$'));
+    }
+
+    function hasValidLinkMetadata(data) {
+      return data.kind == 'externalLink'
+        && data.externalURL is string
+        && data.externalURL.size() > 0
+        && data.externalURL.size() <= 2048
+        && data.externalURL.matches('^https://[^\\s]+$')
+        && data.originalFilename == null
+        && data.storagePath == null
+        && data.contentType == null
+        && data.byteSize == null;
+    }
+
+    function hasValidFileMetadata(data, groupID, taskID, attachmentID) {
+      return data.kind in [
+          'image', 'pdf', 'presentation', 'document', 'spreadsheet', 'archive'
+        ]
+        && data.externalURL == null
+        && data.originalFilename is string
+        && data.originalFilename.size() > 0
+        && data.originalFilename.size() <= 255
+        && hasSafeStoragePath(data, groupID, taskID, attachmentID)
+        && data.contentType is string
+        && data.byteSize is int
+        && data.byteSize > 0
+        && data.byteSize <= 20 * 1024 * 1024
+        && hasMatchingFileType(data);
+    }
+
+    function hasValidAttachmentShape(groupID, taskID, attachmentID) {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && hasSafeIDs(groupID, taskID, attachmentID)
+        && data.id == attachmentID
+        && data.taskID == taskID
+        && data.groupID == groupID
+        && data.uploaderID is string
+        && data.uploaderID.size() > 0
+        && data.uploaderID.size() <= 128
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 100
+        && data.detail is string
+        && data.detail.size() <= 1000
+        && data.status in ['pending', 'uploading', 'ready', 'failed']
+        && data.createdAt is timestamp
+        && (
+          hasValidLinkMetadata(data)
+          || hasValidFileMetadata(data, groupID, taskID, attachmentID)
+        );
+    }
+
+    match /groups/{groupID} {
+      allow read: if isGroupMember(groupID);
+      allow write: if false;
+
+      match /members/{userID} {
+        allow read: if isGroupMember(groupID);
+        // Membership and role changes must come from a trusted backend/admin.
+        allow write: if false;
+      }
+
+      match /tasks/{taskID} {
+        allow read: if isGroupMember(groupID);
+        allow write: if false;
+
+        match /attachments/{attachmentID} {
+          allow read: if isGroupMember(groupID);
+
+          allow create: if isGroupMember(groupID)
+            && taskExists(groupID, taskID)
+            && request.resource.data.uploaderID == request.auth.uid
+            && request.resource.data.status == 'ready'
+            && request.resource.data.createdAt == request.time
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow update: if isGroupMember(groupID)
+            && resource.data.uploaderID == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'detail', 'status'
+            ])
+            && request.resource.data.createdAt == resource.data.createdAt
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow delete: if isGroupMember(groupID)
+            && (
+              resource.data.uploaderID == request.auth.uid
+              || isGroupLeader(groupID)
+            );
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

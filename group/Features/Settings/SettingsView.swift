@@ -4,22 +4,25 @@ import UIKit
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
     let model: GroupBombModel
+    let authSession: AuthSessionStore
+    let onReplayTutorial: () -> Void
     @State private var showsNotificationTest = false
+    @State private var showsSignOutConfirmation = false
 
     var body: some View {
         ZStack {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("設定")
-                        .font(.system(.largeTitle, design: .rounded, weight: .black))
-
                     NavigationLink {
                         ProfileDetailView(model: model)
                     } label: {
                         ProfileCard(
-                            name: model.profileName,
+                            name: model.profileName.isEmpty
+                                ? (authSession.currentUserEmail ?? "我的帳號")
+                                : model.profileName,
                             role: model.profileRole,
+                            groupName: model.groups.first?.name,
                             avatarSymbol: model.profileAvatarSymbol,
                             avatarData: model.profileAvatarData
                         )
@@ -41,15 +44,57 @@ struct SettingsView: View {
                             showsNotificationTest = true
                         }
                     }
+
+                    SettingsSection(title: "教學專區") {
+                        Button(action: onReplayTutorial) {
+                            SettingsRow(
+                                icon: "book.pages.fill",
+                                title: "新手入門",
+                                subtitle: "建立專案、分配任務與查看進度"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+#if DEBUG
+                    SettingsSection(title: "開發工具") {
+                        TestModeSettingsRow(model: model)
+                    }
+#endif
+
+                    SettingsSection(title: "帳號") {
+                        Button {
+                            showsSignOutConfirmation = true
+                        } label: {
+                            SettingsRow(
+                                icon: "rectangle.portrait.and.arrow.right",
+                                title: "登出",
+                                subtitle: authSession.currentUserEmail ?? "目前帳號"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(16)
                 .padding(.bottom, 24)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "設定") {
+                EmptyView()
+            } trailing: {
+                EmptyView()
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showsNotificationTest) {
             NotificationTestView(model: model)
+        }
+        .confirmationDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
+            Button("登出", role: .destructive) {
+                authSession.signOut()
+            }
+            Button("取消", role: .cancel) { }
         }
     }
 }
@@ -57,6 +102,7 @@ struct SettingsView: View {
 private struct ProfileCard: View {
     let name: String
     let role: String
+    let groupName: String?
     let avatarSymbol: String
     let avatarData: Data?
 
@@ -68,9 +114,13 @@ private struct ProfileCard: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(name).font(.title2.weight(.black))
-                Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
-                Label("期末報告拆彈小隊", systemImage: "person.3.fill")
-                    .font(.caption.bold())
+                if !role.isEmpty {
+                    Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
+                }
+                if let groupName {
+                    Label(groupName, systemImage: "person.3.fill")
+                        .font(.caption.bold())
+                }
             }
             Spacer()
             Image(systemName: "pencil.circle.fill").font(.title2)
@@ -78,6 +128,32 @@ private struct ProfileCard: View {
         .comicCard()
     }
 }
+
+#if DEBUG
+private struct TestModeSettingsRow: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "wrench.and.screwdriver.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .background(BombTheme.yellow)
+                .clipShape(.circle)
+            Text("測試模式").font(.body.weight(.bold))
+            Spacer()
+            Toggle("測試模式", isOn: Binding(
+                get: { model.isDemoMode },
+                set: { model.setDemoMode($0) }
+            ))
+            .labelsHidden()
+            .tint(BombTheme.green)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 8)
+    }
+}
+#endif
 
 private struct SettingsSection<Content: View>: View {
     let title: String
@@ -151,6 +227,7 @@ private struct NotificationSettingsRow: View {
 }
 
 private struct NotificationTestView: View {
+    @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     @State private var selectedGroupID: UUID?
     @State private var pokeCount = 0
@@ -194,9 +271,19 @@ private struct NotificationTestView: View {
             }
             .padding(24)
         }
-        .navigationTitle("通知測試")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BombTheme.yellow, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "通知測試") {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel("返回設定")
+            } trailing: {
+                EmptyView()
+            }
+        }
         .onAppear {
             selectedGroupID = selectedGroupID ?? model.groups.first?.id
         }

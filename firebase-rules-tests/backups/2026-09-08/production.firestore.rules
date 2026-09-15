@@ -1,0 +1,195 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isGroupMember(groupID) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid));
+    }
+
+    function isCurrentUser(userID) {
+      return isSignedIn() && request.auth.uid == userID;
+    }
+
+    function hasValidMemberShape(userID) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['userID', 'displayName', 'role', 'joinedAt'])
+        && data.keys().hasOnly(['userID', 'displayName', 'role', 'joinedAt'])
+        && data.userID == userID
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 60
+        && data.role == 'member'
+        && data.joinedAt is timestamp;
+    }
+
+    function hasValidMessageShape(messageID) {
+      let data = request.resource.data;
+      let baseKeys = ['id', 'senderID', 'senderName', 'text', 'kind', 'createdAt'];
+      let analysisKeys = [
+        'id', 'senderID', 'senderName', 'text', 'kind', 'createdAt',
+        'analysisScore', 'analysisStrength', 'analysisSuggestion'
+      ];
+      return data.keys().hasAll(baseKeys)
+        && data.id == messageID
+        && data.senderID == request.auth.uid
+        && data.senderName is string
+        && data.senderName.size() > 0
+        && data.senderName.size() <= 60
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 4000
+        && data.kind in ['message', 'botReply', 'botAnalysis']
+        && data.createdAt == request.time
+        && (
+          (data.kind in ['message', 'botReply'] && data.keys().hasOnly(baseKeys))
+          ||
+          (data.kind == 'botAnalysis'
+            && data.keys().hasAll(analysisKeys)
+            && data.keys().hasOnly(analysisKeys)
+            && data.analysisScore is int
+            && data.analysisScore >= 0
+            && data.analysisScore <= 100
+            && data.analysisStrength is string
+            && data.analysisStrength.size() > 0
+            && data.analysisStrength.size() <= 4000
+            && data.analysisSuggestion is string
+            && data.analysisSuggestion.size() > 0
+            && data.analysisSuggestion.size() <= 4000)
+        );
+    }
+
+    function hasValidPresenceShape(userID) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['userID', 'displayName', 'isOnline', 'lastSeenAt'])
+        && data.keys().hasOnly(['userID', 'displayName', 'isOnline', 'lastSeenAt'])
+        && data.userID == userID
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 60
+        && data.isOnline is bool
+        && data.lastSeenAt == request.time;
+    }
+
+    function hasValidAttachmentShape(groupID, taskID, attachmentID) {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'taskID', 'groupID', 'uploaderID', 'title', 'detail', 'kind',
+          'originalFilename', 'storagePath', 'externalURL', 'contentType',
+          'byteSize', 'status', 'createdAt'
+        ])
+        && data.id == attachmentID
+        && data.taskID == taskID
+        && data.groupID == groupID
+        && data.uploaderID is string
+        && data.title is string
+        && data.title.size() > 0
+        && data.detail is string
+        && data.kind in [
+          'image', 'pdf', 'presentation', 'document', 'spreadsheet',
+          'archive', 'externalLink', 'other'
+        ]
+        && (data.originalFilename == null || data.originalFilename is string)
+        && (data.storagePath == null || data.storagePath is string)
+        && (data.externalURL == null
+          || (data.externalURL is string && data.externalURL.matches('^https://.*')))
+        && (data.contentType == null || data.contentType is string)
+        && (data.byteSize == null || (data.byteSize is int && data.byteSize >= 0))
+        && data.status in ['pending', 'uploading', 'ready', 'failed']
+        && data.createdAt is timestamp
+        && (
+          (data.kind == 'externalLink'
+            && data.externalURL is string
+            && data.externalURL.matches('^https://.*')
+            && data.originalFilename == null
+            && data.storagePath == null
+            && data.contentType == null
+            && data.byteSize == null)
+          ||
+          (data.kind != 'externalLink'
+            && data.externalURL == null
+            && data.originalFilename is string
+            && data.storagePath is string
+            && data.storagePath.matches(
+              '^groups/' + groupID + '/tasks/' + taskID
+                + '/attachments/' + attachmentID + '/.*'
+            )
+            && data.contentType is string
+            && data.byteSize is int
+            && data.byteSize <= 20 * 1024 * 1024)
+        );
+    }
+
+    match /groups/{groupID} {
+      allow read: if isGroupMember(groupID);
+      allow write: if false;
+
+      match /members/{userID} {
+        allow read: if isGroupMember(groupID) || isCurrentUser(userID);
+
+        allow create: if isCurrentUser(userID)
+          && request.resource.data.joinedAt == request.time
+          && hasValidMemberShape(userID);
+
+        allow update: if isCurrentUser(userID)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 60;
+
+        allow delete: if isCurrentUser(userID);
+      }
+
+      match /messages/{messageID} {
+        allow read: if isGroupMember(groupID);
+        allow create: if isGroupMember(groupID)
+          && hasValidMessageShape(messageID);
+        allow update, delete: if false;
+      }
+
+      match /presence/{userID} {
+        allow read: if isGroupMember(groupID);
+        allow create, update: if isGroupMember(groupID)
+          && isCurrentUser(userID)
+          && hasValidPresenceShape(userID);
+        allow delete: if isCurrentUser(userID);
+      }
+
+      match /tasks/{taskID} {
+        allow read: if isGroupMember(groupID);
+        allow write: if false;
+
+        match /attachments/{attachmentID} {
+          allow read: if isGroupMember(groupID);
+
+          allow create: if isGroupMember(groupID)
+            && request.resource.data.uploaderID == request.auth.uid
+            && request.resource.data.createdAt == request.time
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow update: if isGroupMember(groupID)
+            && resource.data.uploaderID == request.auth.uid
+            && request.resource.data.uploaderID == resource.data.uploaderID
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'detail', 'originalFilename', 'storagePath',
+              'externalURL', 'contentType', 'byteSize', 'status'
+            ])
+            && hasValidAttachmentShape(groupID, taskID, attachmentID);
+
+          allow delete: if isGroupMember(groupID)
+            && resource.data.uploaderID == request.auth.uid;
+        }
+      }
+    }
+  }
+}

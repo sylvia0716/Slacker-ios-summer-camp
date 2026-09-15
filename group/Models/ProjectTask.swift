@@ -43,6 +43,8 @@ struct ProjectTask: Identifiable, Hashable {
     var createdAt: Date = .now
     /// 任務目前狀態。
     var status: ProjectTaskStatus = .pending
+    var firestoreDocumentID: String? = nil
+    var firestoreGroupID: String? = nil
 
     /// 依子任務權重算出的任務完成百分比，不應直接手動設定。
     var progress: Int {

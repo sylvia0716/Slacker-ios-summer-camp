@@ -14,4 +14,7 @@ struct Group: Identifiable, Hashable {
     var taskIDs: [UUID]
     /// 讓其他人輸入並加入此群組的 MVP 邀請碼。
     var inviteCode: String
+    var firestoreDocumentID: String? = nil
+    /// 同一位使用者在不同群組可以有不同角色。
+    var memberRoles: [UUID: MemberRole] = [:]
 }
