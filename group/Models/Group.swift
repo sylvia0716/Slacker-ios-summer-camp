@@ -7,8 +7,8 @@ enum GroupInviteCode {
 
     static func isValid(_ value: String) -> Bool {
         let code = normalized(value)
-        return (4...32).contains(code.count) && code.utf8.allSatisfy {
-            (48...57).contains($0) || (65...90).contains($0) || $0 == 45
+        return code.count == 6 && code.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0)
         }
     }
 }

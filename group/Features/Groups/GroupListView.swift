@@ -448,7 +448,7 @@ private struct AddGroupSheet: View {
 
     private var joinGroupForm: some View {
         VStack(spacing: 16) {
-            Text("邀請碼")
+            Text("6 位邀請碼")
                 .font(.title3.weight(.black))
 
             inviteCodeBoxes
@@ -492,33 +492,22 @@ private struct AddGroupSheet: View {
         let characters = Array(groupCode.uppercased())
 
         return ZStack {
-            if characters.count > (model.isDemoMode ? 6 : 8) {
-                Text(groupCode)
-                    .font(.system(.body, design: .monospaced, weight: .black))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            } else {
-                HStack(spacing: 5) {
-                    ForEach(0..<(model.isDemoMode ? 6 : 8), id: \.self) { index in
-                        Text(index < characters.count ? String(characters[index]) : "")
-                            .font(.system(.title2, design: .monospaced, weight: .black))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(BombTheme.paper)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(BombTheme.ink.opacity(0.18), lineWidth: 1.5)
-                            }
-                    }
+            HStack(spacing: 5) {
+                ForEach(0..<6, id: \.self) { index in
+                    Text(index < characters.count ? String(characters[index]) : "")
+                        .font(.system(.title2, design: .monospaced, weight: .black))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(BombTheme.paper)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(BombTheme.ink.opacity(0.18), lineWidth: 1.5)
+                        }
                 }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
             }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
 
             TextField("", text: $groupCode)
                 .keyboardType(.asciiCapable)
@@ -534,7 +523,7 @@ private struct AddGroupSheet: View {
                 .frame(height: 52)
                 .contentShape(Rectangle())
                 .onTapGesture { isCodeFieldFocused = true }
-                .accessibilityLabel("邀請碼")
+                .accessibilityLabel("6 位邀請碼")
                 .onChange(of: groupCode) { _, newValue in
                     groupCode = normalizedInviteCode(newValue)
                 }
@@ -701,7 +690,7 @@ private struct AddGroupSheet: View {
     }
 
     private func normalizedInviteCode(_ value: String) -> String {
-        GroupInviteCode.normalized(value)
+        String(GroupInviteCode.normalized(value).prefix(6))
     }
 
     private func qrCodeImage(for code: String) -> UIImage? {

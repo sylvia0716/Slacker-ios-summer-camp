@@ -31,7 +31,7 @@ function normalizedInviteCode(data) {
   }
 
   const inviteCode = data.inviteCode.trim().toUpperCase();
-  if (!/^[A-Z0-9-]{4,32}$/.test(inviteCode)) {
+  if (!/^[A-Z0-9]{6}$/.test(inviteCode)) {
     throw callableError("invalid-argument", "Invalid invite code.", "invite-code-not-found");
   }
   return inviteCode;
@@ -75,7 +75,7 @@ function normalizedCreateGroupData(data) {
 
 function makeInviteCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from(randomBytes(8), byte => alphabet[byte % alphabet.length]).join("");
+  return Array.from(randomBytes(6), byte => alphabet[byte % alphabet.length]).join("");
 }
 
 function millis(from) {

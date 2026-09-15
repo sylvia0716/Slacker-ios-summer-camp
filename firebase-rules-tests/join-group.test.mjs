@@ -132,7 +132,7 @@ describe("joinGroupByInviteCode Callable", () => {
       const inviteCode = response.data.group.inviteCode;
 
       assert.match(createdGroupID, /^[0-9a-f-]{36}$/);
-      assert.match(inviteCode, /^[A-Z0-9]{8}$/);
+      assert.match(inviteCode, /^[A-Z0-9]{6}$/);
       assert.equal(response.data.group.name, "新測試群組");
 
       await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -281,6 +281,12 @@ describe("joinGroupByInviteCode Callable", () => {
         guest.join({ inviteCode: validCode }),
         "functions/unauthenticated",
       );
+      for (const inviteCode of ["12345", "1234567", "ABCD2345", "AB-123"]) {
+        await expectCallableFailure(
+          member.join({ inviteCode }),
+          "functions/invalid-argument",
+        );
+      }
       await expectCallableFailure(
         member.join({ inviteCode: "NONE24" }),
         "functions/not-found",

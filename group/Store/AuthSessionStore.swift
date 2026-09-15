@@ -188,6 +188,8 @@ final class AuthSessionStore {
             "嘗試次數過多，請稍後再試。"
         case .networkError:
             "網路連線異常，請確認網路後再試。"
+        case .keychainError:
+            "無法儲存登入狀態，請重新安裝 App 後再試。"
         case .operationNotAllowed:
             "Email／Password 登入尚未啟用，請先到 Firebase Console 開啟。"
         case .invalidAPIKey, .appNotAuthorized:

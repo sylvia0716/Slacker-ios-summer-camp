@@ -76,7 +76,6 @@ final class AttachmentRepository {
         taskID: String,
         onChange: @escaping (Result<[TaskAttachment], Error>) -> Void
     ) -> ListenerRegistration {
-        var receivedServerSnapshot = false
         return attachmentsCollection(groupID: groupID, taskID: taskID)
             .order(by: "createdAt", descending: true)
             .addSnapshotListener(includeMetadataChanges: true) { snapshot, error in
@@ -85,12 +84,12 @@ final class AttachmentRepository {
                     return
                 }
 
-                // Do not expose another session's persisted cache before server authorization.
+                // Cache metadata alone is not a failed request. Ignore cached snapshots
+                // and keep the last server-confirmed state while Firestore reconnects.
+                // A new listener still waits for server authorization before exposing data.
                 if snapshot?.metadata.isFromCache == true {
-                    if receivedServerSnapshot { onChange(.failure(GroupLoadError.network)) }
                     return
                 }
-                receivedServerSnapshot = true
 
                 do {
                     let attachments = try (snapshot?.documents ?? []).map {
