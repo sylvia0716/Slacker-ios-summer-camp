@@ -693,6 +693,7 @@ struct GroupDetailView: View {
 
             ForEach(groupMembers) { member in
                 MemberProgressCard(
+                    model: model,
                     member: memberProgressItem(for: member),
                     tasks: model.tasks(for: member.id, in: group.id),
                     groupMemberIDs: currentGroup.memberIDs,

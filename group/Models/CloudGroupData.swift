@@ -40,6 +40,8 @@ struct CloudTaskDocument: Codable {
     var deadline: Date? = nil
     var createdAt: Date? = nil
     var status: ProjectTaskStatus? = nil
+    var confirmedAttachmentID: String? = nil
+    var confirmedMemberUIDs: [String]? = nil
 }
 
 struct CloudDocument<Value> {

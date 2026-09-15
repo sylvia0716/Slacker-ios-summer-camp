@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreImage.CIFilterBuiltins
+import UIKit
 
 /// First tab: groups projects by their deadline and peer-review state.
 struct GroupListView: View {
@@ -8,6 +10,7 @@ struct GroupListView: View {
     private let onReplayTutorial: (() -> Void)?
 
     @State private var isAddGroupPresented = false
+    @State private var addGroupInitialMode = GroupEntryMode.create
     @State private var enteredGroup: Group?
     @State private var animationSequence = 0
     @State private var joinSuccessMessage: String?
@@ -31,12 +34,12 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        Text("選一組，繼續拆彈。")
-                            .font(.subheadline.bold())
-
                         if model.groups.isEmpty {
                             emptyState
                         } else {
+                            Text("選一組，繼續拆彈。")
+                                .font(.subheadline.bold())
+
                             let activeGroups = groups(matching: { $0 == .active }, now: context.date)
                             let awaitingGroups = groups(matching: { $0.isAwaitingReview }, now: context.date)
                             let closedGroups = groups(matching: { $0 == .closed }, now: context.date)
@@ -67,7 +70,7 @@ struct GroupListView: View {
                     if tutorialStep?.wrappedValue == .createGroup {
                         tutorialStep?.wrappedValue = .createGroupForm
                     }
-                    isAddGroupPresented = true
+                    presentAddGroup(mode: .create)
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(BombHeaderButtonStyle())
@@ -82,6 +85,7 @@ struct GroupListView: View {
         .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
             AddGroupSheet(
                 model: model,
+                initialMode: addGroupInitialMode,
                 enterGroup: { group in
                     enteredGroup = group
                     if tutorialStep?.wrappedValue == .createGroupForm {
@@ -111,17 +115,42 @@ struct GroupListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             Image(systemName: "person.3.fill")
                 .font(.system(size: 36, weight: .black))
             Text("還沒有群組")
                 .font(.title3.weight(.black))
-            Text("建立群組或輸入邀請碼加入")
+            Text("建立自己的群組，或使用邀請碼加入")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.65))
+
+            VStack(spacing: 12) {
+                Button {
+                    presentAddGroup(mode: .create)
+                } label: {
+                    Label("建立群組", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GroupEntryActionButtonStyle(isPrimary: true))
+
+                Button {
+                    presentAddGroup(mode: .join)
+                } label: {
+                    Label("輸入邀請碼", systemImage: "viewfinder")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GroupEntryActionButtonStyle(isPrimary: false))
+            }
+            .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+            .padding(.top, 22)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 80)
+    }
+
+    private func presentAddGroup(mode: GroupEntryMode) {
+        addGroupInitialMode = mode
+        isAddGroupPresented = true
     }
 
     @ViewBuilder
@@ -253,22 +282,38 @@ private struct AddGroupSheet: View {
     let joinedGroup: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var flow = GroupEntryFlow.entry
-    @State private var entryMode = GroupEntryMode.create
+    @State private var entryMode: GroupEntryMode
     @State private var groupName = ""
     @State private var groupDeadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
     @State private var groupCode = ""
     @State private var createdGroup: Group?
+    @State private var joinError: String?
     @State private var joinStore = GroupJoinStore()
     @State private var isCreating = false
     @State private var creationError: String?
+    @State private var isScannerPresented = false
+    @State private var isScannerUnavailableAlertPresented = false
+    @State private var showsCodeCopiedFeedback = false
     @FocusState private var isCodeFieldFocused: Bool
+
+    init(
+        model: GroupBombModel,
+        initialMode: GroupEntryMode,
+        enterGroup: @escaping (Group) -> Void,
+        joinedGroup: @escaping (String) -> Void
+    ) {
+        self.model = model
+        self.enterGroup = enterGroup
+        self.joinedGroup = joinedGroup
+        _entryMode = State(initialValue: initialMode)
+    }
 
     private var canCreate: Bool {
         !groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canJoin: Bool {
-        !groupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        GroupInviteCode.isValid(groupCode)
     }
 
     var body: some View {
@@ -276,66 +321,27 @@ private struct AddGroupSheet: View {
             SwiftUI.Group {
                 switch flow {
                 case .entry:
-                    Form {
-                        Section {
-                            HStack(spacing: 12) {
-                                entryButton(title: "建立群組", symbol: "plus", mode: .create)
-                                entryButton(title: "加入群組", symbol: "person.badge.plus", mode: .join)
-                            }
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                        }
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            entryModePicker
 
-                        if entryMode == .create {
-                            Section("群組名稱") {
-                                TextField("輸入群組名稱", text: $groupName)
-                            }
-                            Section("群組期限") {
-                                DatePicker(
-                                    "截止時間",
-                                    selection: $groupDeadline,
-                                    in: Date.now...,
-                                    displayedComponents: [.date, .hourAndMinute]
-                                )
-                            }
-                        } else {
-                            Section("群組代碼") {
-                                TextField("例如 GB-DEMO", text: Binding(
-                                    get: { groupCode },
-                                    set: { groupCode = GroupJoinRepository.normalize($0) }
-                                ))
-                                    .focused($isCodeFieldFocused)
-                                    .textInputAutocapitalization(.characters)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.asciiCapable)
-                                    .submitLabel(.join)
-                                    .onSubmit(submitInviteCode)
-                                    .disabled(isBusy)
-
-                                if joinStore.isJoining {
-                                    HStack(spacing: 8) {
-                                        ProgressView()
-                                        Text("正在加入群組…")
-                                            .foregroundStyle(BombTheme.ink.opacity(0.65))
-                                    }
-                                }
+                            if entryMode == .create {
+                                createGroupForm
+                            } else {
+                                joinGroupForm
                             }
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
                     }
+                    .scrollIndicators(.hidden)
+                    .disabled(isBusy)
                 case .shareCode:
-                    VStack(spacing: 20) {
-                        Text("分享這組代碼給隊友")
-                            .font(.headline)
-                        Text(createdGroup?.inviteCode ?? "")
-                            .font(.system(.title, design: .monospaced, weight: .black))
-                            .padding()
-                            .background(BombTheme.paper)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
+                    shareCodeView
                 }
             }
+            .background(BombTheme.paper)
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -343,6 +349,7 @@ private struct AddGroupSheet: View {
                     Button(flow == .entry ? "取消" : "上一步") {
                         if flow == .entry { dismiss() } else { flow = .entry }
                     }
+                    .disabled(isBusy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(primaryButtonTitle, action: advance)
@@ -350,17 +357,23 @@ private struct AddGroupSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isBusy)
+        .presentationDetents([.fraction(0.62)])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(BombTheme.paper)
         .alert("無法加入群組", isPresented: Binding(
             get: {
+                if joinError != nil { return true }
                 if case .failure = joinStore.state { return true }
                 return false
             },
-            set: { if !$0 { joinStore.reset() } }
+            set: { if !$0 { joinStore.reset(); joinError = nil } }
         )) {
             Button("知道了", role: .cancel) { }
         } message: {
-            if case let .failure(error) = joinStore.state {
+            if let joinError {
+                Text(joinError)
+            } else if case let .failure(error) = joinStore.state {
                 Text(error.localizedDescription)
             }
         }
@@ -376,6 +389,200 @@ private struct AddGroupSheet: View {
             if mode == .join {
                 isCodeFieldFocused = true
             }
+        }
+        .alert("無法使用掃碼", isPresented: $isScannerUnavailableAlertPresented) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text("請在支援相機文字辨識的裝置上使用掃碼功能。")
+        }
+        .fullScreenCover(isPresented: $isScannerPresented) {
+            GroupCodeScanner(onRecognized: { scannedCode in
+                groupCode = GroupInviteCode.normalized(scannedCode)
+                isScannerPresented = false
+            }, onFailure: { message in
+                isScannerPresented = false
+                joinError = message
+            })
+        }
+    }
+
+    private var entryModePicker: some View {
+        HStack(spacing: 4) {
+            entryButton(title: "建立群組", mode: .create)
+            entryButton(title: "加入群組", mode: .join)
+        }
+        .padding(4)
+        .background(BombTheme.ink)
+        .clipShape(.capsule)
+        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+    }
+
+    private var createGroupForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("群組名稱")
+                .font(.headline.weight(.black))
+
+            TextField("例如：期末報告拆彈小隊", text: $groupName)
+                .font(.body.weight(.semibold))
+                .padding(.horizontal, 14)
+                .frame(height: 52)
+                .background(BombTheme.yellow.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            Text("截止時間")
+                .font(.headline.weight(.black))
+                .padding(.top, 10)
+
+            DatePicker(
+                "截止時間",
+                selection: $groupDeadline,
+                in: Date.now...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+    }
+
+    private var joinGroupForm: some View {
+        VStack(spacing: 16) {
+            Text("6 位邀請碼")
+                .font(.title3.weight(.black))
+
+            inviteCodeBoxes
+
+            Rectangle()
+                .stroke(BombTheme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                .frame(height: 1)
+
+            Button {
+                if GroupCodeScanner.isAvailable {
+                    isScannerPresented = true
+                } else {
+                    isScannerUnavailableAlertPresented = true
+                }
+            } label: {
+                Image(systemName: "viewfinder")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(width: 50, height: 50)
+                    .background(BombTheme.yellow.opacity(0.22))
+                    .clipShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("掃描邀請碼")
+
+            Text("輸入隊友分享的邀請碼")
+                .font(.caption.weight(.bold))
+        }
+        .padding(18)
+        .background(BombTheme.yellow.opacity(0.08))
+        .clipShape(PostageTicketShape())
+        .overlay {
+            PostageTicketShape()
+                .stroke(BombTheme.ink, lineWidth: 2)
+                .allowsHitTesting(false)
+        }
+        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+    }
+
+    private var inviteCodeBoxes: some View {
+        let characters = Array(groupCode.uppercased())
+
+        return ZStack {
+            HStack(spacing: 5) {
+                ForEach(0..<6, id: \.self) { index in
+                    Text(index < characters.count ? String(characters[index]) : "")
+                        .font(.system(.title2, design: .monospaced, weight: .black))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(BombTheme.paper)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(BombTheme.ink.opacity(0.18), lineWidth: 1.5)
+                        }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            TextField("", text: $groupCode)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .textContentType(.oneTimeCode)
+                .submitLabel(.join)
+                .onSubmit(submitInviteCode)
+                .focused($isCodeFieldFocused)
+                .foregroundStyle(.clear)
+                .tint(.clear)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .contentShape(Rectangle())
+                .onTapGesture { isCodeFieldFocused = true }
+                .accessibilityLabel("6 位邀請碼")
+                .onChange(of: groupCode) { _, newValue in
+                    groupCode = normalizedInviteCode(newValue)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var shareCodeView: some View {
+        if let createdGroup {
+            VStack(spacing: 16) {
+                VStack(spacing: 12) {
+                    Text("分享給隊友")
+                        .font(.headline.weight(.black))
+
+                    if let image = qrCodeImage(for: createdGroup.inviteCode) {
+                        Image(uiImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 132, height: 132)
+                            .accessibilityLabel("群組邀請碼 QR Code")
+                    }
+
+                    Text(createdGroup.inviteCode)
+                        .font(.system(.title2, design: .monospaced, weight: .black))
+                        .textSelection(.enabled)
+
+                    Rectangle()
+                        .stroke(BombTheme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                        .frame(height: 1)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            copyInviteCode(createdGroup.inviteCode)
+                        } label: {
+                            Label(
+                                showsCodeCopiedFeedback ? "已複製" : "複製代碼",
+                                systemImage: showsCodeCopiedFeedback ? "checkmark" : "doc.on.doc"
+                            )
+                        }
+                        .buttonStyle(ShareCodeButtonStyle(isPrimary: true))
+
+                        ShareLink(item: shareMessage(for: createdGroup)) {
+                            Label("分享", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(ShareCodeButtonStyle(isPrimary: false))
+                    }
+                }
+                .padding(18)
+                .background(BombTheme.yellow.opacity(0.08))
+                .clipShape(PostageTicketShape())
+                .overlay {
+                    PostageTicketShape()
+                        .stroke(BombTheme.ink, lineWidth: 2)
+                }
+                .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 12)
         }
     }
 
@@ -402,10 +609,12 @@ private struct AddGroupSheet: View {
     private var primaryButtonTitle: String {
         if isCreating { return "建立中…" }
         if joinStore.isJoining { return "加入中…" }
-        return "下一步"
+        return flow == .entry ? "完成" : "稍後分享"
     }
 
     private func advance() {
+        guard canAdvance, !isBusy else { return }
+        isCodeFieldFocused = false
         switch flow {
         case .entry:
             if entryMode == .create {
@@ -445,7 +654,8 @@ private struct AddGroupSheet: View {
     }
 
     private func submitInviteCode() {
-        guard canJoin, !joinStore.isJoining else { return }
+        guard canJoin, !isBusy else { return }
+        isCodeFieldFocused = false
         let normalizedCode = GroupJoinRepository.normalize(groupCode)
         groupCode = normalizedCode
 
@@ -460,34 +670,146 @@ private struct AddGroupSheet: View {
         }
     }
 
-    private func entryButton(title: String, symbol: String, mode: GroupEntryMode) -> some View {
+    private func entryButton(title: String, mode: GroupEntryMode) -> some View {
         let isSelected = entryMode == mode
 
         return Button {
-            entryMode = mode
+            withAnimation(.snappy(duration: 0.18)) {
+                entryMode = mode
+            }
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: symbol)
-                    .font(.headline.bold())
-                    .foregroundStyle(isSelected ? BombTheme.yellow : BombTheme.ink)
-                    .frame(width: 32, height: 32)
-                    .background(isSelected ? BombTheme.ink : BombTheme.yellow.opacity(0.35))
-                    .clipShape(Circle())
-                Text(title)
-                    .font(.subheadline.bold())
-            }
-            .foregroundStyle(BombTheme.ink)
+            Text(title)
+                .font(.subheadline.weight(.black))
+            .foregroundStyle(isSelected ? BombTheme.ink : BombTheme.paper)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(isSelected ? BombTheme.yellow : Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.clear : BombTheme.ink.opacity(0.2), lineWidth: 1)
-            }
+            .background(isSelected ? BombTheme.yellow : Color.clear)
+            .clipShape(.capsule)
         }
         .buttonStyle(.plain)
+    }
+
+    private func normalizedInviteCode(_ value: String) -> String {
+        String(GroupInviteCode.normalized(value).prefix(6))
+    }
+
+    private func qrCodeImage(for code: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(code.utf8)
+        filter.correctionLevel = "M"
+
+        guard let outputImage = filter.outputImage?.transformed(
+            by: CGAffineTransform(scaleX: 10, y: 10)
+        ) else { return nil }
+
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
+    }
+
+    private func copyInviteCode(_ code: String) {
+        UIPasteboard.general.string = code
+        withAnimation(.snappy) {
+            showsCodeCopiedFeedback = true
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation(.snappy) {
+                showsCodeCopiedFeedback = false
+            }
+        }
+    }
+
+    private func shareMessage(for group: Group) -> String {
+        "加入「\(group.name)」群組，邀請碼：\(group.inviteCode)"
+    }
+}
+
+private struct ShareCodeButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.black))
+            .foregroundStyle(isPrimary ? BombTheme.paper : BombTheme.ink)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(isPrimary ? BombTheme.ink : BombTheme.paper)
+            .clipShape(.capsule)
+            .overlay {
+                Capsule().stroke(BombTheme.ink, lineWidth: isPrimary ? 0 : 1.5)
+            }
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+    }
+}
+
+private struct GroupEntryActionButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline.weight(.black))
+            .foregroundStyle(isPrimary ? BombTheme.paper : BombTheme.ink)
+            .padding(.horizontal, 18)
+            .frame(height: 54)
+            .background(isPrimary ? BombTheme.ink : BombTheme.paper)
+            .clipShape(.capsule)
+            .overlay {
+                Capsule().stroke(BombTheme.ink, lineWidth: isPrimary ? 0 : 2)
+            }
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+private struct PostageTicketShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cornerRadius: CGFloat = 14
+        let notchRadius: CGFloat = 9
+        let middleY = rect.midY
+        var path = Path()
+
+        path.move(to: CGPoint(x: cornerRadius, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - cornerRadius, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY + cornerRadius),
+            control: CGPoint(x: rect.maxX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: middleY - notchRadius))
+        path.addArc(
+            center: CGPoint(x: rect.maxX, y: middleY),
+            radius: notchRadius,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(-270),
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - cornerRadius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - cornerRadius, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX + cornerRadius, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY - cornerRadius),
+            control: CGPoint(x: rect.minX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX, y: middleY + notchRadius))
+        path.addArc(
+            center: CGPoint(x: rect.minX, y: middleY),
+            radius: notchRadius,
+            startAngle: .degrees(90),
+            endAngle: .degrees(-90),
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cornerRadius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX + cornerRadius, y: rect.minY),
+            control: CGPoint(x: rect.minX, y: rect.minY)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 

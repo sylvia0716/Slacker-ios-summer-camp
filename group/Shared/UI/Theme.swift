@@ -45,10 +45,9 @@ struct HazardStripe: View {
     }
 }
 
-/// 固定在畫面頂端的主題標題列；漸層會覆蓋內容頂端，避免硬切出長方形邊界。
+/// 固定在畫面頂端的主題標題列。
 struct BombHeader<Leading: View, Trailing: View>: View {
     @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
-    @State private var headerHeight: CGFloat = 0
 
     let title: String
     let subtitle: String?
@@ -91,26 +90,11 @@ struct BombHeader<Leading: View, Trailing: View>: View {
         .foregroundStyle(BombTheme.ink)
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            headerHeight = height
-        }
         .background {
             BombTheme.yellow
                 .padding(.top, -safeAreaInsets.top)
                 .padding(.leading, -safeAreaInsets.leading)
                 .padding(.trailing, -safeAreaInsets.trailing)
-        }
-        .overlay(alignment: .bottom) {
-            LinearGradient(
-                colors: [BombTheme.yellow, BombTheme.yellow.opacity(0.82), BombTheme.yellow.opacity(0)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: max(headerHeight, safeAreaInsets.top) * 0.55)
-            .offset(y: max(headerHeight, safeAreaInsets.top) * 0.55)
-            .allowsHitTesting(false)
         }
         .zIndex(50)
     }

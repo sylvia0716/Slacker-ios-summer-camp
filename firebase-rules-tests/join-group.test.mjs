@@ -89,6 +89,7 @@ async function callableClient(authenticated = true) {
     create: httpsCallable(functions, "createGroup"),
     join: httpsCallable(functions, "joinGroupByInviteCode"),
     list: httpsCallable(functions, "listMyGroups"),
+    progress: httpsCallable(functions, "updateTaskProgress"),
     close: () => deleteApp(app),
   };
 }
@@ -118,6 +119,74 @@ after(async () => {
   await testEnv.cleanup();
 });
 
+describe("雲端任務共識驗收", () => {
+  async function fixture() {
+    const a = await callableClient(), b = await callableClient(), c = await callableClient();
+    await a.join({inviteCode: validCode});
+    await b.join({inviteCode: validCode});
+    await testEnv.withSecurityRulesDisabled(async ctx => {
+      await updateDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}`), {ownerMemberID: b.userID, subtasks: []});
+      await setDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`), {
+        status: 'ready', createdAt: Timestamp.now(), uploaderID: b.userID,
+      });
+    });
+    return {a,b,c,close: () => Promise.all([a.close(), b.close(), c.close()])};
+  }
+  const confirm = {groupID, taskID, action:'confirm', attachmentID};
+  test('全部成員確認才完成，重複確認不增加票數', async () => {
+    const f = await fixture();
+    try {
+      assert.equal((await f.a.progress(confirm)).data.status, 'submitted');
+      assert.equal((await f.a.progress(confirm)).data.status, 'submitted');
+      assert.equal((await f.b.progress(confirm)).data.status, 'completed');
+      const task = await getDoc(doc(testEnv.authenticatedContext(f.a.userID).firestore(), `groups/${groupID}/tasks/${taskID}`));
+      assert.deepEqual(new Set(task.data().confirmedMemberUIDs), new Set([f.a.userID,f.b.userID]));
+    } finally { await f.close(); }
+  });
+  test('拒絕未登入、非成員、偽造 UID 或自行指定完成狀態', async () => {
+    const f = await fixture(), guest = await callableClient(false);
+    try {
+      await expectCallableFailure(guest.progress(confirm), 'functions/unauthenticated');
+      await expectCallableFailure(f.c.progress(confirm), 'functions/permission-denied');
+      await expectCallableFailure(f.a.progress({...confirm, userID:f.b.userID}), 'functions/invalid-argument');
+      await expectCallableFailure(f.a.progress({...confirm, status:'completed'}), 'functions/invalid-argument');
+    } finally { await f.close(); await guest.close(); }
+  });
+  test('只有負責人可更新子任務，未完成不得確認，重新修改後清空確認', async () => {
+    const f=await fixture(), subtaskID='44444444-4444-4444-8444-444444444444';
+    try {
+      await testEnv.withSecurityRulesDisabled(ctx => updateDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}`), {subtasks:[{id:subtaskID,title:'工作',weight:1,isComplete:false}]}));
+      await expectCallableFailure(f.a.progress(confirm), 'functions/failed-precondition');
+      const update={groupID,taskID,action:'setSubtask',subtaskID,isComplete:true};
+      await expectCallableFailure(f.a.progress(update), 'functions/permission-denied');
+      await f.b.progress(update);
+      await f.a.progress(confirm); await f.b.progress(confirm);
+      assert.equal((await f.b.progress({...update,isComplete:false})).data.status, 'submitted');
+      const task=await getDoc(doc(testEnv.authenticatedContext(f.b.userID).firestore(),`groups/${groupID}/tasks/${taskID}`));
+      assert.deepEqual(task.data().confirmedMemberUIDs, []);
+    } finally { await f.close(); }
+  });
+  test('新成果不能沿用舊確認，舊成果確認被拒絕', async () => {
+    const f=await fixture();
+    try {
+      await f.a.progress(confirm); await f.b.progress(confirm);
+      const next='55555555-5555-4555-8555-555555555555';
+      await testEnv.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(),`groups/${groupID}/tasks/${taskID}/attachments/${next}`),{status:'ready',createdAt:Timestamp.fromMillis(Date.now()+1000),uploaderID:f.b.userID}));
+      await expectCallableFailure(f.a.progress(confirm),'functions/failed-precondition');
+      assert.equal((await f.a.progress({...confirm,attachmentID:next})).data.status,'submitted');
+      assert.equal((await f.b.progress({...confirm,attachmentID:next})).data.status,'completed');
+    } finally { await f.close(); }
+  });
+  test('加入後成員名稱由後端建立', async () => {
+    const a=await callableClient();
+    try {
+      await a.join({inviteCode:validCode});
+      const member=await getDoc(doc(testEnv.authenticatedContext(a.userID).firestore(),`groups/${groupID}/members/${a.userID}`));
+      assert.ok(member.data().displayName.length>0);
+    } finally { await a.close(); }
+  });
+});
+
 describe("joinGroupByInviteCode Callable", () => {
   test("已登入使用者建立群組時，同步建立 leader、邀請碼與可讀取的群組", async () => {
     const client = await callableClient();
@@ -132,7 +201,7 @@ describe("joinGroupByInviteCode Callable", () => {
       const inviteCode = response.data.group.inviteCode;
 
       assert.match(createdGroupID, /^[0-9a-f-]{36}$/);
-      assert.match(inviteCode, /^[A-Z0-9]{8}$/);
+      assert.match(inviteCode, /^[A-Z0-9]{6}$/);
       assert.equal(response.data.group.name, "新測試群組");
 
       await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -281,6 +350,12 @@ describe("joinGroupByInviteCode Callable", () => {
         guest.join({ inviteCode: validCode }),
         "functions/unauthenticated",
       );
+      for (const inviteCode of ["12345", "1234567", "ABCD2345", "AB-123"]) {
+        await expectCallableFailure(
+          member.join({ inviteCode }),
+          "functions/invalid-argument",
+        );
+      }
       await expectCallableFailure(
         member.join({ inviteCode: "NONE24" }),
         "functions/not-found",

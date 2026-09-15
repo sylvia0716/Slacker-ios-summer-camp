@@ -305,6 +305,7 @@ private struct MyTaskDetailView: View {
 
                                 Text("成果交付").font(.system(size: 30, weight: .black, design: .rounded))
                             if let deliverable = task.deliverable {
+                                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable) {
                                 HStack {
                                     Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
                                     Text(deliverable.title).font(.subheadline.bold()).lineLimit(1)
@@ -312,6 +313,7 @@ private struct MyTaskDetailView: View {
                                     Text(deliverable.isApproved ? "已驗收" : "待驗收")
                                         .font(.caption.bold())
                                         .foregroundStyle(deliverable.isApproved ? BombTheme.green : .secondary)
+                                }
                                 }
                             }
                             Button {

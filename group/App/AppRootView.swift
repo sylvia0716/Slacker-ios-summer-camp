@@ -37,7 +37,7 @@ struct AppRootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.resumeCloudSync() }
-            else { store.suspendCloudSync() }
+            else if phase == .background { store.suspendCloudSync() }
         }
         .onDisappear { store.suspendCloudSync() }
         .alert("雲端同步", isPresented: Binding(
