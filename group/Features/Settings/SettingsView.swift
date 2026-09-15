@@ -29,7 +29,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
 
-                    SettingsSection(title: "戰情報告") {
+                    SettingsSection(title: "工作空間") {
                         NavigationLink { PeerReviewReportView(model: model) } label: {
                             SettingsRow(
                                 icon: "scope",
@@ -37,15 +37,16 @@ struct SettingsView: View {
                                 subtitle: "AI 分析、互評與貢獻雷達"
                             )
                         }
-                    }
+                        .buttonStyle(.plain)
 
-                    SettingsSection(title: "一般設定") {
+                        SettingsDivider()
+
                         NotificationSettingsRow(model: model) {
                             showsNotificationTest = true
                         }
                     }
 
-                    SettingsSection(title: "教學專區") {
+                    SettingsSection(title: "支援") {
                         Button(action: onReplayTutorial) {
                             SettingsRow(
                                 icon: "book.pages.fill",
@@ -76,7 +77,7 @@ struct SettingsView: View {
                     }
                 }
                 .padding(16)
-                .padding(.bottom, 24)
+                .padding(.bottom, 132)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -165,6 +166,15 @@ private struct SettingsSection<Content: View>: View {
             VStack(spacing: 0) { content }
                 .comicCard()
         }
+    }
+}
+
+private struct SettingsDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(BombTheme.ink.opacity(0.14))
+            .frame(height: 1)
+            .padding(.leading, 48)
     }
 }
 

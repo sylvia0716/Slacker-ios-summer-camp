@@ -1369,11 +1369,11 @@ final class AppStore {
         lastEvent = "已驗收「\(projectTasks[index].title)」成果"
     }
 
-    /// 在群組內提醒進度較慢的成員，並以本機系統通知模擬送達被戳隊員。
+    /// 在群組內提醒進度較慢的成員；接收端通知應只在被戳者的裝置上送達。
     @discardableResult
     func poke(memberID: UUID, in groupID: UUID, style: PokeStyle) -> Int? {
         guard memberID != currentUserID,
-              let group = groups.first(where: { $0.id == groupID }), group.memberIDs.contains(memberID),
+              groups.contains(where: { $0.id == groupID && $0.memberIDs.contains(memberID) }),
               let member = members.first(where: { $0.id == memberID }),
               memberProgress(for: memberID, in: groupID) <= 90 else { return nil }
         lastEvent = "用「\(style.rawValue)」戳了 \(member.name)"
@@ -1381,9 +1381,6 @@ final class AppStore {
         let key = PokeCountKey(groupID: groupID, memberID: memberID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
         pokeCounts[key] = pokeCount
-        if notificationsEnabled {
-            pokeNotifications.deliver(group: group, pokeCount: pokeCount)
-        }
         return pokeCount
     }
 
@@ -1396,7 +1393,7 @@ final class AppStore {
         let key = PokeCountKey(groupID: groupID, memberID: currentUserID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
         pokeCounts[key] = pokeCount
-        pokeNotifications.deliver(group: group, pokeCount: pokeCount)
+        pokeNotifications.deliver(group: group, pokeCount: pokeCount, style: .gentle)
         return pokeCount
     }
 

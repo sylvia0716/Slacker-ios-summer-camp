@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// App shell: owns the prototype's shared store and the primary app navigation.
 struct AppRootView: View {
@@ -9,6 +10,8 @@ struct AppRootView: View {
     @State private var tutorialStep: TutorialStep?
     @State private var isBombTabBarHidden = false
     @State private var safeAreaInsets = EdgeInsets()
+    @State private var activePokeReception: PokeReception?
+    @State private var pokePresentationID = 0
 
     var body: some View {
         SwiftUI.Group {
@@ -40,6 +43,19 @@ struct AppRootView: View {
             else if phase == .background { store.suspendCloudSync() }
         }
         .onDisappear { store.suspendCloudSync() }
+        .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
+            guard let reception = notification.object as? PokeReception else { return }
+            pokePresentationID += 1
+            activePokeReception = reception
+        }
+        .overlay {
+            if let activePokeReception {
+                PokeReceptionOverlay(reception: activePokeReception) {
+                    self.activePokeReception = nil
+                }
+                .id(pokePresentationID)
+            }
+        }
         .bombDialog("雲端同步", isPresented: Binding(
             get: { store.cloudErrorMessage != nil },
             set: { if !$0 { store.cloudErrorMessage = nil } }

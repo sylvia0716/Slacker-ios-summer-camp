@@ -45,9 +45,10 @@ struct HazardStripe: View {
     }
 }
 
-/// 固定在畫面頂端的主題標題列。
+/// 固定在畫面頂端的主題標題列；漸層會保留自己的版面空間，避免遮住內容。
 struct BombHeader<Leading: View, Trailing: View>: View {
     @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
+    @State private var headerHeight: CGFloat = 0
 
     let title: String
     let subtitle: String?
@@ -64,6 +65,10 @@ struct BombHeader<Leading: View, Trailing: View>: View {
         self.subtitle = subtitle
         self.leading = leading()
         self.trailing = trailing()
+    }
+
+    private var fadeHeight: CGFloat {
+        max(headerHeight, safeAreaInsets.top) * 0.3
     }
 
     var body: some View {
@@ -90,11 +95,26 @@ struct BombHeader<Leading: View, Trailing: View>: View {
         .foregroundStyle(BombTheme.ink)
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            headerHeight = height
+        }
         .background {
             BombTheme.yellow
                 .padding(.top, -safeAreaInsets.top)
                 .padding(.leading, -safeAreaInsets.leading)
                 .padding(.trailing, -safeAreaInsets.trailing)
+        }
+        .padding(.bottom, fadeHeight)
+        .overlay(alignment: .bottom) {
+            LinearGradient(
+                colors: [BombTheme.yellow, BombTheme.yellow.opacity(0.82), BombTheme.yellow.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: fadeHeight)
+            .allowsHitTesting(false)
         }
         .zIndex(50)
     }
