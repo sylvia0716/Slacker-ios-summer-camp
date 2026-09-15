@@ -313,9 +313,11 @@ struct PublishTaskSheet: View {
     private func fieldLabel(_ title: String, isRequired: Bool) -> some View {
         HStack(spacing: 4) {
             Text(title)
-            Text(isRequired ? "必填" : "選填")
-                .font(.caption2.weight(.black))
-                .foregroundStyle(isRequired ? BombTheme.red : BombTheme.ink.opacity(0.5))
+            if isRequired {
+                Text("＊")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+            }
         }
         .font(.subheadline.weight(.black))
     }

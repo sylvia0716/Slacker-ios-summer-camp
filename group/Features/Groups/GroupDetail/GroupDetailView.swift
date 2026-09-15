@@ -4,6 +4,7 @@ import UIKit
 /// Group detail backed by the app's shared Group, Member, and ProjectTask data.
 struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
     let group: Group
     let model: AppStore
     private let tutorialStep: Binding<TutorialStep?>?
@@ -103,7 +104,7 @@ struct GroupDetailView: View {
                         )
                         .frame(height: proxy.size.height * 0.82)
                         .padding(.horizontal, 8)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 8 - safeAreaInsets.bottom)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
@@ -121,6 +122,17 @@ struct GroupDetailView: View {
                             tasks: model.projectTasks.filter { $0.groupID == group.id },
                             reviews: model.reviews(for: group.id),
                             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
+                            onReturnToMeme: {
+                                peerReviewStartsAtOutcomeSummary = true
+                                peerReviewRevision += 1
+                                withAnimation(.snappy) {
+                                    if outcome == .incomplete {
+                                        showsExplosionMeme = true
+                                    } else {
+                                        showsSuccessMeme = true
+                                    }
+                                }
+                            },
                             onSubmit: { revieweeID, taskScore, discussionScore, collaborationScore, ideaScore, reliabilityScore, comment in
                                 try model.submitPeerReview(
                                     groupID: group.id,
@@ -221,6 +233,7 @@ struct GroupDetailView: View {
         } message: { Text(leaveError ?? "") }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .bombTabBarHidden(showsPublishTaskSheet)
         .safeAreaInset(edge: .top, spacing: 0) {
             topBar
         }
@@ -1052,13 +1065,13 @@ private struct ExplosionMemeOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .background(BombTheme.paper)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
-                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
                 .frame(maxWidth: 560)
                 .frame(maxHeight: max(320, proxy.size.height - 32))
                 .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 80)
             }
         }
         .accessibilityElement(children: .contain)
@@ -1199,13 +1212,13 @@ private struct SuccessMemeOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .background(BombTheme.paper)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
-                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
                 .frame(maxWidth: 560)
                 .frame(maxHeight: max(320, proxy.size.height - 32))
                 .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 80)
             }
         }
         .accessibilityElement(children: .contain)

@@ -11,6 +11,7 @@ struct PeerReviewOverlay: View {
     let tasks: [ProjectTask]
     let reviews: [PeerReview]
     let completedReviewerCount: Int
+    let onReturnToMeme: () -> Void
     let onSubmit: (UUID, Int, Int, Int, Int, Int, String) throws -> Void
     let onLater: () -> Void
 
@@ -47,18 +48,13 @@ struct PeerReviewOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .background(BombTheme.paper)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
-                .overlay(alignment: .topTrailing) {
-                    if theme.isIncident {
-                        incidentCornerDecoration
-                    }
-                }
-                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
                 .frame(maxWidth: 560)
                 .frame(maxHeight: max(320, proxy.size.height - 32))
                 .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 80)
 
                 if showsConfirmation, let selectedMember {
                     confirmationOverlay(for: selectedMember)
@@ -71,6 +67,16 @@ struct PeerReviewOverlay: View {
 
     private var outcomeSummary: some View {
         VStack(alignment: .leading, spacing: 18) {
+            Button(action: onReturnToMeme) {
+                Image(systemName: "chevron.left")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(width: 44, height: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("返回梗圖")
+
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: theme.iconName)
                     .font(.system(size: 32, weight: .black))
@@ -90,20 +96,20 @@ struct PeerReviewOverlay: View {
                 }
             }
 
-            if theme.isIncident {
-                incidentWarning
-            }
-
             VStack(alignment: .leading, spacing: 10) {
-                summaryRow(label: "群組名稱", value: group.name)
-                summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%")
-                summaryRow(label: theme.completedTaskLabel, value: "\(completedTaskCount) / \(tasks.count)")
+                summaryRow(label: "群組名稱", value: group.name, font: .subheadline)
+                summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%", font: .subheadline)
+                summaryRow(
+                    label: theme.completedTaskLabel,
+                    value: "\(completedTaskCount) / \(tasks.count)",
+                    font: .subheadline
+                )
 
                 if theme.isIncident {
-                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)")
+                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)", font: .subheadline)
                 }
 
-                summaryRow(label: "截止時間", value: formattedDeadline)
+                summaryRow(label: "截止時間", value: formattedDeadline, font: .subheadline)
             }
             .padding(14)
             .background(theme.summaryBackground)
@@ -135,40 +141,12 @@ struct PeerReviewOverlay: View {
         }
     }
 
-    private var incidentWarning: some View {
-        HStack(spacing: 7) {
-            Rectangle().fill(BombTheme.red).frame(width: 34, height: 4)
-            Rectangle().fill(BombTheme.ink).frame(width: 18, height: 4)
-            Text("截止警報")
-                .font(.caption.weight(.black))
-                .foregroundStyle(BombTheme.red)
-            Spacer()
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var incidentCornerDecoration: some View {
-        ZStack {
-            Circle()
-                .fill(BombTheme.ink.opacity(0.12))
-                .frame(width: 74, height: 74)
-                .offset(x: 24, y: -25)
-
-            Image(systemName: "flame.fill")
-                .font(.title2.weight(.black))
-                .foregroundStyle(BombTheme.red)
-                .padding(12)
-                .background(BombTheme.paper)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
-                .offset(x: -10, y: 10)
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
     private var memberList: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if startsAtOutcomeSummary {
+                returnToOutcomeSummaryButton
+            }
+
             titleBlock
 
             Text("已完成 \(completedReviewCount) / \(otherMembers.count)")
@@ -314,11 +292,11 @@ struct PeerReviewOverlay: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
     }
 
-    private func summaryRow(label: String, value: String) -> some View {
+    private func summaryRow(label: String, value: String, font: Font = .caption) -> some View {
         HStack {
-            Text(label).font(.caption.weight(.bold))
+            Text(label).font(font.weight(.bold))
             Spacer()
-            Text(value).font(.caption.weight(.black))
+            Text(value).font(font.weight(.black))
         }
     }
 
@@ -465,6 +443,10 @@ struct PeerReviewOverlay: View {
 
     private var completionContent: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if startsAtOutcomeSummary {
+                returnToOutcomeSummaryButton
+            }
+
             titleBlock
             Text(theme.completionTitle).font(.title2.weight(.black))
             Text(theme.completionMessage)
@@ -589,6 +571,29 @@ struct PeerReviewOverlay: View {
         scores = [:]
         comment = ""
         errorMessage = nil
+    }
+
+    private var returnToOutcomeSummaryButton: some View {
+        Button(action: returnToOutcomeSummary) {
+            Image(systemName: "chevron.left")
+                .font(.headline.weight(.black))
+                .foregroundStyle(BombTheme.ink)
+                .frame(width: 44, height: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(theme.isIncident ? "返回戰損摘要" : "返回結算摘要")
+    }
+
+    private func returnToOutcomeSummary() {
+        selectedMemberID = nil
+        submittedMemberID = nil
+        scores = [:]
+        comment = ""
+        showsConfirmation = false
+        errorMessage = nil
+        showsResultsPlaceholder = false
+        withAnimation(.snappy) { hasEnteredReview = false }
     }
 
     private func submitReview(for member: Member) {
