@@ -331,7 +331,7 @@ private struct MyTaskDetailView: View {
                         .font(.system(.title2, design: .rounded, weight: .black))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(task.isCompleted ? "已完成" : task.status.title)
+                    Text(task.lifecycleStatus.title)
                         .font(.caption.weight(.black))
                         .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.red)
                         .padding(.horizontal, 10)

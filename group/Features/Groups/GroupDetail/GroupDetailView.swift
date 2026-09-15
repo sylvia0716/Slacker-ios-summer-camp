@@ -757,7 +757,7 @@ struct GroupDetailView: View {
             role: member.role.title,
             progress: progress,
             currentTask: currentTask?.title ?? "尚未指派任務",
-            status: currentTask?.status.title ?? "待命",
+            status: currentTask?.lifecycleStatus.title ?? "待命",
             showsNudge: currentTask != nil && progress < 50
         )
     }

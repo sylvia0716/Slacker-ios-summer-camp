@@ -874,7 +874,7 @@ final class AppStore {
             deadline: deadline,
             createdByMemberID: currentUserID,
             createdAt: now,
-            status: .pending
+            status: .inProgress
         )
 
         projectTasks.append(task)
@@ -1164,6 +1164,7 @@ final class AppStore {
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
               let subtaskIndex = projectTasks[taskIndex].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         projectTasks[taskIndex].subtasks[subtaskIndex].isComplete.toggle()
+        projectTasks[taskIndex].status = projectTasks[taskIndex].lifecycleStatus
         lastEvent = "已更新「\(projectTasks[taskIndex].title)」進度"
     }
 

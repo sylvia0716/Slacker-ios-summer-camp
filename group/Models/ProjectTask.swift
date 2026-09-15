@@ -10,7 +10,7 @@ enum ProjectTaskStatus: String, Codable, Hashable, CaseIterable {
     var title: String {
         switch self {
         case .pending: "待開始"
-        case .inProgress: "處理中"
+        case .inProgress: "已開始"
         case .submitted: "待驗收"
         case .completed: "已完成"
         }
@@ -54,8 +54,13 @@ struct ProjectTask: Identifiable, Hashable {
         return completedWeight * 100 / totalWeight
     }
 
-    /// 任務是否已完成所有子任務並送出成果。
+    /// 子任務全部完成時，主任務即完成；成果交付不影響完成狀態。
     var isCompleted: Bool {
-        progress == 100 && deliverable != nil
+        progress == 100
+    }
+
+    /// 畫面使用的任務狀態以子任務進度為唯一來源，避免舊資料狀態不同步。
+    var lifecycleStatus: ProjectTaskStatus {
+        isCompleted ? .completed : .inProgress
     }
 }
