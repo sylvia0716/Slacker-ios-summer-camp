@@ -5,10 +5,18 @@ struct MyTasksView: View {
     let model: GroupBombModel
     @State private var showCompleted = false
 
-    private var visibleTasks: [ProjectTask] {
+    private var pendingTasks: [ProjectTask] {
         model.projectTasks.filter {
-            $0.ownerMemberID == model.currentUserID && $0.isCompleted == showCompleted
+            $0.ownerMemberID == model.currentUserID && !$0.isCompleted
         }
+    }
+
+    private var visibleTasks: [ProjectTask] {
+        showCompleted
+            ? model.projectTasks.filter {
+                $0.ownerMemberID == model.currentUserID && $0.isCompleted
+            }
+            : pendingTasks
     }
 
     var body: some View {
@@ -16,7 +24,9 @@ struct MyTasksView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    TaskProgressDashboard(progress: personalProgress)
+                    if !pendingTasks.isEmpty {
+                        TaskProgressDashboard(progress: personalProgress)
+                    }
 
                     Picker("任務狀態", selection: $showCompleted) {
                         Text("待完成").tag(false)
