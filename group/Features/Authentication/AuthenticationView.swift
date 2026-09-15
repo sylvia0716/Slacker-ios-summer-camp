@@ -9,6 +9,7 @@ struct AuthenticationView: View {
     @State private var password = ""
     @State private var passwordConfirmation = ""
     @State private var localErrorMessage: String?
+    @State private var isPasswordResetPresented = false
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -28,6 +29,9 @@ struct AuthenticationView: View {
         .onChange(of: mode) { _, _ in
             localErrorMessage = nil
             session.clearError()
+        }
+        .sheet(isPresented: $isPasswordResetPresented) {
+            PasswordResetView(session: session, initialEmail: email)
         }
     }
 
@@ -75,6 +79,18 @@ struct AuthenticationView: View {
                     isSecure: true
                 )
 
+                if mode == .signIn {
+                    Button("忘記密碼？") {
+                        focusedField = nil
+                        session.clearError()
+                        isPasswordResetPresented = true
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .buttonStyle(.plain)
+                }
+
                 if mode == .register {
                     authenticationField(
                         title: "再次輸入密碼",
@@ -112,6 +128,16 @@ struct AuthenticationView: View {
             .background(BombTheme.ink)
             .clipShape(.capsule)
             .disabled(session.isWorking)
+
+#if DEBUG
+            Button("不登入，直接預覽 App") {
+                focusedField = nil
+                session.enterPreviewSession()
+            }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(BombTheme.ink)
+            .buttonStyle(.plain)
+#endif
         }
         .comicCard()
     }
@@ -164,6 +190,117 @@ struct AuthenticationView: View {
                 await session.signIn(email: email, password: password)
             case .register:
                 await session.register(email: email, password: password)
+            }
+        }
+    }
+}
+
+private struct PasswordResetView: View {
+    let session: AuthSessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var email: String
+    @State private var isSent = false
+    @FocusState private var isEmailFocused: Bool
+
+    init(session: AuthSessionStore, initialEmail: String) {
+        self.session = session
+        _email = State(initialValue: initialEmail)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                if isSent {
+                    Image(systemName: "envelope.badge.fill")
+                        .font(.system(size: 44, weight: .black))
+                    Text("重設信已寄出")
+                        .font(.title2.weight(.black))
+                    Text("若此信箱已註冊，請從信件中的連結設定新密碼。")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.65))
+                        .multilineTextAlignment(.center)
+
+                    Button("返回登入") { dismiss() }
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(BombTheme.yellow)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                } else {
+                    Text("輸入註冊時使用的電子郵件，我們會寄送密碼重設連結。")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BombTheme.ink.opacity(0.65))
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 12) {
+                        Image(systemName: "envelope.fill")
+                            .frame(width: 24)
+                        TextField("電子郵件", text: $email)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .focused($isEmailFocused)
+                            .submitLabel(.send)
+                            .onSubmit(sendResetEmail)
+                    }
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .frame(height: 52)
+                    .background(.white.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
+
+                    if let message = session.errorMessage {
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(BombTheme.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Button(action: sendResetEmail) {
+                        SwiftUI.Group {
+                            if session.isWorking {
+                                ProgressView().tint(BombTheme.yellow)
+                            } else {
+                                Label("寄送重設信", systemImage: "paperplane.fill")
+                            }
+                        }
+                        .font(.headline.weight(.black))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(BombTheme.yellow)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .disabled(session.isWorking)
+                }
+            }
+            .foregroundStyle(BombTheme.ink)
+            .padding(20)
+            .navigationTitle("忘記密碼")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationBackground(BombTheme.paper)
+        .onAppear {
+            session.clearError()
+            isEmailFocused = email.isEmpty
+        }
+    }
+
+    private func sendResetEmail() {
+        guard !session.isWorking else { return }
+        isEmailFocused = false
+        Task {
+            if await session.sendPasswordReset(email: email) {
+                isSent = true
             }
         }
     }

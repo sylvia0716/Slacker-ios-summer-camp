@@ -5,7 +5,7 @@ enum BombTheme {
     static let yellow = Color(red: 1, green: 0.79, blue: 0.05)
     static let ink = Color(red: 0.08, green: 0.08, blue: 0.07)
     static let paper = Color(red: 0.96, green: 0.92, blue: 0.79)
-    static let red = Color(red: 0.86, green: 0.17, blue: 0.12)
+    static let red = Color(red: 196.0 / 255, green: 61.0 / 255, blue: 50.0 / 255) // #C43D32
     static let green = Color(red: 0.16, green: 0.55, blue: 0.32)
 }
 
@@ -45,7 +45,7 @@ struct HazardStripe: View {
     }
 }
 
-/// 固定在畫面頂端的主題標題列；漸層會覆蓋內容頂端，避免硬切出長方形邊界。
+/// 固定在畫面頂端的主題標題列；漸層會保留自己的版面空間，避免遮住內容。
 struct BombHeader<Leading: View, Trailing: View>: View {
     @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
     @State private var headerHeight: CGFloat = 0
@@ -65,6 +65,10 @@ struct BombHeader<Leading: View, Trailing: View>: View {
         self.subtitle = subtitle
         self.leading = leading()
         self.trailing = trailing()
+    }
+
+    private var fadeHeight: CGFloat {
+        max(headerHeight, safeAreaInsets.top) * 0.3
     }
 
     var body: some View {
@@ -102,14 +106,14 @@ struct BombHeader<Leading: View, Trailing: View>: View {
                 .padding(.leading, -safeAreaInsets.leading)
                 .padding(.trailing, -safeAreaInsets.trailing)
         }
+        .padding(.bottom, fadeHeight)
         .overlay(alignment: .bottom) {
             LinearGradient(
                 colors: [BombTheme.yellow, BombTheme.yellow.opacity(0.82), BombTheme.yellow.opacity(0)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: max(headerHeight, safeAreaInsets.top) * 0.55)
-            .offset(y: max(headerHeight, safeAreaInsets.top) * 0.55)
+            .frame(height: fadeHeight)
             .allowsHitTesting(false)
         }
         .zIndex(50)

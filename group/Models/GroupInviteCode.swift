@@ -1,6 +1,10 @@
 import Foundation
 
 enum GroupInviteCode {
+    static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     static func generate() -> String {
         let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
         var random = SystemRandomNumberGenerator()

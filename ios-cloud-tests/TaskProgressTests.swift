@@ -14,10 +14,10 @@ struct TaskProgressTests {
     @Test func uploadAloneIsNotCompleted() {
         var t = task()
         t.deliverable = result()
-        t.status = .submitted
+        t.cloudStatus = .submitted
         #expect(t.progress == 0)
         #expect(!t.isCompleted)
-        t.status = .completed
+        t.cloudStatus = .completed
         #expect(t.progress == 100)
         #expect(t.isCompleted)
         t.deliverable = nil
@@ -28,12 +28,13 @@ struct TaskProgressTests {
         t.subtasks = [Subtask(id: UUID(), title: "A", isComplete: true, weight: 1),
                       Subtask(id: UUID(), title: "B", isComplete: false, weight: 1)]
         t.deliverable = result()
-        t.status = .submitted
+        t.cloudStatus = .submitted
         #expect(t.progress == 50)
         t.subtasks[1].isComplete = true
         #expect(t.progress == 100)
-        #expect(!t.isCompleted)
-        t.status = .completed
+        #expect(t.isCompleted)
+        #expect(t.deliverable?.isApproved == false)
+        t.cloudStatus = .completed
         #expect(t.isCompleted)
     }
     @Test func cloudApprovalFieldsDecode() throws {

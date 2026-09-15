@@ -9,6 +9,11 @@ struct GroupJoinResult: Sendable {
     let wasAlreadyMember: Bool
 }
 
+struct GroupCreationResult: Sendable {
+    let group: CloudGroupSummary
+    let firebaseUID: String
+}
+
 enum GroupJoinError: LocalizedError, Equatable {
     case notAuthenticated
     case invalidCode
@@ -19,6 +24,8 @@ enum GroupJoinError: LocalizedError, Equatable {
     case permissionDenied
     case invalidGroupData
     case unavailable
+    case invalidName
+    case invalidDeadline
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +38,8 @@ enum GroupJoinError: LocalizedError, Equatable {
         case .permissionDenied: "目前帳號沒有加入這個群組的權限。"
         case .invalidGroupData: "群組資料格式不正確，請聯絡群組建立者。"
         case .unavailable: "目前無法加入群組，請稍後再試。"
+        case .invalidName: "請輸入 60 個字以內的群組名稱。"
+        case .invalidDeadline: "群組期限必須晚於目前時間。"
         }
     }
 }
@@ -69,6 +78,42 @@ final class GroupJoinRepository {
         } catch {
             throw Self.map(error)
         }
+    }
+
+    func create(name: String, deadline: Date, displayName: String) async throws -> GroupCreationResult {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw GroupJoinError.notAuthenticated
+        }
+
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty, normalizedName.count <= 60 else {
+            throw GroupJoinError.invalidName
+        }
+        guard deadline > .now else { throw GroupJoinError.invalidDeadline }
+
+        do {
+            let result = try await functions.httpsCallable("createGroup").call([
+                "name": normalizedName,
+                "deadlineMillis": deadline.timeIntervalSince1970 * 1_000,
+                "displayName": String(displayName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)),
+            ])
+            let payload = try Self.dictionary(from: result.data)
+            let group = try Self.group(from: payload["group"])
+            guard Auth.auth().currentUser?.uid == uid else {
+                throw GroupJoinError.notAuthenticated
+            }
+            return GroupCreationResult(group: group, firebaseUID: uid)
+        } catch let error as GroupJoinError {
+            throw error
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    func leave(groupID: String) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { throw GroupJoinError.notAuthenticated }
+        _ = try await functions.httpsCallable("leaveGroup").call(["groupID": groupID])
+        guard Auth.auth().currentUser?.uid == uid else { throw GroupJoinError.notAuthenticated }
     }
 
     func fetchAccessibleGroups() async throws -> [CloudGroupSummary] {
@@ -131,6 +176,8 @@ final class GroupJoinRepository {
         case "invite-code-expired": return .expiredCode
         case "group-not-found", "invalid-invite-data": return .invalidGroupData
         case "permission-denied": return .permissionDenied
+        case "invalid-group-name", "invalid-display-name": return .invalidName
+        case "invalid-group-deadline": return .invalidDeadline
         default: break
         }
 

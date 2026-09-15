@@ -9,6 +9,9 @@ struct GroupDetailView: View {
     private let tutorialStep: Binding<TutorialStep?>?
 
     @State private var showsCopiedFeedback = false
+    @State private var showsLeaveConfirmation = false
+    @State private var isLeaving = false
+    @State private var leaveError: String?
     @State private var showsPublishTaskSheet = false
     @State private var expandedMemberID: UUID?
     @State private var reviewDeferred = false
@@ -22,6 +25,9 @@ struct GroupDetailView: View {
     @State private var showsNameSheet = false
     @State private var nameDraft = ""
     @State private var nameError: String?
+    @State private var pokeButtonEmoji: String?
+    @State private var pokeButtonEmojiMemberID: String?
+    @State private var isPokeButtonEmojiShaking = false
 
     init(
         group: Group,
@@ -53,6 +59,19 @@ struct GroupDetailView: View {
                                 groupIdentity
                                 countdownCard(now: context.date)
                                 memberSection
+                                Button(role: .destructive) {
+                                    showsLeaveConfirmation = true
+                                } label: {
+                                    Label(isLeaving ? "退出中…" : "退出群組", systemImage: "rectangle.portrait.and.arrow.right")
+                                        .font(.headline.weight(.black))
+                                        .foregroundStyle(BombTheme.paper)
+                                        .frame(width: (proxy.size.width - 32) * 0.6, height: 52)
+                                        .background(BombTheme.red, in: Capsule())
+                                        .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                                }
+                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .disabled(isLeaving)
                             }
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
@@ -70,10 +89,11 @@ struct GroupDetailView: View {
                         PublishTaskSheet(
                             group: currentGroup,
                             members: groupMembers,
-                            onPublish: { title, detail, assigneeID, deadline in
-                                try model.publishTask(
+                            onPublish: { title, detail, subtaskTitles, assigneeID, deadline in
+                                try await model.publishTask(
                                     title: title,
                                     detail: detail,
+                                    subtaskTitles: subtaskTitles,
                                     groupID: group.id,
                                     assigneeMemberID: assigneeID,
                                     deadline: deadline
@@ -179,11 +199,50 @@ struct GroupDetailView: View {
                 .animation(.snappy, value: shouldShowSuccessMeme(now: context.date))
             }
         }
+        .bombDialog("確定退出「\(currentGroup.name)」？", isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
+            Button("取消", role: .cancel) { }
+            Button("退出群組", role: .destructive) {
+                isLeaving = true
+                Task {
+                    defer { isLeaving = false }
+                    do {
+                        try await model.leaveGroup(groupID: group.id)
+                        dismiss()
+                    } catch { leaveError = "退出失敗，請確認網路後重試。" }
+                }
+            }
+        } message: {
+            Text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。")
+        }
+        .bombDialog("無法退出群組", isPresented: Binding(
+            get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
+        )) {
+            Button("知道了") { }
+        } message: { Text(leaveError ?? "") }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             topBar
         }
+        .overlayPreferenceValue(PokeButtonAnchorKey.self) { anchors in
+            GeometryReader { proxy in
+                if let pokeButtonEmoji,
+                   let pokeButtonEmojiMemberID,
+                   let anchor = anchors[pokeButtonEmojiMemberID] {
+                    let buttonFrame = proxy[anchor]
+                    Text(pokeButtonEmoji)
+                        .font(.system(size: 48))
+                        .position(x: buttonFrame.midX, y: buttonFrame.midY)
+                        .offset(y: -46)
+                        .rotationEffect(.degrees(isPokeButtonEmojiShaking ? 12 : -12))
+                        .scaleEffect(isPokeButtonEmojiShaking ? 1.16 : 0.72)
+                        .id(pokeButtonEmoji)
+                        .allowsHitTesting(false)
+                }
+            }
+            .zIndex(100)
+        }
+        .animation(.bouncy, value: pokeButtonEmoji)
         .onAppear { deadlineDraft = currentGroup.deadline }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
@@ -191,19 +250,19 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showsNameSheet) {
             GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
         }
-        .alert("無法修改期限", isPresented: Binding(
+        .bombDialog("無法修改期限", isPresented: Binding(
             get: { deadlineError != nil },
             set: { if !$0 { deadlineError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(deadlineError ?? "")
         }
-        .alert("無法修改群組名稱", isPresented: Binding(
+        .bombDialog("無法修改群組名稱", isPresented: Binding(
             get: { nameError != nil },
             set: { if !$0 { nameError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(nameError ?? "")
         }
@@ -269,7 +328,7 @@ struct GroupDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("互評測試")
+                        Text("測試工具")
                             .font(.title2.weight(.black))
                         Spacer()
                         Button("關閉") { showsDebugPanel = false }
@@ -278,6 +337,16 @@ struct GroupDetailView: View {
                             .buttonStyle(.plain)
                     }
 
+                    debugAction("測試被戳特效") {
+                        NotificationCenter.default.post(
+                            name: .pokeReceived,
+                            object: PokeReception(
+                                groupName: currentGroup.name,
+                                pokeCount: 1,
+                                style: .alarm
+                            )
+                        )
+                    }
                     debugAction("正常進行中") {
                         debugDeadlineOutcome = .active
                         reviewDeferred = false
@@ -689,14 +758,15 @@ struct GroupDetailView: View {
                         model.submitDeliverable(taskID: taskID, deliverable: deliverable)
                     },
                     onToggleSubtask: { taskID, subtaskID in
-                        model.toggleSubtask(taskID: taskID, subtaskID: subtaskID)
+                        Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
                     },
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
                     },
                     onPoke: { style in
                         model.poke(memberID: member.id, in: group.id, style: style)
-                    }
+                    },
+                    onPokeEmoji: showPokeButtonEmoji
                 )
                 .tutorialTarget(
                     .memberProgress,
@@ -712,6 +782,24 @@ struct GroupDetailView: View {
             guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
             member.role = currentGroup.memberRoles[memberID] ?? member.role
             return member
+        }
+    }
+
+    private func showPokeButtonEmoji(for memberID: String, emoji: String?) {
+        pokeButtonEmoji = emoji
+        pokeButtonEmojiMemberID = emoji == nil ? nil : memberID
+
+        guard emoji != nil else {
+            isPokeButtonEmojiShaking = false
+            return
+        }
+
+        isPokeButtonEmojiShaking = false
+        Task {
+            await Task.yield()
+            withAnimation(.bouncy(duration: 0.14).repeatCount(7, autoreverses: true)) {
+                isPokeButtonEmojiShaking = true
+            }
         }
     }
 
@@ -758,7 +846,7 @@ struct GroupDetailView: View {
             progress: progress,
             currentTask: currentTask?.title ?? "尚未指派任務",
             status: currentTask?.status.title ?? "待命",
-            showsNudge: currentTask != nil && progress < 50
+            showsNudge: member.id != model.currentUserID && progress <= 90
         )
     }
 

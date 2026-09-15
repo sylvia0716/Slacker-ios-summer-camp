@@ -1,6 +1,17 @@
 import SwiftUI
 import UIKit
 
+struct PokeButtonAnchorKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+
+    static func reduce(
+        value: inout [String: Anchor<CGRect>],
+        nextValue: () -> [String: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
 struct MemberProgressPreviewItem: Identifiable {
     let id: String
     let name: String
@@ -24,6 +35,7 @@ struct MemberProgressCard: View {
     let onToggleSubtask: (UUID, UUID) -> Void
     let onConfirmDeliverable: (UUID) -> Void
     let onPoke: (PokeStyle) -> Int?
+    let onPokeEmoji: (String, String?) -> Void
 
     @State private var uploadTask: ProjectTask?
     @State private var previewDeliverable: Deliverable?
@@ -72,7 +84,10 @@ struct MemberProgressCard: View {
             if member.showsNudge && !isCurrentUser {
                 HStack {
                     Spacer()
-                    PokeActionButton(onPoke: onPoke)
+                    PokeActionButton(onPoke: onPoke, onPokeEmoji: { onPokeEmoji(member.id, $0) })
+                        .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
+                            [member.id: $0]
+                        }
                 }
             }
         }
@@ -268,16 +283,16 @@ struct MemberProgressCard: View {
 
 private struct PokeActionButton: View {
     let onPoke: (PokeStyle) -> Int?
+    let onPokeEmoji: (String?) -> Void
 
     @State private var isCharging = false
     @State private var suppressNextTap = false
     @State private var hasChargedBomb = false
-    @State private var showsBomb = false
-    @State private var showsExplosion = false
     @State private var isCoolingDown = false
     @State private var showsLimitAlert = false
     @State private var lightFeedbackID = 0
     @State private var heavyFeedbackID = 0
+    @State private var actionFeedbackID = 0
 
     var body: some View {
         ZStack {
@@ -287,74 +302,65 @@ private struct PokeActionButton: View {
                 .padding(.vertical, 8)
                 .foregroundStyle(.white)
                 .background(BombTheme.ink)
-                .clipShape(.capsule)
+                .clipShape(Capsule())
+                .symbolEffect(.bounce, value: actionFeedbackID)
                 .scaleEffect(isCharging ? 0.92 : 1)
                 .rotationEffect(.degrees(isCharging ? 2 : 0))
                 .animation(
                     isCharging ? .easeInOut(duration: 0.12).repeatForever(autoreverses: true) : .snappy,
                     value: isCharging
                 )
-                .contentShape(.capsule)
+                .contentShape(Capsule())
                 .onTapGesture {
                     guard !suppressNextTap, !isCoolingDown else { return }
-                    sendPoke(style: .gentle, isBombPoke: false)
+                    _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
                 .onLongPressGesture(minimumDuration: 0.6) {
                     guard !isCoolingDown else { return }
                     suppressNextTap = true
+                    guard sendPoke(style: .alarm, isBombPoke: true) else {
+                        suppressNextTap = false
+                        return
+                    }
                     hasChargedBomb = true
-                    sendPoke(style: .alarm, isBombPoke: true)
+                    onPokeEmoji("💣")
                 } onPressingChanged: { isPressing in
                     guard !isCoolingDown else { return }
                     isCharging = isPressing
 
                     guard !isPressing, hasChargedBomb else { return }
                     hasChargedBomb = false
-                    showsBomb = false
-                    showsExplosion = true
+                    onPokeEmoji("💥")
 
                     Task {
                         try? await Task.sleep(for: .seconds(0.6))
-                        showsExplosion = false
+                        onPokeEmoji(nil)
                         suppressNextTap = false
                     }
                 }
                 .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(isCoolingDown ? "讓他喘口氣" : "戳一下")
+                .accessibilityHint("長按可發送加強提醒")
                 .accessibilityAction {
                     guard !isCoolingDown else { return }
-                    sendPoke(style: .gentle, isBombPoke: false)
+                    _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
 
-            Text("💣")
-                .font(.system(size: 52))
-                .offset(y: -58)
-                .scaleEffect(showsBomb ? 1 : 0.1)
-                .opacity(showsBomb ? 1 : 0)
-                .allowsHitTesting(false)
-
-            Text("💥")
-                .font(.system(size: 62))
-                .offset(y: -58)
-                .scaleEffect(showsExplosion ? 1 : 0.1)
-                .opacity(showsExplosion ? 1 : 0)
-                .allowsHitTesting(false)
         }
         .frame(height: 38)
-        .animation(.bouncy, value: showsBomb)
-        .animation(.snappy, value: showsExplosion)
         .sensoryFeedback(.impact(weight: .light), trigger: lightFeedbackID)
         .sensoryFeedback(.impact(weight: .heavy), trigger: heavyFeedbackID)
-        .alert("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
-            Button("好", role: .cancel) { }
+        .bombDialog("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
+            Button("好") { }
         }
     }
 
-    private func sendPoke(style: PokeStyle, isBombPoke: Bool) {
-        guard let pokeCount = onPoke(style) else { return }
+    private func sendPoke(style: PokeStyle, isBombPoke: Bool) -> Bool {
+        guard let pokeCount = onPoke(style) else { return false }
 
+        actionFeedbackID += 1
         if isBombPoke {
             heavyFeedbackID += 1
-            showsBomb = true
         } else {
             lightFeedbackID += 1
         }
@@ -367,7 +373,9 @@ private struct PokeActionButton: View {
                 isCoolingDown = false
             }
         }
+        return true
     }
+
 }
 private struct DeliverablePhotoPreview: View {
     @Environment(\.dismiss) private var dismiss

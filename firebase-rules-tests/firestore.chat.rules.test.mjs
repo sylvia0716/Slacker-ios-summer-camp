@@ -252,11 +252,13 @@ describe("Group Bomb 聊天室相容性與存取回歸", () => {
     await assertFails(updateDoc(memberRef(memberID), { displayName: "新名字", role: "leader" }));
   });
 
-  test("保留自行離開群組，但不能刪除別人的 member", async () => {
+  test("成員只能透過 callable 退出，不能直接刪除成員或群組", async () => {
     await assertFails(deleteDoc(memberRef(teammateID, memberID)));
     await assertFails(deleteDoc(memberRef(leaderID, memberID)));
     await assertFails(deleteDoc(memberRef(null, memberID)));
-    await assertSucceeds(deleteDoc(memberRef(memberID)));
-    await assertFails(getDoc(doc(db(memberID), `groups/${groupID}`)));
+    await assertFails(deleteDoc(memberRef(memberID)));
+    for (const actor of [memberID, leaderID, outsiderID]) {
+      await assertFails(deleteDoc(doc(db(actor), `groups/${groupID}`)));
+    }
   });
 });

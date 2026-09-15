@@ -32,9 +32,9 @@ struct AttachmentActionButton<Label: View>: View {
                     .disabled(action.isWorking)
             }
         }
-        .confirmationDialog("確定刪除此附件？", isPresented: $confirmsDelete, titleVisibility: .visible) {
-            Button("刪除", role: .destructive) { perform(delete: true) }
+        .bombDialog("確定刪除此附件？", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("取消", role: .cancel) {}
+            Button("刪除", role: .destructive) { perform(delete: true) }
         } message: {
             Text("刪除後無法復原。")
         }
@@ -63,9 +63,9 @@ struct AttachmentActionButton<Label: View>: View {
                 action.externalURL = nil
             }
         }
-        .alert("附件操作失敗", isPresented: Binding(get: { action.errorMessage != nil }, set: { if !$0 { action.errorMessage = nil } })) {
-            Button("重新嘗試") { perform(delete: action.isDeleting) }
+        .bombDialog("附件操作失敗", isPresented: Binding(get: { action.errorMessage != nil }, set: { if !$0 { action.errorMessage = nil } })) {
             Button("取消", role: .cancel) { action.errorMessage = nil }
+            Button("重新嘗試") { perform(delete: action.isDeleting) }
         } message: { Text(action.errorMessage ?? "") }
         .onChange(of: model.firebaseUID) { _, _ in action.cancel() }
         .onChange(of: scenePhase) { _, phase in if phase == .background { action.cancel() } }

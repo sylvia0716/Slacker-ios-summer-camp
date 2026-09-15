@@ -22,6 +22,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
@@ -85,9 +86,12 @@ async function callableClient(authenticated = true) {
 
   return {
     userID,
+    create: httpsCallable(functions, "createGroup"),
     join: httpsCallable(functions, "joinGroupByInviteCode"),
     list: httpsCallable(functions, "listMyGroups"),
     progress: httpsCallable(functions, "updateTaskProgress"),
+    createTask: httpsCallable(functions, "createTask"),
+    updateSubtask: httpsCallable(functions, "updateSubtask"),
     close: () => deleteApp(app),
   };
 }
@@ -196,6 +200,80 @@ describe("雲端任務共識驗收", () => {
 });
 
 describe("joinGroupByInviteCode Callable", () => {
+  test("已登入使用者建立群組時，同步建立 leader、邀請碼與可讀取的群組", async () => {
+    const client = await callableClient();
+    try {
+      const deadlineMillis = Date.now() + 86_400_000;
+      const response = await client.create({
+        name: " 新測試群組 ",
+        deadlineMillis,
+        displayName: "Peach",
+      });
+      const createdGroupID = response.data.group.groupID;
+      const inviteCode = response.data.group.inviteCode;
+
+      assert.match(createdGroupID, /^[0-9a-f-]{36}$/);
+      assert.match(inviteCode, /^[A-Z0-9]{6}$/);
+      assert.equal(response.data.group.name, "新測試群組");
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const firestore = context.firestore();
+        const group = await getDoc(doc(firestore, `groups/${createdGroupID}`));
+        const member = await getDoc(doc(
+          firestore,
+          `groups/${createdGroupID}/members/${client.userID}`,
+        ));
+        const invite = await getDoc(doc(firestore, `groupInviteCodes/${inviteCode}`));
+        assert.equal(group.data().name, "新測試群組");
+        assert.equal(member.data().role, "leader");
+        assert.equal(member.data().displayName, "Peach");
+        assert.equal(invite.data().groupID, createdGroupID);
+      });
+
+      const groups = await client.list({});
+      assert.ok(groups.data.groups.some(group => group.groupID === createdGroupID));
+
+      const memberFirestore = testEnv.authenticatedContext(client.userID).firestore();
+      await assertSucceeds(getDocs(collection(
+        memberFirestore,
+        `groups/${createdGroupID}/messages`,
+      )));
+      await assertSucceeds(setDoc(doc(
+        memberFirestore,
+        `groups/${createdGroupID}/presence/${client.userID}`,
+      ), {
+        userID: client.userID,
+        displayName: "Peach",
+        isOnline: true,
+        lastSeenAt: serverTimestamp(),
+      }));
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("建立群組拒絕未登入、無效欄位、空白名稱與過期期限", async () => {
+    const guest = await callableClient(false);
+    const client = await callableClient();
+    const valid = {
+      name: "測試群組",
+      deadlineMillis: Date.now() + 86_400_000,
+      displayName: "Peach",
+    };
+    try {
+      await expectCallableFailure(guest.create(valid), "functions/unauthenticated");
+      await expectCallableFailure(client.create({ ...valid, role: "leader" }), "functions/invalid-argument");
+      await expectCallableFailure(client.create({ ...valid, name: "   " }), "functions/invalid-argument");
+      await expectCallableFailure(
+        client.create({ ...valid, deadlineMillis: Date.now() - 1_000 }),
+        "functions/invalid-argument",
+      );
+    } finally {
+      await guest.close();
+      await client.close();
+    }
+  });
+
   test("已登入使用者能以有效邀請碼加入，member ID 等於 Firebase UID", async () => {
     const client = await callableClient();
     try {
@@ -284,6 +362,12 @@ describe("joinGroupByInviteCode Callable", () => {
         guest.join({ inviteCode: validCode }),
         "functions/unauthenticated",
       );
+      for (const inviteCode of ["12345", "1234567", "ABCD2345", "AB-123"]) {
+        await expectCallableFailure(
+          member.join({ inviteCode }),
+          "functions/invalid-argument",
+        );
+      }
       await expectCallableFailure(
         member.join({ inviteCode: "NONE24" }),
         "functions/not-found",
@@ -451,6 +535,84 @@ describe("joinGroupByInviteCode Callable", () => {
       assert.deepEqual((await client.list({})).data.groups.map(group => group.groupID), [groupID]);
     } finally {
       await client.close();
+    }
+  });
+
+  test("群組成員發布任務後，負責人可以同步子任務進度", async () => {
+    const client = await callableClient();
+    const newTaskID = "55555555-5555-4555-8555-555555555555";
+    const subtaskID = "66666666-6666-4666-8666-666666666666";
+    try {
+      await client.join({ inviteCode: validCode });
+      await client.createTask({
+        groupID,
+        taskID: newTaskID,
+        title: " 製作簡報 ",
+        detail: "完成期末簡報",
+        assigneeUserID: client.userID,
+        subtasks: [{ id: subtaskID, title: "整理大綱" }],
+        deadlineMillis: Date.now() + 3_600_000,
+      });
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const snapshot = await getDoc(doc(context.firestore(), `groups/${groupID}/tasks/${newTaskID}`));
+        assert.equal(snapshot.data().title, "製作簡報");
+        assert.equal(snapshot.data().ownerMemberID, client.userID);
+        assert.equal(snapshot.data().createdByMemberID, client.userID);
+        assert.equal(snapshot.data().status, "inProgress");
+        assert.equal(snapshot.data().subtasks[0].isComplete, false);
+        assert.equal(snapshot.data().subtasks[0].weight, 100);
+        assert.ok(snapshot.data().createdAt instanceof Timestamp);
+      });
+
+      const response = await client.updateSubtask({
+        groupID,
+        taskID: newTaskID,
+        subtaskID,
+        isComplete: true,
+      });
+      assert.equal(response.data.status, "completed");
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const snapshot = await getDoc(doc(context.firestore(), `groups/${groupID}/tasks/${newTaskID}`));
+        assert.equal(snapshot.data().status, "completed");
+        assert.equal(snapshot.data().subtasks[0].isComplete, true);
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("非成員不能發布任務，非負責人不能修改子任務", async () => {
+    const owner = await callableClient();
+    const other = await callableClient();
+    const outsider = await callableClient();
+    const newTaskID = "77777777-7777-4777-8777-777777777777";
+    const subtaskID = "88888888-8888-4888-8888-888888888888";
+    const taskPayload = {
+      groupID,
+      taskID: newTaskID,
+      title: "安全測試",
+      detail: "",
+      assigneeUserID: owner.userID,
+      subtasks: [{ id: subtaskID, title: "只能由負責人完成" }],
+      deadlineMillis: Date.now() + 3_600_000,
+    };
+    try {
+      await owner.join({ inviteCode: validCode });
+      await other.join({ inviteCode: validCode });
+      await expectCallableFailure(outsider.createTask(taskPayload), "functions/permission-denied");
+      await owner.createTask(taskPayload);
+      await expectCallableFailure(other.updateSubtask({
+        groupID,
+        taskID: newTaskID,
+        subtaskID,
+        isComplete: true,
+      }), "functions/permission-denied");
+    } finally {
+      await owner.close();
+      await other.close();
+      await outsider.close();
     }
   });
 });

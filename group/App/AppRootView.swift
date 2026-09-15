@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// App shell: owns the prototype's shared store and the primary app navigation.
 struct AppRootView: View {
@@ -9,6 +10,8 @@ struct AppRootView: View {
     @State private var tutorialStep: TutorialStep?
     @State private var isBombTabBarHidden = false
     @State private var safeAreaInsets = EdgeInsets()
+    @State private var activePokeReception: PokeReception?
+    @State private var pokePresentationID = 0
 
     var body: some View {
         SwiftUI.Group {
@@ -37,15 +40,28 @@ struct AppRootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.resumeCloudSync() }
-            else { store.suspendCloudSync() }
+            else if phase == .background { store.suspendCloudSync() }
         }
         .onDisappear { store.suspendCloudSync() }
-        .alert("雲端同步", isPresented: Binding(
+        .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
+            guard let reception = notification.object as? PokeReception else { return }
+            pokePresentationID += 1
+            activePokeReception = reception
+        }
+        .overlay {
+            if let activePokeReception {
+                PokeReceptionOverlay(reception: activePokeReception) {
+                    self.activePokeReception = nil
+                }
+                .id(pokePresentationID)
+            }
+        }
+        .bombDialog("雲端同步", isPresented: Binding(
             get: { store.cloudErrorMessage != nil },
             set: { if !$0 { store.cloudErrorMessage = nil } }
         )) {
-            Button("重試") { Task { await store.reloadCloudGroups() } }
             Button("關閉", role: .cancel) { store.cloudErrorMessage = nil }
+            Button("重試") { Task { await store.reloadCloudGroups() } }
         } message: { Text(store.cloudErrorMessage ?? "") }
     }
 
@@ -66,7 +82,9 @@ struct AppRootView: View {
                 if tab != .groups { hidden = false }
             }
 
-            NavigationStack { MyTasksView(model: store) }
+            NavigationStack {
+                MyTasksView(model: store, isSelected: tab == .myTasks)
+            }
                 .opacity(tab == .myTasks ? 1 : 0)
                 .allowsHitTesting(tab == .myTasks)
                 .accessibilityHidden(tab != .myTasks)

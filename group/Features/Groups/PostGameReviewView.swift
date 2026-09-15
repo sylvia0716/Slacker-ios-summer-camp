@@ -44,8 +44,8 @@ struct PostGameReviewView: View {
                 EmptyView()
             }
         }
-        .alert("功能開發中", isPresented: $showsPlaceholderAlert) {
-            Button("知道了", role: .cancel) {}
+        .bombDialog("功能開發中", isPresented: $showsPlaceholderAlert) {
+            Button("知道了") {}
         } message: {
             Text("此功能將於正式版本推出，目前 MVP 僅展示任務結案報告。")
         }

@@ -3,12 +3,36 @@ import SwiftUI
 /// Second tab: aggregates the current user's tasks and opens task delivery details.
 struct MyTasksView: View {
     let model: GroupBombModel
+    let isSelected: Bool
     @State private var showCompleted = false
 
-    private var visibleTasks: [ProjectTask] {
+    init(model: GroupBombModel, isSelected: Bool = true) {
+        self.model = model
+        self.isSelected = isSelected
+    }
+
+    private var pendingTasks: [ProjectTask] {
         model.projectTasks.filter {
-            $0.ownerMemberID == model.currentUserID && $0.isCompleted == showCompleted
+            $0.ownerMemberID == model.currentUserID && !$0.isCompleted
         }
+        .sorted(by: deadlineAscending)
+    }
+
+    private var completedTasks: [ProjectTask] {
+        model.projectTasks.filter {
+            $0.ownerMemberID == model.currentUserID && $0.isCompleted
+        }
+        .sorted(by: deadlineAscending)
+    }
+
+    private var visibleTasks: [ProjectTask] {
+        showCompleted ? completedTasks : pendingTasks
+    }
+
+    private func deadlineAscending(_ lhs: ProjectTask, _ rhs: ProjectTask) -> Bool {
+        if lhs.deadline != rhs.deadline { return lhs.deadline < rhs.deadline }
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     var body: some View {
@@ -16,7 +40,13 @@ struct MyTasksView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    TaskProgressDashboard(progress: personalProgress)
+                    if !pendingTasks.isEmpty {
+                        TaskProgressDashboard(progress: personalProgress, isActive: isSelected)
+                    }
+
+                    if model.cloudGroupSyncErrorMessage != nil && !model.projectTasks.isEmpty {
+                        staleTasksBanner
+                    }
 
                     Picker("任務狀態", selection: $showCompleted) {
                         Text("待完成").tag(false)
@@ -25,7 +55,26 @@ struct MyTasksView: View {
                     .pickerStyle(.segmented)
                     .tint(.white)
 
-                    if visibleTasks.isEmpty {
+                    if model.isLoadingCloudGroups && model.projectTasks.isEmpty {
+                        ProgressView("正在同步任務…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 42)
+                    } else if let syncError = model.cloudGroupSyncErrorMessage,
+                              model.projectTasks.isEmpty {
+                        ContentUnavailableView {
+                            Label("無法載入任務", systemImage: "exclamationmark.triangle.fill")
+                        } description: {
+                            Text(syncError)
+                        } actions: {
+                            Button("重新整理") {
+                                Task { await model.reloadCloudGroups() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(BombTheme.ink)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 42)
+                    } else if visibleTasks.isEmpty {
                         ContentUnavailableView(
                             showCompleted ? "還沒有完成任務" : "目前沒有待完成任務",
                             systemImage: showCompleted ? "checkmark.seal.fill" : "bolt.fill"
@@ -38,7 +87,7 @@ struct MyTasksView: View {
                             NavigationLink {
                                 MyTaskDetailView(model: model, taskID: task.id)
                             } label: {
-                                MyTaskCard(task: task, groupName: group?.name ?? "", deadline: group?.deadline)
+                                MyTaskCard(task: task, groupName: group?.name ?? "")
                             }
                             .buttonStyle(.plain)
                         }
@@ -63,15 +112,32 @@ struct MyTasksView: View {
         }
     }
 
+    private var staleTasksBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("任務同步失敗，顯示上次同步資料")
+                .font(.subheadline.weight(.bold))
+            Spacer(minLength: 8)
+            Button("重試") {
+                Task { await model.reloadCloudGroups() }
+            }
+            .font(.subheadline.weight(.black))
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(12)
+        .background(.white.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private var personalProgress: Int {
-        guard let group = model.groups.first else { return 0 }
-        return model.memberProgress(for: model.currentUserID, in: group.id)
+        model.overallMemberProgress(for: model.currentUserID)
     }
 }
 
 /// 半圓進度儀表板由新版子任務完成比例驅動，不再建立第二份進度資料。
 private struct TaskProgressDashboard: View {
     let progress: Int
+    let isActive: Bool
     @State private var animatedProgress = 0.0
     @State private var animationTask: Task<Void, Never>?
 
@@ -98,15 +164,31 @@ private struct TaskProgressDashboard: View {
         }
         .frame(height: 260)
         .onAppear {
-            animateProgress(fromZero: true)
+            if isActive { animateProgress(fromZero: true) }
         }
         .onDisappear {
-            animationTask?.cancel()
-            animatedProgress = 0
+            resetAnimation()
+        }
+        .onChange(of: isActive) { _, isActive in
+            if isActive {
+                animateProgress(fromZero: true)
+            } else {
+                resetAnimation()
+            }
         }
         .onChange(of: progress) {
-            animateProgress(fromZero: false)
+            if isActive {
+                animateProgress(fromZero: false)
+            } else {
+                animatedProgress = 0
+            }
         }
+    }
+
+    private func resetAnimation() {
+        animationTask?.cancel()
+        animationTask = nil
+        animatedProgress = 0
     }
 
     private func animateProgress(fromZero: Bool) {
@@ -177,7 +259,11 @@ private struct ProgressDial: View, Animatable {
 
             for marker in [0, 100] {
                 let angle = startAngle + sweep * Double(marker) / 100
-                let location = point(center: center, radius: radius + 22, angle: angle)
+                let endpoint = point(center: center, radius: radius, angle: angle)
+                let location = CGPoint(
+                    x: min(max(endpoint.x, 18), size.width - 18),
+                    y: endpoint.y + 22
+                )
                 context.draw(
                     Text("\(marker)")
                         .font(.caption2.weight(.bold))
@@ -208,7 +294,6 @@ private struct ProgressDial: View, Animatable {
 private struct MyTaskCard: View {
     let task: ProjectTask
     let groupName: String
-    let deadline: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -229,8 +314,8 @@ private struct MyTaskCard: View {
                 .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
                 .scaleEffect(y: 1.6)
             HStack {
-                if let deadline {
-                    Label { Text(TaskRemainingTime(deadline: deadline).text) } icon: { Image(systemName: "clock.fill") }
+                if task.deadline != .distantFuture {
+                    Label { Text(TaskRemainingTime(deadline: task.deadline).text) } icon: { Image(systemName: "clock.fill") }
                 }
                 Spacer()
                 Label("查看任務", systemImage: "chevron.right")
@@ -246,7 +331,9 @@ private struct TaskRemainingTime {
     let deadline: Date
 
     var text: String {
-        let seconds = max(0, Int(deadline.timeIntervalSinceNow))
+        let remainingInterval = deadline.timeIntervalSinceNow
+        guard remainingInterval > 0 else { return "已逾期" }
+        let seconds = Int(remainingInterval)
         let days = seconds / 86_400
         let hours = seconds % 86_400 / 3_600
         let minutes = seconds % 3_600 / 60
@@ -268,69 +355,21 @@ private struct MyTaskDetailView: View {
             BombTheme.yellow.ignoresSafeArea()
             if let task {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(spacing: 0) {
-                            VStack(alignment: .leading, spacing: 22) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(task.title).font(.system(size: 32, weight: .black, design: .rounded))
-                                    Spacer()
-                                    Text("\(task.progress)%").font(.system(size: 32, weight: .black, design: .rounded))
-                                }
-                                Text(task.detail).font(.title3.weight(.medium)).foregroundStyle(.secondary)
-                                ProgressView(value: Double(task.progress), total: 100)
-                                    .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
-                                    .scaleEffect(y: 1.7)
+                    VStack(alignment: .leading, spacing: 0) {
+                        taskOverview(task)
 
-                                Text("子任務").font(.system(size: 30, weight: .black, design: .rounded))
-                                VStack(spacing: 0) {
-                            ForEach(task.subtasks) { subtask in
-                                Button {
-                                    model.toggleSubtask(taskID: task.id, subtaskID: subtask.id)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: subtask.isComplete ? "checkmark.square.fill" : "square")
-                                            .font(.title3)
-                                            .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink)
-                                        Text(subtask.title)
-                                            .font(.body.weight(.bold))
-                                            .strikethrough(subtask.isComplete)
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 14)
-                                }
-                                .buttonStyle(.plain)
-                                if subtask.id != task.subtasks.last?.id { Divider() }
-                            }
-                                }
+                        sectionDivider
 
-                                Text("成果交付").font(.system(size: 30, weight: .black, design: .rounded))
-                            if let deliverable = task.deliverable {
-                                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable) {
-                                HStack {
-                                    Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
-                                    Text(deliverable.title).font(.subheadline.bold()).lineLimit(1)
-                                    Spacer()
-                                    Text(deliverable.isApproved ? "已驗收" : "待驗收")
-                                        .font(.caption.bold())
-                                        .foregroundStyle(deliverable.isApproved ? BombTheme.green : .secondary)
-                                }
-                                }
-                            }
-                            Button {
-                                showsSubmissionSheet = true
-                            } label: {
-                                Label("上傳檔案或貼上連結", systemImage: "paperclip")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(BombTheme.ink)
-                            .controlSize(.large)
-                            }
-                            .comicCard()
-                        }
+                        subtaskSection(task)
+
+                        sectionDivider
+
+                        deliverableSection(task)
                     }
-                    .padding(18)
-                    .padding(.bottom, 112)
+                    .taskDetailCard()
+                    .padding(.horizontal, 18)
+                    .padding(.top, 10)
+                    .padding(.bottom, 40)
                 }
             }
         }
@@ -362,5 +401,163 @@ private struct MyTaskDetailView: View {
                 }
             }
         }
+    }
+
+    private var sectionDivider: some View {
+        Divider()
+            .overlay(BombTheme.ink.opacity(0.18))
+            .padding(.vertical, 18)
+    }
+
+    private func taskOverview(_ task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(task.title)
+                        .font(.system(.title2, design: .rounded, weight: .black))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(task.status.title)
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.ink)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(task.isCompleted ? BombTheme.green.opacity(0.12) : BombTheme.yellow)
+                        .clipShape(.capsule)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("\(task.progress)%")
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .monospacedDigit()
+                    .foregroundStyle(BombTheme.yellow)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+            }
+
+            if !task.detail.isEmpty {
+                Text(task.detail)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.66))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ProgressView(value: Double(task.progress), total: 100)
+                .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
+                .scaleEffect(y: 1.35)
+
+            Label(
+                "\(task.subtasks.filter(\.isComplete).count) / \(task.subtasks.count) 項子任務完成",
+                systemImage: "checkmark.circle.fill"
+            )
+            .font(.caption.weight(.bold))
+            .foregroundStyle(BombTheme.ink.opacity(0.62))
+        }
+    }
+
+    private func subtaskSection(_ task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label("子任務", systemImage: "checklist")
+                    .font(.headline.weight(.black))
+                Spacer()
+                Text("\(task.subtasks.filter(\.isComplete).count) / \(task.subtasks.count)")
+                    .font(.caption.monospacedDigit().weight(.black))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 5)
+
+            ForEach(task.subtasks) { subtask in
+                Button {
+                    Task { await model.toggleSubtask(taskID: task.id, subtaskID: subtask.id) }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink.opacity(0.72))
+                        Text(subtask.title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
+                            .strikethrough(subtask.isComplete)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(.rect)
+                    .padding(.vertical, 11)
+                }
+                .buttonStyle(.plain)
+
+                if subtask.id != task.subtasks.last?.id {
+                    Divider()
+                }
+            }
+        }
+    }
+
+    private func deliverableSection(_ task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("成果交付", systemImage: "shippingbox.fill")
+                .font(.headline.weight(.black))
+
+            if let deliverable = task.deliverable {
+                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable) {
+                    HStack(spacing: 12) {
+                        Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
+                            .font(.headline)
+                            .frame(width: 40, height: 40)
+                            .background(BombTheme.yellow.opacity(0.55))
+                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                        Text(deliverable.title)
+                            .font(.subheadline.weight(.bold))
+                            .lineLimit(2)
+
+                        Spacer(minLength: 8)
+
+                        Text(deliverable.isApproved ? "已驗收" : "待驗收")
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(deliverable.isApproved ? BombTheme.green : BombTheme.ink.opacity(0.56))
+                    }
+                }
+            } else {
+                Text("尚未提交成果")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                showsSubmissionSheet = true
+            } label: {
+                Label(task.deliverable == nil ? "提交成果" : "更新成果", systemImage: "paperclip")
+                    .font(.headline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(BombTheme.ink)
+            .clipShape(.capsule)
+        }
+    }
+}
+
+private struct TaskDetailCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(18)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(BombTheme.ink, lineWidth: 2)
+            }
+    }
+}
+
+private extension View {
+    func taskDetailCard() -> some View {
+        modifier(TaskDetailCard())
     }
 }

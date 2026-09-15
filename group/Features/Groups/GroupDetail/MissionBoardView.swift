@@ -57,8 +57,8 @@ struct MissionBoardView: View {
             }
         }
         .sheet(isPresented: $shieldOpen) { ShieldSheet(model: model) }
-        .alert("群組已建立", isPresented: $isTaskPromptPresented) {
-            Button("知道了", role: .cancel) { }
+        .bombDialog("群組已建立", isPresented: $isTaskPromptPresented) {
+            Button("知道了") { }
         } message: {
             Text("現在可以新增任務，邀請隊友一起拆彈。")
         }
