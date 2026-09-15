@@ -4,7 +4,7 @@ import SwiftUI
 struct PublishTaskSheet: View {
     let group: Group
     let members: [Member]
-    let onPublish: (String, String, UUID, Date) throws -> Void
+    let onPublish: (String, String, UUID, Date) async throws -> Void
     let onCancel: () -> Void
 
     @State private var title = ""
@@ -12,11 +12,12 @@ struct PublishTaskSheet: View {
     @State private var selectedMemberID: UUID?
     @State private var deadline: Date
     @State private var submissionError: String?
+    @State private var isSubmitting = false
 
     init(
         group: Group,
         members: [Member],
-        onPublish: @escaping (String, String, UUID, Date) throws -> Void,
+        onPublish: @escaping (String, String, UUID, Date) async throws -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.group = group
@@ -188,7 +189,7 @@ struct PublishTaskSheet: View {
     private var actionBar: some View {
         VStack(spacing: 6) {
             Button(action: publish) {
-                Text("發布任務")
+                Text(isSubmitting ? "發布中…" : "發布任務")
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -197,14 +198,15 @@ struct PublishTaskSheet: View {
                     .clipShape(.capsule)
             }
             .buttonStyle(.plain)
-            .disabled(!canPublish)
-            .opacity(canPublish ? 1 : 0.42)
+            .disabled(!canPublish || isSubmitting)
+            .opacity(canPublish && !isSubmitting ? 1 : 0.42)
 
             Button("取消", action: onCancel)
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.ink)
                 .buttonStyle(.plain)
                 .padding(.vertical, 5)
+                .disabled(isSubmitting)
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
@@ -264,11 +266,16 @@ struct PublishTaskSheet: View {
     private func publish() {
         guard canPublish, let selectedMemberID else { return }
 
-        do {
-            try onPublish(title, detail, selectedMemberID, deadline)
-            onCancel()
-        } catch {
-            submissionError = error.localizedDescription
+        isSubmitting = true
+        submissionError = nil
+        Task {
+            do {
+                try await onPublish(title, detail, selectedMemberID, deadline)
+                onCancel()
+            } catch {
+                submissionError = error.localizedDescription
+            }
+            isSubmitting = false
         }
     }
 }

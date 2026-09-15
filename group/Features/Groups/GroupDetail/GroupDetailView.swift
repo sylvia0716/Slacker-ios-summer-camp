@@ -74,7 +74,7 @@ struct GroupDetailView: View {
                             group: currentGroup,
                             members: groupMembers,
                             onPublish: { title, detail, assigneeID, deadline in
-                                try model.publishTask(
+                                try await model.publishTask(
                                     title: title,
                                     detail: detail,
                                     groupID: group.id,

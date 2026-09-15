@@ -818,7 +818,7 @@ final class AppStore {
     }
 #endif
 
-    /// 驗證並發布一項正式任務，同步維護群組的 taskIDs 關係。
+    /// 驗證並發布一項任務；正式模式由受信任的 Callable Function 寫入 Firestore。
     @discardableResult
     func publishTask(
         title: String,
@@ -827,7 +827,7 @@ final class AppStore {
         assigneeMemberID: UUID,
         deadline: Date,
         now: Date = .now
-    ) throws -> ProjectTask {
+    ) async throws -> ProjectTask {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
@@ -858,8 +858,26 @@ final class AppStore {
             status: .pending
         )
 
-        projectTasks.append(task)
-        groups[groupIndex].taskIDs.append(task.id)
+        guard dataMode == .live else {
+            projectTasks.append(task)
+            groups[groupIndex].taskIDs.append(task.id)
+            lastEvent = "已發布新任務「\(trimmedTitle)」"
+            return task
+        }
+
+        guard let uid = firebaseUID,
+              let firestoreGroupID = groups[groupIndex].firestoreDocumentID,
+              let assigneeUID = members.first(where: { $0.id == assigneeMemberID })?.firebaseUID else {
+            throw TaskPublishingError.notAuthenticated
+        }
+        try await TaskPublishingRepository().publish(
+            groupID: firestoreGroupID,
+            title: trimmedTitle,
+            detail: trimmedDetail,
+            assigneeUID: assigneeUID,
+            deadline: deadline
+        )
+        guard firebaseUID == uid else { throw TaskPublishingError.notAuthenticated }
         lastEvent = "已發布新任務「\(trimmedTitle)」"
         return task
     }
@@ -996,7 +1014,19 @@ final class AppStore {
     func resumeCloudSync() {
         guard dataMode == .live, firebaseUID != nil, !syncIsActive else { return }
         syncIsActive = true
+        registerPokeDevice()
         cloudLoadTask = Task { [weak self] in _ = await self?.reloadCloudGroups() }
+    }
+
+    func registerPokeDevice() {
+        guard dataMode == .live, firebaseUID != nil else { return }
+        Task {
+            do {
+                try await PokeRepository().registerCurrentDevice()
+            } catch {
+                // A missing token or notification permission must not prevent normal group sync.
+            }
+        }
     }
 
     func suspendCloudSync() {
@@ -1362,6 +1392,17 @@ final class AppStore {
         let key = PokeCountKey(groupID: groupID, memberID: memberID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
         pokeCounts[key] = pokeCount
+        if dataMode == .live,
+           let firestoreGroupID = groups.first(where: { $0.id == groupID })?.firestoreDocumentID,
+           let recipientUID = member.firebaseUID {
+            Task { [weak self] in
+                do {
+                    try await PokeRepository().send(groupID: firestoreGroupID, recipientUID: recipientUID, style: style)
+                } catch {
+                    self?.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "戳戳送出失敗，請重試。"
+                }
+            }
+        }
         return pokeCount
     }
 

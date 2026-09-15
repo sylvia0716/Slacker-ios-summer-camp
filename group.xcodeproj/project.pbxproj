@@ -14,6 +14,7 @@
 		F10000090000000000000009 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = F10000050000000000000005 /* FirebaseStorage */; };
 		F100000A000000000000000A /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = F100000B000000000000000B /* FirebaseAppCheck */; };
 		F100000C000000000000000C /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = F100000D000000000000000D /* FirebaseFunctions */; };
+		F100000F000000000000000F /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = F100000E000000000000000E /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +79,7 @@
 			files = (
 				F100000A000000000000000A /* FirebaseAppCheck in Frameworks */,
 				F100000C000000000000000C /* FirebaseFunctions in Frameworks */,
+				F100000F000000000000000F /* FirebaseMessaging in Frameworks */,
 				F10000060000000000000006 /* FirebaseCore in Frameworks */,
 				F10000070000000000000007 /* FirebaseAuth in Frameworks */,
 				F10000080000000000000008 /* FirebaseFirestore in Frameworks */,
@@ -137,6 +139,7 @@
 			packageProductDependencies = (
 				F100000B000000000000000B /* FirebaseAppCheck */,
 				F100000D000000000000000D /* FirebaseFunctions */,
+				F100000E000000000000000E /* FirebaseMessaging */,
 				F10000020000000000000002 /* FirebaseCore */,
 				F10000030000000000000003 /* FirebaseAuth */,
 				F10000040000000000000004 /* FirebaseFirestore */,
@@ -525,16 +528,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F100000B000000000000000B /* FirebaseAppCheck */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAppCheck;
-		};
-		F100000D000000000000000D /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
-		};
 		F10000020000000000000002 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
@@ -554,6 +547,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		F100000B000000000000000B /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		F100000D000000000000000D /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
+		F100000E000000000000000E /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
