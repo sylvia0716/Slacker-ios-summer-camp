@@ -90,11 +90,11 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $showsNotificationTest) {
             NotificationTestView(model: model)
         }
-        .confirmationDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
+        .bombDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
+            Button("取消", role: .cancel) { }
             Button("登出", role: .destructive) {
                 authSession.signOut()
             }
-            Button("取消", role: .cancel) { }
         }
     }
 }
@@ -287,8 +287,8 @@ private struct NotificationTestView: View {
         .onAppear {
             selectedGroupID = selectedGroupID ?? model.groups.first?.id
         }
-        .alert("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
-            Button("好", role: .cancel) { }
+        .bombDialog("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
+            Button("好") { }
         }
     }
 }
@@ -297,6 +297,8 @@ private struct GroupManagementView: View {
     let model: GroupBombModel
     @State private var groupToLeave: Group?
     @State private var showsLeaveConfirmation = false
+    @State private var isLeaving = false
+    @State private var leaveError: String?
 
     var body: some View {
         ZStack {
@@ -326,15 +328,29 @@ private struct GroupManagementView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
-        .confirmationDialog(
+        .bombDialog(
             "確定要離開「\(groupToLeave?.name ?? "")」嗎？",
-            isPresented: $showsLeaveConfirmation
+            isPresented: $showsLeaveConfirmation,
+            destructiveIsRed: true
         ) {
+            Button("取消", role: .cancel) { }
             Button("離開群組", role: .destructive) {
                 guard let groupToLeave else { return }
-                model.leaveGroup(groupID: groupToLeave.id)
+                isLeaving = true
+                Task {
+                    defer { isLeaving = false }
+                    do { try await model.leaveGroup(groupID: groupToLeave.id) }
+                    catch { leaveError = "退出失敗，請確認網路後重試。" }
+                }
             }
-            Button("取消", role: .cancel) { }
+        } message: {
+            Text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。")
         }
+        .disabled(isLeaving)
+        .bombDialog("無法退出群組", isPresented: Binding(
+            get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
+        )) {
+            Button("知道了") { }
+        } message: { Text(leaveError ?? "") }
     }
 }

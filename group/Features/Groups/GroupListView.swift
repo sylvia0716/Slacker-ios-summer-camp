@@ -104,11 +104,11 @@ struct GroupListView: View {
             guard isSelected else { return }
             animationSequence += 1
         }
-        .alert("加入群組", isPresented: Binding(
-            get: { joinSuccessMessage != nil },
+        .bombDialog("加入群組", isPresented: Binding(
+            get: { joinSuccessMessage != nil && !isAddGroupPresented },
             set: { if !$0 { joinSuccessMessage = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(joinSuccessMessage ?? "")
         }
@@ -361,7 +361,7 @@ private struct AddGroupSheet: View {
         .presentationDetents([.fraction(0.62)])
         .presentationDragIndicator(.visible)
         .presentationBackground(BombTheme.paper)
-        .alert("無法加入群組", isPresented: Binding(
+        .bombDialog("無法加入群組", isPresented: Binding(
             get: {
                 if joinError != nil { return true }
                 if case .failure = joinStore.state { return true }
@@ -369,7 +369,7 @@ private struct AddGroupSheet: View {
             },
             set: { if !$0 { joinStore.reset(); joinError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             if let joinError {
                 Text(joinError)
@@ -377,11 +377,11 @@ private struct AddGroupSheet: View {
                 Text(error.localizedDescription)
             }
         }
-        .alert("無法建立群組", isPresented: Binding(
+        .bombDialog("無法建立群組", isPresented: Binding(
             get: { creationError != nil },
             set: { if !$0 { creationError = nil } }
         )) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了") { }
         } message: {
             Text(creationError ?? "")
         }
@@ -390,8 +390,8 @@ private struct AddGroupSheet: View {
                 isCodeFieldFocused = true
             }
         }
-        .alert("無法使用掃碼", isPresented: $isScannerUnavailableAlertPresented) {
-            Button("知道了", role: .cancel) { }
+        .bombDialog("無法使用掃碼", isPresented: $isScannerUnavailableAlertPresented) {
+            Button("知道了") { }
         } message: {
             Text("請在支援相機文字辨識的裝置上使用掃碼功能。")
         }

@@ -40,12 +40,12 @@ struct AppRootView: View {
             else if phase == .background { store.suspendCloudSync() }
         }
         .onDisappear { store.suspendCloudSync() }
-        .alert("雲端同步", isPresented: Binding(
+        .bombDialog("雲端同步", isPresented: Binding(
             get: { store.cloudErrorMessage != nil },
             set: { if !$0 { store.cloudErrorMessage = nil } }
         )) {
-            Button("重試") { Task { await store.reloadCloudGroups() } }
             Button("關閉", role: .cancel) { store.cloudErrorMessage = nil }
+            Button("重試") { Task { await store.reloadCloudGroups() } }
         } message: { Text(store.cloudErrorMessage ?? "") }
     }
 
