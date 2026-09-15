@@ -282,11 +282,18 @@ private struct MyTaskDetailView: View {
             BombTheme.yellow.ignoresSafeArea()
             if let task {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 0) {
                         taskOverview(task)
+
+                        sectionDivider
+
                         subtaskSection(task)
+
+                        sectionDivider
+
                         deliverableSection(task)
                     }
+                    .taskDetailCard()
                     .padding(.horizontal, 18)
                     .padding(.top, 10)
                     .padding(.bottom, 40)
@@ -321,6 +328,12 @@ private struct MyTaskDetailView: View {
                 }
             }
         }
+    }
+
+    private var sectionDivider: some View {
+        Divider()
+            .overlay(BombTheme.ink.opacity(0.18))
+            .padding(.vertical, 18)
     }
 
     private func taskOverview(_ task: ProjectTask) -> some View {
@@ -370,7 +383,6 @@ private struct MyTaskDetailView: View {
             .font(.caption.weight(.bold))
             .foregroundStyle(BombTheme.ink.opacity(0.62))
         }
-        .taskDetailCard()
     }
 
     private func subtaskSection(_ task: ProjectTask) -> some View {
@@ -409,7 +421,6 @@ private struct MyTaskDetailView: View {
                 }
             }
         }
-        .taskDetailCard()
     }
 
     private func deliverableSection(_ task: ProjectTask) -> some View {
@@ -454,7 +465,6 @@ private struct MyTaskDetailView: View {
             .background(BombTheme.ink)
             .clipShape(.capsule)
         }
-        .taskDetailCard()
     }
 }
 
