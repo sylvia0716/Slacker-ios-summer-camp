@@ -10,7 +10,7 @@ enum ProjectTaskStatus: String, Codable, Hashable, CaseIterable {
     var title: String {
         switch self {
         case .pending: "待開始"
-        case .inProgress: "處理中"
+        case .inProgress: "已開始"
         case .submitted: "待驗收"
         case .completed: "已完成"
         }
@@ -41,8 +41,6 @@ struct ProjectTask: Identifiable, Hashable {
     var createdByMemberID: UUID? = nil
     /// 任務建立時間。
     var createdAt: Date = .now
-    /// 任務目前狀態。
-    var status: ProjectTaskStatus = .pending
     var firestoreDocumentID: String? = nil
     var firestoreGroupID: String? = nil
     var confirmedAttachmentID: String? = nil
@@ -52,13 +50,18 @@ struct ProjectTask: Identifiable, Hashable {
     /// 依子任務權重算出的任務完成百分比，不應直接手動設定。
     var progress: Int {
         let totalWeight = subtasks.reduce(0) { $0 + $1.weight }
-        guard totalWeight > 0 else { return status == .completed && deliverable != nil ? 100 : 0 }
+        guard totalWeight > 0 else { return cloudStatus == .completed && deliverable != nil ? 100 : 0 }
         let completedWeight = subtasks.filter(\.isComplete).reduce(0) { $0 + $1.weight }
         return completedWeight * 100 / totalWeight
     }
 
-    /// 任務是否已完成所有子任務並送出成果。
+    /// 子任務全部完成時，主任務即完成；成果交付不影響完成狀態。
     var isCompleted: Bool {
-        firestoreDocumentID == nil ? progress == 100 && deliverable != nil : status == .completed && deliverable != nil
+        progress == 100
+    }
+
+    /// 任務狀態以子任務進度為唯一來源，避免儲存值與畫面狀態不同步。
+    var status: ProjectTaskStatus {
+        isCompleted ? .completed : .inProgress
     }
 }

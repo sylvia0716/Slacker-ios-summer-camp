@@ -73,10 +73,11 @@ struct GroupDetailView: View {
                         PublishTaskSheet(
                             group: currentGroup,
                             members: groupMembers,
-                            onPublish: { title, detail, assigneeID, deadline in
-                                try model.publishTask(
+                            onPublish: { title, detail, subtaskTitles, assigneeID, deadline in
+                                try await model.publishTask(
                                     title: title,
                                     detail: detail,
+                                    subtaskTitles: subtaskTitles,
                                     groupID: group.id,
                                     assigneeMemberID: assigneeID,
                                     deadline: deadline
@@ -721,7 +722,7 @@ struct GroupDetailView: View {
                         model.submitDeliverable(taskID: taskID, deliverable: deliverable)
                     },
                     onToggleSubtask: { taskID, subtaskID in
-                        model.toggleSubtask(taskID: taskID, subtaskID: subtaskID)
+                        Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
                     },
                     onConfirmDeliverable: { taskID in
                         model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)

@@ -85,8 +85,7 @@ enum DemoData {
                 deliverable: nil,
                 deadline: deadline,
                 createdByMemberID: me.id,
-                createdAt: now,
-                status: progress >= 100 ? .completed : .inProgress
+                createdAt: now
             )
         }
 

@@ -90,6 +90,8 @@ async function callableClient(authenticated = true) {
     join: httpsCallable(functions, "joinGroupByInviteCode"),
     list: httpsCallable(functions, "listMyGroups"),
     progress: httpsCallable(functions, "updateTaskProgress"),
+    createTask: httpsCallable(functions, "createTask"),
+    updateSubtask: httpsCallable(functions, "updateSubtask"),
     close: () => deleteApp(app),
   };
 }
@@ -523,6 +525,84 @@ describe("joinGroupByInviteCode Callable", () => {
       assert.deepEqual((await client.list({})).data.groups.map(group => group.groupID), [groupID]);
     } finally {
       await client.close();
+    }
+  });
+
+  test("群組成員發布任務後，負責人可以同步子任務進度", async () => {
+    const client = await callableClient();
+    const newTaskID = "55555555-5555-4555-8555-555555555555";
+    const subtaskID = "66666666-6666-4666-8666-666666666666";
+    try {
+      await client.join({ inviteCode: validCode });
+      await client.createTask({
+        groupID,
+        taskID: newTaskID,
+        title: " 製作簡報 ",
+        detail: "完成期末簡報",
+        assigneeUserID: client.userID,
+        subtasks: [{ id: subtaskID, title: "整理大綱" }],
+        deadlineMillis: Date.now() + 3_600_000,
+      });
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const snapshot = await getDoc(doc(context.firestore(), `groups/${groupID}/tasks/${newTaskID}`));
+        assert.equal(snapshot.data().title, "製作簡報");
+        assert.equal(snapshot.data().ownerMemberID, client.userID);
+        assert.equal(snapshot.data().createdByMemberID, client.userID);
+        assert.equal(snapshot.data().status, "inProgress");
+        assert.equal(snapshot.data().subtasks[0].isComplete, false);
+        assert.equal(snapshot.data().subtasks[0].weight, 100);
+        assert.ok(snapshot.data().createdAt instanceof Timestamp);
+      });
+
+      const response = await client.updateSubtask({
+        groupID,
+        taskID: newTaskID,
+        subtaskID,
+        isComplete: true,
+      });
+      assert.equal(response.data.status, "completed");
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const snapshot = await getDoc(doc(context.firestore(), `groups/${groupID}/tasks/${newTaskID}`));
+        assert.equal(snapshot.data().status, "completed");
+        assert.equal(snapshot.data().subtasks[0].isComplete, true);
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("非成員不能發布任務，非負責人不能修改子任務", async () => {
+    const owner = await callableClient();
+    const other = await callableClient();
+    const outsider = await callableClient();
+    const newTaskID = "77777777-7777-4777-8777-777777777777";
+    const subtaskID = "88888888-8888-4888-8888-888888888888";
+    const taskPayload = {
+      groupID,
+      taskID: newTaskID,
+      title: "安全測試",
+      detail: "",
+      assigneeUserID: owner.userID,
+      subtasks: [{ id: subtaskID, title: "只能由負責人完成" }],
+      deadlineMillis: Date.now() + 3_600_000,
+    };
+    try {
+      await owner.join({ inviteCode: validCode });
+      await other.join({ inviteCode: validCode });
+      await expectCallableFailure(outsider.createTask(taskPayload), "functions/permission-denied");
+      await owner.createTask(taskPayload);
+      await expectCallableFailure(other.updateSubtask({
+        groupID,
+        taskID: newTaskID,
+        subtaskID,
+        isComplete: true,
+      }), "functions/permission-denied");
+    } finally {
+      await owner.close();
+      await other.close();
+      await outsider.close();
     }
   });
 });

@@ -78,6 +78,7 @@ enum PokeStyle: String, CaseIterable, Identifiable {
 enum PublishTaskError: LocalizedError {
     case groupNotFound
     case emptyTitle
+    case invalidSubtasks
     case assigneeNotInGroup
     case deadlineNotInFuture
     case deadlineAfterGroupDeadline
@@ -86,6 +87,7 @@ enum PublishTaskError: LocalizedError {
         switch self {
         case .groupNotFound: "找不到目前群組"
         case .emptyTitle: "請輸入任務名稱"
+        case .invalidSubtasks: "請填寫 1 到 10 項子任務"
         case .assigneeNotInGroup: "負責人必須是目前群組成員"
         case .deadlineNotInFuture: "截止時間必須晚於目前時間"
         case .deadlineAfterGroupDeadline: "截止時間不可晚於群組總截止時間"
@@ -141,12 +143,15 @@ final class AppStore {
     @ObservationIgnored private var progressSubscriptions: [UUID: GroupProgressSubscription] = [:]
     private(set) var pendingTaskUpdates: Set<UUID> = []
     @ObservationIgnored private var groupRepository: GroupRepository?
+    @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
+    @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
     @ObservationIgnored private var syncIsActive = false
     private(set) var firebaseUID: String?
     private(set) var isLoadingCloudGroups = false
     var cloudErrorMessage: String?
+    private(set) var cloudGroupSyncErrorMessage: String?
     private(set) var attachmentsByTaskID: [UUID: [TaskAttachment]] = [:]
     private(set) var attachmentErrors: [UUID: String] = [:]
 
@@ -278,6 +283,7 @@ final class AppStore {
             agents = demo.agents
             radar = demo.radar
             communicationAnalyses = [:]
+            cloudGroupSyncErrorMessage = nil
             lastEvent = "測試資料已載入"
             dataMode = .demo
 
@@ -310,6 +316,7 @@ final class AppStore {
             radar = []
             communicationAnalyses = [:]
             chatItemsByGroupID = [:]
+            cloudGroupSyncErrorMessage = nil
             lastEvent = ""
             dataMode = .live
         }
@@ -720,6 +727,14 @@ final class AppStore {
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
     }
 
+    /// 依目前可存取的所有群組任務計算成員整體進度。
+    func overallMemberProgress(for memberID: UUID) -> Int {
+        let tasks = projectTasks.filter { $0.ownerMemberID == memberID }
+        let totalWeight = tasks.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return 0 }
+        return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+    }
+
     /// 取得指定群組已送出的匿名互評。
     func reviews(for groupID: UUID) -> [PeerReview] {
         peerReviews.filter { $0.groupID == groupID }
@@ -823,14 +838,22 @@ final class AppStore {
     func publishTask(
         title: String,
         detail: String,
+        subtaskTitles: [String],
         groupID: UUID,
         assigneeMemberID: UUID,
         deadline: Date,
         now: Date = .now
-    ) throws -> ProjectTask {
+    ) async throws -> ProjectTask {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSubtaskTitles = subtaskTitles.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
+        guard (1...10).contains(trimmedSubtaskTitles.count),
+              trimmedSubtaskTitles.allSatisfy({ !$0.isEmpty }) else {
+            throw PublishTaskError.invalidSubtasks
+        }
         guard let groupIndex = groups.firstIndex(where: { $0.id == groupID }) else {
             throw PublishTaskError.groupNotFound
         }
@@ -843,20 +866,54 @@ final class AppStore {
             throw PublishTaskError.deadlineAfterGroupDeadline
         }
 
-        let task = ProjectTask(
-            id: UUID(),
+        let baseWeight = 100 / trimmedSubtaskTitles.count
+        let remainder = 100 % trimmedSubtaskTitles.count
+        let subtasks = trimmedSubtaskTitles.enumerated().map { index, title in
+            Subtask(
+                id: UUID(),
+                title: title,
+                isComplete: false,
+                weight: baseWeight + (index < remainder ? 1 : 0)
+            )
+        }
+
+        let taskID = UUID()
+        var task = ProjectTask(
+            id: taskID,
             groupID: groupID,
             title: trimmedTitle,
             detail: trimmedDetail,
             weight: 1,
             ownerMemberID: assigneeMemberID,
-            subtasks: [Subtask(id: UUID(), title: trimmedTitle, isComplete: false, weight: 100)],
+            subtasks: subtasks,
             deliverable: nil,
             deadline: deadline,
             createdByMemberID: currentUserID,
-            createdAt: now,
-            status: .pending
+            createdAt: now
         )
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let assigneeUID = members.first(where: { $0.id == assigneeMemberID })?.firebaseUID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.create(
+                expectedUserID: uid,
+                groupID: groupPath,
+                taskID: taskID,
+                title: trimmedTitle,
+                detail: trimmedDetail,
+                assigneeUserID: assigneeUID,
+                subtasks: subtasks,
+                deadline: deadline
+            )
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+            task.firestoreDocumentID = taskID.uuidString.lowercased()
+            task.firestoreGroupID = groupPath
+        }
 
         projectTasks.append(task)
         groups[groupIndex].taskIDs.append(task.id)
@@ -980,6 +1037,7 @@ final class AppStore {
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         cloudErrorMessage = nil
+        cloudGroupSyncErrorMessage = nil
         profileName = ""
         profileBio = ""
         profileRole = ""
@@ -1016,6 +1074,7 @@ final class AppStore {
     private func stopAttachmentSync() {
         progressSubscriptions.values.forEach { $0.stop() }
         progressSubscriptions = [:]
+        progressSyncErrorsByGroupID = [:]
         pendingTaskUpdates = []
         attachmentListeners.values.forEach { $0.remove() }
         attachmentListeners.removeAll()
@@ -1048,24 +1107,17 @@ final class AppStore {
             attachmentsByTaskID = attachmentsByTaskID.filter { taskIDs.contains($0.key) }
             attachmentErrors = [:]
             cloudErrorMessage = nil
+            cloudGroupSyncErrorMessage = nil
             // Tasks now exist in the single source of truth; only now attach listeners.
             startAttachmentSync(for: projectTasks.map(\.id))
             for group in groups { startProgressSync(group: group, uid: uid, generation: generation) }
             return true
         } catch {
             guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
-            // Invalidate task/attachment cache on a failed authoritative refresh.
-            // Joined summaries remain visible so success is never presented as failure.
-            projectTasks = []
-            members = []
-            attachmentsByTaskID = [:]
-            attachmentErrors = [:]
-            for index in groups.indices {
-                groups[index].taskIDs = []
-                groups[index].memberIDs = []
-                groups[index].memberRoles = [:]
-            }
-            if reportError { cloudErrorMessage = Self.cloudMessage(error) }
+            // Keep the last successful snapshot so a transient failure is not mistaken for an empty account.
+            let message = Self.cloudMessage(error)
+            cloudGroupSyncErrorMessage = message
+            if reportError { cloudErrorMessage = message }
             return false
         }
     }
@@ -1175,13 +1227,9 @@ final class AppStore {
         progressSubscriptions[group.id] = GroupProgressSubscription(summary: summary, uid: uid) { [weak self] result in
             guard let self, self.firebaseUID == uid, self.cloudGeneration == generation, self.syncIsActive else { return }
             switch result {
-            case .failure:
-                self.cloudErrorMessage = "群組進度同步失敗，請重新整理後再試。"
-                self.projectTasks.removeAll { $0.groupID == group.id }
-                for id in group.taskIDs {
-                    self.attachmentListeners.removeValue(forKey: id)?.remove()
-                    self.attachmentsByTaskID.removeValue(forKey: id)
-                }
+            case .failure(let error):
+                self.progressSyncErrorsByGroupID[group.id] = Self.cloudMessage(error)
+                self.cloudGroupSyncErrorMessage = self.progressSyncErrorsByGroupID.values.first
             case .success(let loaded):
                 guard let index = self.groups.firstIndex(where: { $0.id == group.id }) else { return }
                 let oldIDs = Set(self.projectTasks.filter { $0.groupID == group.id }.map(\.id))
@@ -1203,12 +1251,14 @@ final class AppStore {
                     self.applyCloudAttachments(self.attachmentsByTaskID[task.id] ?? [], to: task.id)
                     self.startAttachmentSync(for: task.id)
                 }
+                self.progressSyncErrorsByGroupID[group.id] = nil
+                self.cloudGroupSyncErrorMessage = self.progressSyncErrorsByGroupID.values.first
             }
         }
     }
 
-    /// 切換子任務完成狀態；雲端任務等待後端確認，不先假裝成功。
-    func toggleSubtask(taskID: UUID, subtaskID: UUID) {
+    /// 切換子任務完成狀態；雲端任務等待後端確認，再由即時監聽更新畫面。
+    func toggleSubtask(taskID: UUID, subtaskID: UUID) async {
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
               let subtaskIndex = projectTasks[taskIndex].subtasks.firstIndex(where: { $0.id == subtaskID }) else { return }
         if projectTasks[taskIndex].firestoreDocumentID != nil {
@@ -1302,19 +1352,13 @@ final class AppStore {
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
         attachmentsByTaskID[taskID] = attachments
         var task = projectTasks[taskIndex]
-        task.status = task.cloudStatus ?? .pending
         task.deliverable = attachments.first(where: { $0.status == .ready }).map { attachment in
             var result = Deliverable(attachment: attachment)
             if task.confirmedAttachmentID == attachment.id {
                 result.confirmedMemberIDs = task.confirmedMemberUIDs.map(FirebaseMemberIdentity.uiID(for:))
-                result.isApproved = task.status == .completed
+                result.isApproved = task.cloudStatus == .completed
             }
             return result
-        }
-        if let deliverable = task.deliverable {
-            if !deliverable.isApproved { task.status = .submitted }
-        } else if task.status == .completed || task.status == .submitted {
-            task.status = task.subtasks.contains(where: \.isComplete) ? .inProgress : .pending
         }
         projectTasks[taskIndex] = task
     }
