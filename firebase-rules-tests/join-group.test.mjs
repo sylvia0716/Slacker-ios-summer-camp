@@ -1,0 +1,453 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { after, before, beforeEach, describe, test } from "node:test";
+import {
+  assertFails,
+  assertSucceeds,
+  initializeTestEnvironment,
+} from "@firebase/rules-unit-testing";
+import { deleteApp, initializeApp } from "firebase/app";
+import {
+  connectAuthEmulator,
+  getAuth,
+  signInAnonymously,
+} from "firebase/auth";
+import {
+  connectFunctionsEmulator,
+  getFunctions,
+  httpsCallable,
+} from "firebase/functions";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+} from "firebase/firestore";
+
+const projectId = "demo-group-bomb";
+const groupID = "11111111-1111-4111-8111-111111111111";
+const taskID = "22222222-2222-4222-8222-222222222222";
+const attachmentID = "33333333-3333-4333-8333-333333333333";
+const validCode = "JOIN24";
+const inactiveCode = "OFF024";
+const expiredCode = "OLD024";
+let testEnv;
+let clientSequence = 0;
+
+async function seedData() {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const firestore = context.firestore();
+    await setDoc(doc(firestore, `groups/${groupID}`), {
+      name: "跨手機測試群組",
+      deadline: Timestamp.fromMillis(Date.now() + 86_400_000),
+      inviteCode: validCode,
+    });
+    await setDoc(doc(firestore, `groupInviteCodes/${validCode}`), {
+      groupID,
+      isActive: true,
+      createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(firestore, `groupInviteCodes/${inactiveCode}`), {
+      groupID,
+      isActive: false,
+      createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(firestore, `groupInviteCodes/${expiredCode}`), {
+      groupID,
+      isActive: true,
+      expiresAt: Timestamp.fromMillis(Date.now() - 1_000),
+      createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(firestore, `groups/${groupID}/tasks/${taskID}`), {
+      title: "測試任務",
+    });
+  });
+}
+
+async function callableClient(authenticated = true) {
+  const app = initializeApp(
+    { apiKey: "demo-api-key", projectId, appId: `demo-${++clientSequence}` },
+    `join-test-${clientSequence}`,
+  );
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  const functions = getFunctions(app, "asia-east1");
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+
+  let userID = null;
+  if (authenticated) {
+    const credential = await signInAnonymously(auth);
+    userID = credential.user.uid;
+  }
+
+  return {
+    userID,
+    create: httpsCallable(functions, "createGroup"),
+    join: httpsCallable(functions, "joinGroupByInviteCode"),
+    list: httpsCallable(functions, "listMyGroups"),
+    close: () => deleteApp(app),
+  };
+}
+
+async function expectCallableFailure(promise, expectedCode) {
+  await assert.rejects(promise, (error) => {
+    assert.equal(error.code, expectedCode);
+    return true;
+  });
+}
+
+before(async () => {
+  testEnv = await initializeTestEnvironment({
+    projectId,
+    firestore: {
+      rules: readFileSync(new URL("../firestore.rules", import.meta.url), "utf8"),
+    },
+  });
+});
+
+beforeEach(async () => {
+  await testEnv.clearFirestore();
+  await seedData();
+});
+
+after(async () => {
+  await testEnv.cleanup();
+});
+
+describe("joinGroupByInviteCode Callable", () => {
+  test("已登入使用者建立群組時，同步建立 leader、邀請碼與可讀取的群組", async () => {
+    const client = await callableClient();
+    try {
+      const deadlineMillis = Date.now() + 86_400_000;
+      const response = await client.create({
+        name: " 新測試群組 ",
+        deadlineMillis,
+        displayName: "Peach",
+      });
+      const createdGroupID = response.data.group.groupID;
+      const inviteCode = response.data.group.inviteCode;
+
+      assert.match(createdGroupID, /^[0-9a-f-]{36}$/);
+      assert.match(inviteCode, /^[A-Z0-9]{8}$/);
+      assert.equal(response.data.group.name, "新測試群組");
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const firestore = context.firestore();
+        const group = await getDoc(doc(firestore, `groups/${createdGroupID}`));
+        const member = await getDoc(doc(
+          firestore,
+          `groups/${createdGroupID}/members/${client.userID}`,
+        ));
+        const invite = await getDoc(doc(firestore, `groupInviteCodes/${inviteCode}`));
+        assert.equal(group.data().name, "新測試群組");
+        assert.equal(member.data().role, "leader");
+        assert.equal(member.data().displayName, "Peach");
+        assert.equal(invite.data().groupID, createdGroupID);
+      });
+
+      const groups = await client.list({});
+      assert.ok(groups.data.groups.some(group => group.groupID === createdGroupID));
+
+      const memberFirestore = testEnv.authenticatedContext(client.userID).firestore();
+      await assertSucceeds(getDocs(collection(
+        memberFirestore,
+        `groups/${createdGroupID}/messages`,
+      )));
+      await assertSucceeds(setDoc(doc(
+        memberFirestore,
+        `groups/${createdGroupID}/presence/${client.userID}`,
+      ), {
+        userID: client.userID,
+        displayName: "Peach",
+        isOnline: true,
+        lastSeenAt: serverTimestamp(),
+      }));
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("建立群組拒絕未登入、無效欄位、空白名稱與過期期限", async () => {
+    const guest = await callableClient(false);
+    const client = await callableClient();
+    const valid = {
+      name: "測試群組",
+      deadlineMillis: Date.now() + 86_400_000,
+      displayName: "Peach",
+    };
+    try {
+      await expectCallableFailure(guest.create(valid), "functions/unauthenticated");
+      await expectCallableFailure(client.create({ ...valid, role: "leader" }), "functions/invalid-argument");
+      await expectCallableFailure(client.create({ ...valid, name: "   " }), "functions/invalid-argument");
+      await expectCallableFailure(
+        client.create({ ...valid, deadlineMillis: Date.now() - 1_000 }),
+        "functions/invalid-argument",
+      );
+    } finally {
+      await guest.close();
+      await client.close();
+    }
+  });
+
+  test("已登入使用者能以有效邀請碼加入，member ID 等於 Firebase UID", async () => {
+    const client = await callableClient();
+    try {
+      const response = await client.join({ inviteCode: "  join24  " });
+      assert.equal(response.data.alreadyMember, false);
+      assert.equal(response.data.group.groupID, groupID);
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const snapshot = await getDoc(doc(
+          context.firestore(),
+          `groups/${groupID}/members/${client.userID}`,
+        ));
+        assert.equal(snapshot.id, client.userID);
+        assert.deepEqual(snapshot.data().role, "member");
+        assert.deepEqual(snapshot.data().userID, client.userID);
+        assert.ok(snapshot.data().joinedAt instanceof Timestamp);
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("重複加入安全且不會建立重複 member", async () => {
+    const client = await callableClient();
+    try {
+      await client.join({ inviteCode: validCode });
+      const second = await client.join({ inviteCode: validCode });
+      assert.equal(second.data.alreadyMember, true);
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const members = await getDocs(collection(
+          context.firestore(),
+          `groups/${groupID}/members`,
+        ));
+        assert.equal(members.size, 1);
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("加入後可重新讀取群組，並可依 Rules 讀取附件", async () => {
+    const client = await callableClient();
+    try {
+      await client.join({ inviteCode: validCode });
+      const groups = await client.list({});
+      assert.equal(groups.data.groups.length, 1);
+      assert.equal(groups.data.groups[0].groupID, groupID);
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(
+          context.firestore(),
+          `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`,
+        ), {
+          id: attachmentID,
+          taskID,
+          groupID,
+          uploaderID: client.userID,
+          title: "成果",
+          detail: "",
+          kind: "pdf",
+          originalFilename: "report.pdf",
+          storagePath: `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}/report-33333333.pdf`,
+          externalURL: null,
+          contentType: "application/pdf",
+          byteSize: 100,
+          status: "ready",
+          createdAt: Timestamp.now(),
+        });
+      });
+      const attachment = doc(
+        testEnv.authenticatedContext(client.userID).firestore(),
+        `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`,
+      );
+      await assertSucceeds(getDoc(attachment));
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("未登入、無效、停用與過期邀請碼均被拒絕", async () => {
+    const guest = await callableClient(false);
+    const member = await callableClient();
+    try {
+      await expectCallableFailure(
+        guest.join({ inviteCode: validCode }),
+        "functions/unauthenticated",
+      );
+      await expectCallableFailure(
+        member.join({ inviteCode: "NONE24" }),
+        "functions/not-found",
+      );
+      await expectCallableFailure(
+        member.join({ inviteCode: inactiveCode }),
+        "functions/failed-precondition",
+      );
+      await expectCallableFailure(
+        member.join({ inviteCode: expiredCode }),
+        "functions/failed-precondition",
+      );
+    } finally {
+      await guest.close();
+      await member.close();
+    }
+  });
+
+  test("Client 不能指定 userID 或 leader role", async () => {
+    const client = await callableClient();
+    try {
+      await expectCallableFailure(
+        client.join({ inviteCode: validCode, userID: "victim" }),
+        "functions/invalid-argument",
+      );
+      await expectCallableFailure(
+        client.join({ inviteCode: validCode, role: "leader" }),
+        "functions/invalid-argument",
+      );
+      await expectCallableFailure(
+        client.join({ inviteCode: validCode, leader: true }),
+        "functions/invalid-argument",
+      );
+      await expectCallableFailure(
+        client.join({ inviteCode: validCode, groupID }),
+        "functions/invalid-argument",
+      );
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("到期日格式錯誤或群組不存在時拒絕加入", async () => {
+    const client = await callableClient();
+    try {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await updateDoc(doc(context.firestore(), `groupInviteCodes/${validCode}`), {
+          expiresAt: "not-a-timestamp",
+        });
+      });
+      await expectCallableFailure(client.join({ inviteCode: validCode }), "functions/failed-precondition");
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `groupInviteCodes/${validCode}`), {
+          groupID: "44444444-4444-4444-8444-444444444444",
+          isActive: true,
+          createdAt: Timestamp.now(),
+        });
+      });
+      await expectCallableFailure(client.join({ inviteCode: validCode }), "functions/not-found");
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("同時重複加入只建立一位成員，既有 leader 與 joinedAt 不被覆寫", async () => {
+    const client = await callableClient();
+    try {
+      const responses = await Promise.all([
+        client.join({ inviteCode: validCode }),
+        client.join({ inviteCode: validCode }),
+      ]);
+      assert.equal(responses.filter(response => response.data.alreadyMember === false).length, 1);
+      const joinedAt = Timestamp.fromMillis(1_700_000_000_000);
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const firestore = context.firestore();
+        assert.equal((await getDocs(collection(firestore, `groups/${groupID}/members`))).size, 1);
+        await updateDoc(doc(firestore, `groups/${groupID}/members/${client.userID}`), {
+          role: "leader", joinedAt,
+        });
+      });
+      assert.equal((await client.join({ inviteCode: validCode })).data.alreadyMember, true);
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const member = await getDoc(doc(context.firestore(), `groups/${groupID}/members/${client.userID}`));
+        assert.equal(member.data().role, "leader");
+        assert.equal(member.data().joinedAt.toMillis(), joinedAt.toMillis());
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("非成員不可讀附件，Client 不可直接建立或升級 member", async () => {
+    const client = await callableClient();
+    try {
+      const firestore = testEnv.authenticatedContext(client.userID).firestore();
+      await assertFails(getDoc(doc(
+        firestore,
+        `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`,
+      )));
+      await assertFails(setDoc(doc(
+        firestore,
+        `groups/${groupID}/members/${client.userID}`,
+      ), { userID: client.userID, role: "leader", joinedAt: Timestamp.now() }));
+
+      await client.join({ inviteCode: validCode });
+      await assertFails(updateDoc(doc(
+        firestore,
+        `groups/${groupID}/members/${client.userID}`,
+      ), { role: "leader" }));
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("listMyGroups 拒絕未登入與 Client 指定 userID、role 或 groupID", async () => {
+    const guest = await callableClient(false);
+    const client = await callableClient();
+    try {
+      await expectCallableFailure(guest.list({}), "functions/unauthenticated");
+      for (const data of [{ userID: "victim" }, { role: "leader" }, { groupID }]) {
+        await expectCallableFailure(client.list(data), "functions/invalid-argument");
+      }
+    } finally {
+      await guest.close();
+      await client.close();
+    }
+  });
+
+  test("listMyGroups 只列出呼叫者確實擁有 member 文件的群組", async () => {
+    const first = await callableClient();
+    const second = await callableClient();
+    try {
+      assert.deepEqual((await first.list({})).data.groups, []);
+      await first.join({ inviteCode: validCode });
+      assert.deepEqual((await first.list({})).data.groups.map(group => group.groupID), [groupID]);
+      assert.deepEqual((await second.list({})).data.groups, []);
+    } finally {
+      await first.close();
+      await second.close();
+    }
+  });
+
+  test("listMyGroups 忽略 UID 欄位相符但文件 ID 或群組層級錯誤的資料", async () => {
+    const client = await callableClient();
+    try {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const firestore = context.firestore();
+        await setDoc(doc(firestore, `groups/${groupID}/members/not-the-caller`), {
+          userID: client.userID, role: "member",
+        });
+        await setDoc(doc(firestore, "privateSpaces/not-a-group"), { name: "不可外洩" });
+        await setDoc(doc(firestore, `privateSpaces/not-a-group/members/${client.userID}`), {
+          userID: client.userID, role: "member",
+        });
+        await setDoc(doc(firestore, "workspaces/one/groups/nested-group"), { name: "非正式群組路徑" });
+        await setDoc(doc(firestore, `workspaces/one/groups/nested-group/members/${client.userID}`), {
+          userID: client.userID, role: "member",
+        });
+        await setDoc(doc(firestore, `groups/deleted-group/members/${client.userID}`), {
+          userID: client.userID, role: "member",
+        });
+      });
+      assert.deepEqual((await client.list({})).data.groups, []);
+      await client.join({ inviteCode: validCode });
+      assert.deepEqual((await client.list({})).data.groups.map(group => group.groupID), [groupID]);
+    } finally {
+      await client.close();
+    }
+  });
+});

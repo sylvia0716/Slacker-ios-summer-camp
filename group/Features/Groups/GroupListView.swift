@@ -13,6 +13,7 @@ struct GroupListView: View {
     @State private var addGroupInitialMode = GroupEntryMode.create
     @State private var enteredGroup: Group?
     @State private var animationSequence = 0
+    @State private var joinSuccessMessage: String?
 
     init(
         model: GroupBombModel,
@@ -55,6 +56,7 @@ struct GroupListView: View {
                 .scrollIndicators(.hidden)
             }
         }
+        .refreshable { await model.reloadCloudGroups() }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: "我的群組") {
 #if DEBUG
@@ -81,12 +83,19 @@ struct GroupListView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
-            AddGroupSheet(model: model, initialMode: addGroupInitialMode) { group in
-                enteredGroup = group
-                if tutorialStep?.wrappedValue == .createGroupForm {
-                    tutorialStep?.wrappedValue = .inviteCode
+            AddGroupSheet(
+                model: model,
+                initialMode: addGroupInitialMode,
+                enterGroup: { group in
+                    enteredGroup = group
+                    if tutorialStep?.wrappedValue == .createGroupForm {
+                        tutorialStep?.wrappedValue = .inviteCode
+                    }
+                },
+                joinedGroup: { message in
+                    joinSuccessMessage = message
                 }
-            }
+            )
         }
         .navigationDestination(item: $enteredGroup) { group in
             GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
@@ -94,6 +103,14 @@ struct GroupListView: View {
         .task(id: isSelected) {
             guard isSelected else { return }
             animationSequence += 1
+        }
+        .alert("加入群組", isPresented: Binding(
+            get: { joinSuccessMessage != nil },
+            set: { if !$0 { joinSuccessMessage = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(joinSuccessMessage ?? "")
         }
     }
 
@@ -262,6 +279,7 @@ struct GroupListView: View {
 private struct AddGroupSheet: View {
     let model: GroupBombModel
     let enterGroup: (Group) -> Void
+    let joinedGroup: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var flow = GroupEntryFlow.entry
     @State private var entryMode: GroupEntryMode
@@ -270,6 +288,9 @@ private struct AddGroupSheet: View {
     @State private var groupCode = ""
     @State private var createdGroup: Group?
     @State private var joinError: String?
+    @State private var joinStore = GroupJoinStore()
+    @State private var isCreating = false
+    @State private var creationError: String?
     @State private var isScannerPresented = false
     @State private var isScannerUnavailableAlertPresented = false
     @State private var showsCodeCopiedFeedback = false
@@ -278,10 +299,12 @@ private struct AddGroupSheet: View {
     init(
         model: GroupBombModel,
         initialMode: GroupEntryMode,
-        enterGroup: @escaping (Group) -> Void
+        enterGroup: @escaping (Group) -> Void,
+        joinedGroup: @escaping (String) -> Void
     ) {
         self.model = model
         self.enterGroup = enterGroup
+        self.joinedGroup = joinedGroup
         _entryMode = State(initialValue: initialMode)
     }
 
@@ -313,6 +336,7 @@ private struct AddGroupSheet: View {
                         .padding(.bottom, 24)
                     }
                     .scrollIndicators(.hidden)
+                    .disabled(isBusy)
                 case .shareCode:
                     shareCodeView
                 }
@@ -325,24 +349,46 @@ private struct AddGroupSheet: View {
                     Button(flow == .entry ? "取消" : "上一步") {
                         if flow == .entry { dismiss() } else { flow = .entry }
                     }
+                    .disabled(isBusy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(flow == .entry ? "完成" : "稍後分享", action: advance)
-                        .fontWeight(.bold)
-                        .disabled(!canAdvance)
+                    Button(primaryButtonTitle, action: advance)
+                        .disabled(!canAdvance || isBusy)
                 }
             }
         }
+        .interactiveDismissDisabled(isBusy)
         .presentationDetents([.fraction(0.62)])
         .presentationDragIndicator(.visible)
         .presentationBackground(BombTheme.paper)
         .alert("無法加入群組", isPresented: Binding(
-            get: { joinError != nil },
-            set: { if !$0 { joinError = nil } }
+            get: {
+                if joinError != nil { return true }
+                if case .failure = joinStore.state { return true }
+                return false
+            },
+            set: { if !$0 { joinStore.reset(); joinError = nil } }
         )) {
             Button("知道了", role: .cancel) { }
         } message: {
-            Text(joinError ?? "")
+            if let joinError {
+                Text(joinError)
+            } else if case let .failure(error) = joinStore.state {
+                Text(error.localizedDescription)
+            }
+        }
+        .alert("無法建立群組", isPresented: Binding(
+            get: { creationError != nil },
+            set: { if !$0 { creationError = nil } }
+        )) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(creationError ?? "")
+        }
+        .onChange(of: entryMode) { _, mode in
+            if mode == .join {
+                isCodeFieldFocused = true
+            }
         }
         .alert("無法使用掃碼", isPresented: $isScannerUnavailableAlertPresented) {
             Button("知道了", role: .cancel) { }
@@ -402,7 +448,7 @@ private struct AddGroupSheet: View {
 
     private var joinGroupForm: some View {
         VStack(spacing: 16) {
-            Text("6 位邀請碼")
+            Text("邀請碼")
                 .font(.title3.weight(.black))
 
             inviteCodeBoxes
@@ -446,28 +492,41 @@ private struct AddGroupSheet: View {
         let characters = Array(groupCode.uppercased())
 
         return ZStack {
-            HStack(spacing: 5) {
-                ForEach(0..<6, id: \.self) { index in
-                    Text(index < characters.count ? String(characters[index]) : "")
-                        .font(.system(.title2, design: .monospaced, weight: .black))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(BombTheme.paper)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(BombTheme.ink.opacity(0.18), lineWidth: 1.5)
-                        }
+            if characters.count > (model.isDemoMode ? 6 : 8) {
+                Text(groupCode)
+                    .font(.system(.body, design: .monospaced, weight: .black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(0..<(model.isDemoMode ? 6 : 8), id: \.self) { index in
+                        Text(index < characters.count ? String(characters[index]) : "")
+                            .font(.system(.title2, design: .monospaced, weight: .black))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(BombTheme.paper)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(BombTheme.ink.opacity(0.18), lineWidth: 1.5)
+                            }
+                    }
                 }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
 
             TextField("", text: $groupCode)
                 .keyboardType(.asciiCapable)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .textContentType(.oneTimeCode)
+                .submitLabel(.join)
+                .onSubmit(submitInviteCode)
                 .focused($isCodeFieldFocused)
                 .foregroundStyle(.clear)
                 .tint(.clear)
@@ -475,7 +534,7 @@ private struct AddGroupSheet: View {
                 .frame(height: 52)
                 .contentShape(Rectangle())
                 .onTapGesture { isCodeFieldFocused = true }
-                .accessibilityLabel("6 位邀請碼")
+                .accessibilityLabel("邀請碼")
                 .onChange(of: groupCode) { _, newValue in
                     groupCode = normalizedInviteCode(newValue)
                 }
@@ -554,29 +613,71 @@ private struct AddGroupSheet: View {
         }
     }
 
+    private var isBusy: Bool {
+        isCreating || joinStore.isJoining
+    }
+
+    private var primaryButtonTitle: String {
+        if isCreating { return "建立中…" }
+        if joinStore.isJoining { return "加入中…" }
+        return flow == .entry ? "完成" : "稍後分享"
+    }
+
     private func advance() {
-        guard canAdvance else { return }
+        guard canAdvance, !isBusy else { return }
         isCodeFieldFocused = false
         switch flow {
         case .entry:
             if entryMode == .create {
-                model.createGroup(name: groupName, deadline: groupDeadline)
-                createdGroup = model.groups.last
-                flow = .shareCode
+                submitCreateGroup()
             } else {
-                let normalizedCode = groupCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                if model.joinGroup(inviteCode: normalizedCode),
-                   let group = model.groups.first(where: { $0.inviteCode == normalizedCode }) {
-                    enterGroup(group)
-                    dismiss()
-                } else {
-                    joinError = "請確認群組代碼後再試一次。"
-                }
+                submitInviteCode()
             }
         case .shareCode:
             guard let createdGroup else { return }
             enterGroup(createdGroup)
             dismiss()
+        }
+    }
+
+    private func submitCreateGroup() {
+        guard canCreate, groupDeadline > .now, !isBusy else { return }
+        if model.isDemoMode {
+            model.createGroup(name: groupName, deadline: groupDeadline)
+            createdGroup = model.groups.last
+            flow = .shareCode
+            return
+        }
+
+        isCreating = true
+        Task {
+            defer { isCreating = false }
+            do {
+                createdGroup = try await model.createCloudGroup(
+                    name: groupName,
+                    deadline: groupDeadline
+                )
+                flow = .shareCode
+            } catch {
+                creationError = error.localizedDescription
+            }
+        }
+    }
+
+    private func submitInviteCode() {
+        guard canJoin, !isBusy else { return }
+        isCodeFieldFocused = false
+        let normalizedCode = GroupJoinRepository.normalize(groupCode)
+        groupCode = normalizedCode
+
+        Task {
+            guard let result = await joinStore.join(inviteCode: normalizedCode) else { return }
+            guard model.acceptJoinedGroup(result) else { return }
+            let successMessage = model.lastEvent
+            dismiss()
+            let refreshed = await model.reloadCloudGroups(reportError: false)
+            guard model.firebaseUID == result.firebaseUID else { return }
+            joinedGroup(refreshed ? successMessage : successMessage + "，但列表更新失敗，請下拉重新整理。")
         }
     }
 
@@ -600,7 +701,7 @@ private struct AddGroupSheet: View {
     }
 
     private func normalizedInviteCode(_ value: String) -> String {
-        String(value.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
+        GroupInviteCode.normalized(value)
     }
 
     private func qrCodeImage(for code: String) -> UIImage? {

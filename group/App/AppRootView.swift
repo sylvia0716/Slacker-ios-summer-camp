@@ -3,6 +3,7 @@ import SwiftUI
 /// App shell: owns the prototype's shared store and the primary app navigation.
 struct AppRootView: View {
     @State private var store = GroupBombModel()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authSession = AuthSessionStore()
     @State private var tab = AppTab.groups
     @State private var tutorialStep: TutorialStep?
@@ -13,8 +14,9 @@ struct AppRootView: View {
         SwiftUI.Group {
             if authSession.isCheckingSession {
                 authenticationLoadingView
-            } else if authSession.isAuthenticated {
+            } else if authSession.isAuthenticated, store.firebaseUID == authSession.currentUserID {
                 authenticatedContent
+                    .id(authSession.currentUserID)
             } else {
                 AuthenticationView(session: authSession)
             }
@@ -25,7 +27,26 @@ struct AppRootView: View {
         } action: { insets in
             safeAreaInsets = insets
         }
-        .task { authSession.start() }
+        .task {
+            authSession.start { uid in store.changeCloudAccount(to: uid) }
+            store.changeCloudAccount(to: authSession.currentUserID)
+            if scenePhase == .active { store.resumeCloudSync() }
+        }
+        .onChange(of: authSession.currentUserID) { _, _ in
+            if scenePhase == .active { store.resumeCloudSync() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { store.resumeCloudSync() }
+            else { store.suspendCloudSync() }
+        }
+        .onDisappear { store.suspendCloudSync() }
+        .alert("雲端同步", isPresented: Binding(
+            get: { store.cloudErrorMessage != nil },
+            set: { if !$0 { store.cloudErrorMessage = nil } }
+        )) {
+            Button("重試") { Task { await store.reloadCloudGroups() } }
+            Button("關閉", role: .cancel) { store.cloudErrorMessage = nil }
+        } message: { Text(store.cloudErrorMessage ?? "") }
     }
 
     private var authenticatedContent: some View {

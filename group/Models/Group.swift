@@ -7,8 +7,8 @@ enum GroupInviteCode {
 
     static func isValid(_ value: String) -> Bool {
         let code = normalized(value)
-        return code.count == 6 && code.utf8.allSatisfy {
-            (48...57).contains($0) || (65...90).contains($0)
+        return (4...32).contains(code.count) && code.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0) || $0 == 45
         }
     }
 }
@@ -27,4 +27,7 @@ struct Group: Identifiable, Hashable {
     var taskIDs: [UUID]
     /// 讓其他人輸入並加入此群組的 MVP 邀請碼。
     var inviteCode: String
+    var firestoreDocumentID: String? = nil
+    /// 同一位使用者在不同群組可以有不同角色。
+    var memberRoles: [UUID: MemberRole] = [:]
 }

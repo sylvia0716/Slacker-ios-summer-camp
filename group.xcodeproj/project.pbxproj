@@ -12,6 +12,8 @@
 		F10000070000000000000007 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F10000030000000000000003 /* FirebaseAuth */; };
 		F10000080000000000000008 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000040000000000000004 /* FirebaseFirestore */; };
 		F10000090000000000000009 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = F10000050000000000000005 /* FirebaseStorage */; };
+		F100000A000000000000000A /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = F100000B000000000000000B /* FirebaseAppCheck */; };
+		F100000C000000000000000C /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = F100000D000000000000000D /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,6 +76,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F100000A000000000000000A /* FirebaseAppCheck in Frameworks */,
+				F100000C000000000000000C /* FirebaseFunctions in Frameworks */,
 				F10000060000000000000006 /* FirebaseCore in Frameworks */,
 				F10000070000000000000007 /* FirebaseAuth in Frameworks */,
 				F10000080000000000000008 /* FirebaseFirestore in Frameworks */,
@@ -131,6 +135,8 @@
 			);
 			name = group;
 			packageProductDependencies = (
+				F100000B000000000000000B /* FirebaseAppCheck */,
+				F100000D000000000000000D /* FirebaseFunctions */,
 				F10000020000000000000002 /* FirebaseCore */,
 				F10000030000000000000003 /* FirebaseAuth */,
 				F10000040000000000000004 /* FirebaseFirestore */,
@@ -519,6 +525,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		F100000B000000000000000B /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		F100000D000000000000000D /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
 		F10000020000000000000002 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

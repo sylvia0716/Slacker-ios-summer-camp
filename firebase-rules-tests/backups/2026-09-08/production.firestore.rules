@@ -15,6 +15,18 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userID;
     }
 
+    function hasValidMemberShape(userID) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['userID', 'displayName', 'role', 'joinedAt'])
+        && data.keys().hasOnly(['userID', 'displayName', 'role', 'joinedAt'])
+        && data.userID == userID
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 60
+        && data.role == 'member'
+        && data.joinedAt is timestamp;
+    }
+
     function hasValidMessageShape(messageID) {
       let data = request.resource.data;
       let baseKeys = ['id', 'senderID', 'senderName', 'text', 'kind', 'createdAt'];
@@ -63,95 +75,6 @@ service cloud.firestore {
         && data.lastSeenAt == request.time;
     }
 
-    function isGroupLeader(groupID) {
-      return isGroupMember(groupID)
-        && get(
-          /databases/$(database)/documents/groups/$(groupID)/members/$(request.auth.uid)
-        ).data.role == 'leader';
-    }
-
-    function taskExists(groupID, taskID) {
-      return exists(
-        /databases/$(database)/documents/groups/$(groupID)/tasks/$(taskID)
-      );
-    }
-
-    function hasSafeIDs(groupID, taskID, attachmentID) {
-      return groupID.matches('^[a-z0-9-]+$')
-        && taskID.matches('^[a-z0-9-]+$')
-        && attachmentID.matches('^[a-z0-9-]+$');
-    }
-
-    function hasSafeStoragePath(data, groupID, taskID, attachmentID) {
-      return data.storagePath is string
-        && data.storagePath.matches(
-          '^groups/' + groupID + '/tasks/' + taskID
-            + '/attachments/' + attachmentID
-            + '/[a-z0-9][a-z0-9-]{0,47}-[a-f0-9]{8}'
-            + '\\.(jpg|jpeg|png|pdf|docx|xlsx|pptx|zip)$'
-        );
-    }
-
-    function hasMatchingFileType(data) {
-      return
-        (data.kind == 'image'
-          && (
-            (data.contentType == 'image/jpeg'
-              && data.storagePath.matches('.*\\.(jpg|jpeg)$'))
-            || (data.contentType == 'image/png'
-              && data.storagePath.matches('.*\\.png$'))
-          ))
-        || (data.kind == 'pdf'
-          && data.contentType == 'application/pdf'
-          && data.storagePath.matches('.*\\.pdf$'))
-        || (data.kind == 'document'
-          && data.contentType ==
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          && data.storagePath.matches('.*\\.docx$'))
-        || (data.kind == 'spreadsheet'
-          && data.contentType ==
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          && data.storagePath.matches('.*\\.xlsx$'))
-        || (data.kind == 'presentation'
-          && data.contentType ==
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-          && data.storagePath.matches('.*\\.pptx$'))
-        || (data.kind == 'archive'
-          && data.contentType in [
-            'application/zip',
-            'application/x-zip-compressed'
-          ]
-          && data.storagePath.matches('.*\\.zip$'));
-    }
-
-    function hasValidLinkMetadata(data) {
-      return data.kind == 'externalLink'
-        && data.externalURL is string
-        && data.externalURL.size() > 0
-        && data.externalURL.size() <= 2048
-        && data.externalURL.matches('^https://[^\\s]+$')
-        && data.originalFilename == null
-        && data.storagePath == null
-        && data.contentType == null
-        && data.byteSize == null;
-    }
-
-    function hasValidFileMetadata(data, groupID, taskID, attachmentID) {
-      return data.kind in [
-          'image', 'pdf', 'presentation', 'document', 'spreadsheet', 'archive'
-        ]
-        && data.externalURL == null
-        && data.originalFilename is string
-        && data.originalFilename.size() > 0
-        && data.originalFilename.size() <= 255
-        && hasSafeStoragePath(data, groupID, taskID, attachmentID)
-        && data.contentType is string
-        && data.byteSize is int
-        && data.byteSize > 0
-        && data.byteSize <= 20 * 1024 * 1024
-        && hasMatchingFileType(data);
-    }
-
     function hasValidAttachmentShape(groupID, taskID, attachmentID) {
       let data = request.resource.data;
       return data.keys().hasAll([
@@ -164,23 +87,45 @@ service cloud.firestore {
           'originalFilename', 'storagePath', 'externalURL', 'contentType',
           'byteSize', 'status', 'createdAt'
         ])
-        && hasSafeIDs(groupID, taskID, attachmentID)
         && data.id == attachmentID
         && data.taskID == taskID
         && data.groupID == groupID
         && data.uploaderID is string
-        && data.uploaderID.size() > 0
-        && data.uploaderID.size() <= 128
         && data.title is string
         && data.title.size() > 0
-        && data.title.size() <= 100
         && data.detail is string
-        && data.detail.size() <= 1000
+        && data.kind in [
+          'image', 'pdf', 'presentation', 'document', 'spreadsheet',
+          'archive', 'externalLink', 'other'
+        ]
+        && (data.originalFilename == null || data.originalFilename is string)
+        && (data.storagePath == null || data.storagePath is string)
+        && (data.externalURL == null
+          || (data.externalURL is string && data.externalURL.matches('^https://.*')))
+        && (data.contentType == null || data.contentType is string)
+        && (data.byteSize == null || (data.byteSize is int && data.byteSize >= 0))
         && data.status in ['pending', 'uploading', 'ready', 'failed']
         && data.createdAt is timestamp
         && (
-          hasValidLinkMetadata(data)
-          || hasValidFileMetadata(data, groupID, taskID, attachmentID)
+          (data.kind == 'externalLink'
+            && data.externalURL is string
+            && data.externalURL.matches('^https://.*')
+            && data.originalFilename == null
+            && data.storagePath == null
+            && data.contentType == null
+            && data.byteSize == null)
+          ||
+          (data.kind != 'externalLink'
+            && data.externalURL == null
+            && data.originalFilename is string
+            && data.storagePath is string
+            && data.storagePath.matches(
+              '^groups/' + groupID + '/tasks/' + taskID
+                + '/attachments/' + attachmentID + '/.*'
+            )
+            && data.contentType is string
+            && data.byteSize is int
+            && data.byteSize <= 20 * 1024 * 1024)
         );
     }
 
@@ -191,17 +136,16 @@ service cloud.firestore {
       match /members/{userID} {
         allow read: if isGroupMember(groupID) || isCurrentUser(userID);
 
-        // Only trusted Admin SDK / Cloud Functions may grant membership or roles.
-        allow create: if false;
+        allow create: if isCurrentUser(userID)
+          && request.resource.data.joinedAt == request.time
+          && hasValidMemberShape(userID);
 
-        // Preserve the deployed chat profile update; identity and role stay immutable.
         allow update: if isCurrentUser(userID)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 60;
 
-        // Preserve leaving a group; deletion does not allow recreating membership.
         allow delete: if isCurrentUser(userID);
       }
 
@@ -217,7 +161,6 @@ service cloud.firestore {
         allow create, update: if isGroupMember(groupID)
           && isCurrentUser(userID)
           && hasValidPresenceShape(userID);
-        // Keep self-presence cleanup working even after leaving the group.
         allow delete: if isCurrentUser(userID);
       }
 
@@ -229,31 +172,24 @@ service cloud.firestore {
           allow read: if isGroupMember(groupID);
 
           allow create: if isGroupMember(groupID)
-            && taskExists(groupID, taskID)
             && request.resource.data.uploaderID == request.auth.uid
-            && request.resource.data.status == 'ready'
             && request.resource.data.createdAt == request.time
             && hasValidAttachmentShape(groupID, taskID, attachmentID);
 
           allow update: if isGroupMember(groupID)
             && resource.data.uploaderID == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'title', 'detail', 'status'
-            ])
+            && request.resource.data.uploaderID == resource.data.uploaderID
             && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'detail', 'originalFilename', 'storagePath',
+              'externalURL', 'contentType', 'byteSize', 'status'
+            ])
             && hasValidAttachmentShape(groupID, taskID, attachmentID);
 
           allow delete: if isGroupMember(groupID)
-            && (
-              resource.data.uploaderID == request.auth.uid
-              || isGroupLeader(groupID)
-            );
+            && resource.data.uploaderID == request.auth.uid;
         }
       }
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

@@ -15,6 +15,7 @@ struct GroupDetailView: View {
     @State private var peerReviewStartsAtOutcomeSummary = true
     @State private var peerReviewRevision = 0
     @State private var showsExplosionMeme = true
+    @State private var showsSuccessMeme = true
     @State private var showsDeadlineSheet = false
     @State private var deadlineDraft = Date.now
     @State private var deadlineError: String?
@@ -146,6 +147,25 @@ struct GroupDetailView: View {
                         .transition(.opacity)
                     }
 
+                    if shouldShowSuccessMeme(now: context.date) {
+                        SuccessMemeOverlay(
+                            groupName: group.name,
+                            onViewSummary: {
+                                peerReviewStartsAtOutcomeSummary = true
+                                peerReviewRevision += 1
+                                withAnimation(.snappy) { showsSuccessMeme = false }
+                            },
+                            onLater: {
+                                withAnimation(.snappy) {
+                                    showsSuccessMeme = false
+                                    reviewDeferred = true
+                                }
+                            }
+                        )
+                        .zIndex(25)
+                        .transition(.opacity)
+                    }
+
 #if DEBUG
                     if showsDebugPanel {
                         debugPanel
@@ -156,6 +176,7 @@ struct GroupDetailView: View {
                 }
                 .animation(.snappy, value: shouldShowPeerReview(now: context.date))
                 .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
+                .animation(.snappy, value: shouldShowSuccessMeme(now: context.date))
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -164,11 +185,6 @@ struct GroupDetailView: View {
             topBar
         }
         .onAppear { deadlineDraft = currentGroup.deadline }
-        .task {
-            model.startAttachmentSync(
-                for: model.projectTasks.filter { $0.groupID == group.id }.map(\.id)
-            )
-        }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
         }
@@ -266,11 +282,15 @@ struct GroupDetailView: View {
                         debugDeadlineOutcome = .active
                         reviewDeferred = false
                         showsExplosionMeme = false
+                        showsSuccessMeme = false
                         peerReviewStartsAtOutcomeSummary = true
                         peerReviewRevision += 1
                     }
                     debugAction("成功拆彈摘要") {
                         presentDebugPeerReview(outcome: .completed, startsAtSummary: true)
+                    }
+                    debugAction("直接顯示成功梗圖") {
+                        presentDebugSuccessMeme()
                     }
                     debugAction("直接顯示爆炸梗圖") {
                         presentDebugExplosionMeme()
@@ -378,6 +398,7 @@ struct GroupDetailView: View {
         }
         debugDeadlineOutcome = outcome
         showsExplosionMeme = false
+        showsSuccessMeme = false
         peerReviewStartsAtOutcomeSummary = startsAtSummary
         reviewDeferred = false
         peerReviewRevision += 1
@@ -386,6 +407,16 @@ struct GroupDetailView: View {
     private func presentDebugExplosionMeme() {
         debugDeadlineOutcome = .incomplete
         showsExplosionMeme = true
+        showsSuccessMeme = false
+        reviewDeferred = false
+        peerReviewStartsAtOutcomeSummary = true
+        peerReviewRevision += 1
+    }
+
+    private func presentDebugSuccessMeme() {
+        debugDeadlineOutcome = .completed
+        showsExplosionMeme = false
+        showsSuccessMeme = true
         reviewDeferred = false
         peerReviewStartsAtOutcomeSummary = true
         peerReviewRevision += 1
@@ -407,6 +438,7 @@ struct GroupDetailView: View {
         deadlineOutcome(now: now) != .active
             && !reviewDeferred
             && !shouldShowExplosionMeme(now: now)
+            && !shouldShowSuccessMeme(now: now)
     }
 
     private func shouldShowExplosionMeme(now: Date) -> Bool {
@@ -415,8 +447,16 @@ struct GroupDetailView: View {
             && !reviewDeferred
     }
 
+    private func shouldShowSuccessMeme(now: Date) -> Bool {
+        deadlineOutcome(now: now) == .completed
+            && showsSuccessMeme
+            && !reviewDeferred
+    }
+
     private func isBlockingOverlayVisible(now: Date) -> Bool {
-        shouldShowPeerReview(now: now) || shouldShowExplosionMeme(now: now)
+        shouldShowPeerReview(now: now)
+            || shouldShowExplosionMeme(now: now)
+            || shouldShowSuccessMeme(now: now)
     }
 
     private var startsAtPeerReviewSummary: Bool {
@@ -668,7 +708,9 @@ struct GroupDetailView: View {
 
     private var groupMembers: [Member] {
         currentGroup.memberIDs.compactMap { memberID in
-            model.members.first(where: { $0.id == memberID })
+            guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
+            member.role = currentGroup.memberRoles[memberID] ?? member.role
+            return member
         }
     }
 
@@ -813,6 +855,7 @@ private struct ExplosionMemeOverlay: View {
     let incompleteTaskCount: Int
     let onViewDamage: () -> Void
     let onLater: () -> Void
+    @State private var shareImage: Image?
 
     var body: some View {
         GeometryReader { proxy in
@@ -838,11 +881,15 @@ private struct ExplosionMemeOverlay: View {
                             Spacer(minLength: 0)
                         }
 
-                        Image("ExplosionMemeProject")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: min(270, proxy.size.height * 0.36))
+                        FailureMemeImage(
+                            groupName: groupName,
+                            progress: progress,
+                            incompleteTaskCount: incompleteTaskCount
+                        )
+                            .frame(
+                                width: min(340, proxy.size.width - 64),
+                                height: min(340, proxy.size.width - 64)
+                            )
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16)
@@ -875,6 +922,23 @@ private struct ExplosionMemeOverlay: View {
                             .foregroundStyle(BombTheme.ink.opacity(0.76))
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if let shareImage {
+                            ShareLink(
+                                item: shareImage,
+                                preview: SharePreview("\(groupName) 任務結算", image: shareImage)
+                            ) {
+                                Label("分享結算梗圖", systemImage: "square.and.arrow.up")
+                                    .font(.subheadline.weight(.black))
+                                    .foregroundStyle(BombTheme.ink)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(BombTheme.yellow)
+                                    .clipShape(.capsule)
+                                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                         Button("查看戰損", action: onViewDamage)
                             .font(.headline.weight(.black))
@@ -909,6 +973,232 @@ private struct ExplosionMemeOverlay: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .task {
+            shareImage = renderedShareImage
+        }
+    }
+
+    @MainActor
+    private var renderedShareImage: Image? {
+        let renderer = ImageRenderer(
+            content: FailureMemeImage(
+                groupName: groupName,
+                progress: progress,
+                incompleteTaskCount: incompleteTaskCount
+            )
+            .frame(width: 340, height: 340)
+        )
+
+        renderer.scale = 3
+        guard let image = renderer.uiImage else { return nil }
+        return Image(uiImage: image)
+    }
+}
+
+private struct FailureMemeImage: View {
+    let groupName: String
+    let progress: Int
+    let incompleteTaskCount: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Image("ExplosionMemeProject")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+
+                VStack(spacing: 0) {
+                    MemeCaption(text: groupName, fontSize: proxy.size.width * 0.08)
+                        .offset(x: 30, y: 30)
+                    Spacer()
+                    MemeCaption(
+                        text: "已讀不回的組員",
+                        fontSize: proxy.size.width * 0.06
+                    )
+                    .offset(x: 45, y: 15)
+                    Spacer()
+                    MemeCaption(text: "我要放暑假了！", fontSize: proxy.size.width * 0.07)
+                        .offset(x: -60, y: -20)
+                }
+                .padding(.vertical, proxy.size.height * 0.08)
+                .padding(.horizontal, proxy.size.width * 0.06)
+            }
+            .clipped()
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityLabel("\(groupName) 的任務爆炸梗圖，完成率 \(progress)%，尚有 \(incompleteTaskCount) 項任務未完成")
+    }
+}
+
+private struct SuccessMemeOverlay: View {
+    let groupName: String
+    let onViewSummary: () -> Void
+    let onLater: () -> Void
+    @State private var shareImage: Image?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                BombTheme.ink.opacity(0.6)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 28, weight: .black))
+                                .foregroundStyle(BombTheme.green)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("成功拆彈")
+                                    .font(.system(.title, design: .rounded, weight: .black))
+                                Text("任務已全數完成")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+
+                        SuccessMemeImage(groupName: groupName)
+                            .frame(maxWidth: min(260, proxy.size.width - 64))
+                            .accessibilityLabel("成功拆彈梗圖")
+
+                        Text("這次任務如期完成，\n請完成匿名隊員互評。")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(BombTheme.ink.opacity(0.76))
+                            .multilineTextAlignment(.center)
+
+                        if let shareImage {
+                            ShareLink(
+                                item: shareImage,
+                                preview: SharePreview("\(groupName) 成功拆彈", image: shareImage)
+                            ) {
+                                Label("分享結算梗圖", systemImage: "square.and.arrow.up")
+                                    .font(.subheadline.weight(.black))
+                                    .foregroundStyle(BombTheme.ink)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(BombTheme.yellow)
+                                    .clipShape(.capsule)
+                                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button("查看結算", action: onViewSummary)
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(BombTheme.ink)
+                            .clipShape(.capsule)
+                            .buttonStyle(.plain)
+
+                        Button("稍後查看", action: onLater)
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(BombTheme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(BombTheme.paper)
+                            .clipShape(.capsule)
+                            .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                            .buttonStyle(.plain)
+                    }
+                    .padding(20)
+                }
+                .scrollIndicators(.hidden)
+                .background(BombTheme.paper)
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
+                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
+                .frame(maxWidth: 560)
+                .frame(maxHeight: max(320, proxy.size.height - 32))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .task {
+            shareImage = renderedShareImage
+        }
+    }
+
+    @MainActor
+    private var renderedShareImage: Image? {
+        let renderer = ImageRenderer(
+            content: SuccessMemeImage(groupName: groupName)
+                .frame(width: 260, height: 425.1)
+        )
+
+        renderer.scale = 3
+        guard let image = renderer.uiImage else { return nil }
+        return Image(uiImage: image)
+    }
+}
+
+private struct SuccessMemeImage: View {
+    let groupName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Image("SuccessMemeProject")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+
+                VStack(spacing: 0) {
+                    MemeCaption(text: "你有多猛", fontSize: proxy.size.width * 0.09)
+                        .offset(y: 140)
+                    Spacer()
+                    MemeCaption(
+                        text: "我完成了\(groupName)",
+                        fontSize: proxy.size.width * 0.075
+                    )
+                    .offset(y: 30)
+                }
+                .padding(.vertical, proxy.size.height * 0.1)
+                .padding(.horizontal, proxy.size.width * 0.06)
+            }
+            .clipped()
+        }
+        .aspectRatio(600.0 / 981.0, contentMode: .fit)
+        .accessibilityLabel("\(groupName) 的成功拆彈梗圖")
+    }
+}
+
+private struct MemeCaption: View {
+    let text: String
+    let fontSize: CGFloat
+
+    private let outlineOffsets: [CGFloat] = [-2, 0, 2]
+
+    var body: some View {
+        ZStack {
+            ForEach(outlineOffsets, id: \.self) { horizontalOffset in
+                ForEach(outlineOffsets, id: \.self) { verticalOffset in
+                    if horizontalOffset != 0 || verticalOffset != 0 {
+                        caption
+                            .foregroundStyle(.black)
+                            .offset(x: horizontalOffset, y: verticalOffset)
+                    }
+                }
+            }
+
+            caption
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, fontSize * 0.18)
+    }
+
+    private var caption: some View {
+        Text(text)
+            .font(.system(size: fontSize, weight: .black, design: .rounded))
+            .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.6)
+            .lineLimit(2)
     }
 }
 

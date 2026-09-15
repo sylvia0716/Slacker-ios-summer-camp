@@ -18,7 +18,7 @@ struct TaskAttachment: Identifiable, Codable, Hashable, Sendable {
     var createdAt: Date?
 
     init(
-        id: String = UUID().uuidString,
+        id: String = UUID().uuidString.lowercased(),
         taskID: String,
         groupID: String,
         uploaderID: String,

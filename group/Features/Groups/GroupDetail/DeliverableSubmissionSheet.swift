@@ -35,6 +35,10 @@ private final class DeliverableSubmissionStore {
         }
     }
 
+    func reportUnavailableTask() {
+        state = .failure("此任務尚未從雲端載入，請返回群組列表重新整理。")
+    }
+
     func resetSelection() {
         guard !isBusy else { return }
         preparedAttachment = nil
@@ -440,9 +444,13 @@ struct DeliverableSubmissionSheet: View {
     }
 
     private func submit() async {
+        guard let groupID = task.firestoreGroupID, let taskID = task.firestoreDocumentID else {
+            store.reportUnavailableTask()
+            return
+        }
         await store.submit(
-            groupID: task.groupID.uuidString.lowercased(),
-            taskID: task.id.uuidString.lowercased(),
+            groupID: groupID,
+            taskID: taskID,
             title: title,
             detail: detail,
             link: source == .link ? link : nil,

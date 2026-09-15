@@ -17,11 +17,13 @@ final class AuthSessionStore {
 #if DEBUG
     @ObservationIgnored private var isPreviewSession = false
 #endif
+    @ObservationIgnored private var onUserChange: ((String?) -> Void)?
 
     var isAuthenticated: Bool { currentUserID != nil }
 
     /// App 啟動且 Firebase 完成設定後才開始監聽，避免缺少 plist 時存取 Auth 而閃退。
-    func start() {
+    func start(onUserChange: ((String?) -> Void)? = nil) {
+        self.onUserChange = onUserChange
         guard !hasStarted else { return }
         hasStarted = true
 
@@ -164,6 +166,7 @@ final class AuthSessionStore {
         }
 #endif
         // 此 UID 直接來自 Firebase Auth；不以本機 UUID 或電子郵件代替。
+        if userID != currentUserID { onUserChange?(userID) }
         currentUserID = userID
         currentUserEmail = email
         isCheckingSession = false

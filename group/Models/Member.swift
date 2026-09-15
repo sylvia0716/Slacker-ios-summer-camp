@@ -24,4 +24,6 @@ struct Member: Identifiable, Hashable {
     var role: MemberRole
     /// 頭像的 SF Symbol 名稱；MVP 不需要真實圖片上傳。
     var avatarSymbol: String
+    /// Firebase 身分；UI UUID 不能作為後端授權 UID。
+    var firebaseUID: String? = nil
 }
