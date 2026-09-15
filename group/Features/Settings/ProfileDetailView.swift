@@ -1,7 +1,7 @@
 import PhotosUI
 import SwiftUI
 
-/// Facebook-style profile editor backed by the app's existing in-memory store.
+/// Nickname is shared with Firebase; other profile fields retain their existing behavior.
 struct ProfileDetailView: View {
     let model: GroupBombModel
 
@@ -13,6 +13,7 @@ struct ProfileDetailView: View {
     @State private var draftAvatarData: Data?
     @State private var selectedAvatarItem: PhotosPickerItem?
     @State private var isLoadingAvatar = false
+    @State private var saveError: String?
 
     init(model: GroupBombModel) {
         self.model = model
@@ -52,10 +53,15 @@ struct ProfileDetailView: View {
                 }
                 .buttonStyle(BombHeaderButtonStyle())
                 .accessibilityLabel("返回設定")
+                .disabled(model.isSavingNickname)
             } trailing: {
                 EmptyView()
             }
         }
+        .interactiveDismissDisabled(model.isSavingNickname)
+        .alert("儲存失敗", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button("確定", role: .cancel) { saveError = nil }
+        } message: { Text(saveError ?? "") }
         .onChange(of: selectedAvatarItem) { _, newItem in
             guard let newItem else { return }
             isLoadingAvatar = true
@@ -152,14 +158,22 @@ struct ProfileDetailView: View {
 
     private var saveButton: some View {
         Button {
-            model.profileName = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
-            model.profileRole = draftRole.trimmingCharacters(in: .whitespacesAndNewlines)
-            model.profileBio = draftBio.trimmingCharacters(in: .whitespacesAndNewlines)
-            model.profileAvatarSymbol = draftAvatarSymbol
-            model.profileAvatarData = draftAvatarData
-            dismiss()
+            let name = draftName, role = draftRole, bio = draftBio
+            let symbol = draftAvatarSymbol, avatar = draftAvatarData
+            Task {
+                do {
+                    try await model.saveProfileNickname(name)
+                    model.profileRole = role.trimmingCharacters(in: .whitespacesAndNewlines)
+                    model.profileBio = bio.trimmingCharacters(in: .whitespacesAndNewlines)
+                    model.profileAvatarSymbol = symbol
+                    model.profileAvatarData = avatar
+                    dismiss()
+                } catch {
+                    saveError = (error as? NicknameError)?.localizedDescription ?? NicknameError.network.localizedDescription
+                }
+            }
         } label: {
-            Label("儲存變更", systemImage: "checkmark.circle.fill")
+            Label(model.isSavingNickname ? "儲存中…" : "儲存變更", systemImage: "checkmark.circle.fill")
                 .font(.headline.weight(.black))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -173,6 +187,7 @@ struct ProfileDetailView: View {
     }
 
     private var canSave: Bool {
+        !model.isSavingNickname && !isLoadingAvatar &&
         !draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !draftRole.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
