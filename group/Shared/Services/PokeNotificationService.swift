@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 
 struct PokeReception: Equatable {
@@ -9,6 +10,7 @@ struct PokeReception: Equatable {
 
 extension Notification.Name {
     static let pokeReceived = Notification.Name("pokeReceived")
+    static let pokePushTokenUpdated = Notification.Name("pokePushTokenUpdated")
 }
 
 /// Delivers the prototype's poke alerts as device notifications.
@@ -24,7 +26,12 @@ final class PokeNotificationService {
     }
 
     func requestAuthorization() {
-        center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
     }
 
     func deliver(group: Group, pokeCount: Int, style: PokeStyle) {

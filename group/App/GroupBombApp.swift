@@ -3,6 +3,7 @@ import UIKit
 import UserNotifications
 import FirebaseAppCheck
 import FirebaseCore
+import FirebaseMessaging
 import OSLog
 
 /// Application entry point. It deliberately only wires the root view.
@@ -18,7 +19,7 @@ struct GroupBombApp: App {
 }
 
 /// Keeps poke notifications visible while the app is open, so the prototype is testable in-app.
-final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
     private let logger = Logger(subsystem: "con.sylvia.group", category: "Firebase")
 
     func application(
@@ -37,7 +38,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
 
         UNUserNotificationCenter.current().delegate = self
+        Messaging.messaging().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard fcmToken != nil else { return }
+        NotificationCenter.default.post(name: .pokePushTokenUpdated, object: nil)
     }
 
     func userNotificationCenter(

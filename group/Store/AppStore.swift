@@ -145,6 +145,7 @@ final class AppStore {
     private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
+    @ObservationIgnored private var pokeRepository: PokeRepository?
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
@@ -1058,7 +1059,21 @@ final class AppStore {
     func resumeCloudSync() {
         guard dataMode == .live, firebaseUID != nil, !syncIsActive else { return }
         syncIsActive = true
+        registerPokeDevice()
         cloudLoadTask = Task { [weak self] in _ = await self?.reloadCloudGroups() }
+    }
+
+    func registerPokeDevice() {
+        guard dataMode == .live, firebaseUID != nil else { return }
+        Task { [weak self] in
+            do {
+                let repository = self?.pokeRepository ?? PokeRepository()
+                self?.pokeRepository = repository
+                try await repository.registerCurrentDevice()
+            } catch {
+                // Notification registration must not block cloud-group synchronization.
+            }
+        }
     }
 
     func suspendCloudSync() {
@@ -1449,6 +1464,19 @@ final class AppStore {
         let key = PokeCountKey(groupID: groupID, memberID: memberID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
         pokeCounts[key] = pokeCount
+        if dataMode == .live,
+           let firestoreGroupID = groups.first(where: { $0.id == groupID })?.firestoreDocumentID,
+           let recipientUID = member.firebaseUID {
+            Task { [weak self] in
+                do {
+                    let repository = self?.pokeRepository ?? PokeRepository()
+                    self?.pokeRepository = repository
+                    try await repository.send(groupID: firestoreGroupID, recipientUID: recipientUID, style: style)
+                } catch {
+                    self?.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "戳戳送出失敗，請重試。"
+                }
+            }
+        }
         return pokeCount
     }
 

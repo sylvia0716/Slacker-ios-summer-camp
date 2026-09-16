@@ -48,6 +48,9 @@ struct AppRootView: View {
             pokePresentationID += 1
             activePokeReception = reception
         }
+        .onReceive(NotificationCenter.default.publisher(for: .pokePushTokenUpdated)) { _ in
+            store.registerPokeDevice()
+        }
         .overlay {
             if let activePokeReception {
                 PokeReceptionOverlay(reception: activePokeReception) {
