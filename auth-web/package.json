@@ -1,0 +1,9 @@
+{
+  "name": "group-bomb-auth-page",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "preview": "node tools/preview.js"
+  }
+}

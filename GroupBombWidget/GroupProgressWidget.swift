@@ -67,7 +67,7 @@ private struct GroupProgressWidgetView: View {
             HStack {
                 Image(systemName: "bolt.fill")
                     .foregroundStyle(.yellow)
-                Text("GROUP BOMB")
+                Text("Oops Bomb")
                     .font(.caption.weight(.black))
                 Spacer()
                 Text("LIVE")

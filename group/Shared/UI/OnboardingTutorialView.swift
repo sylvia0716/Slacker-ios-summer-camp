@@ -167,7 +167,7 @@ struct OnboardingTutorialView: View {
             case .welcome:
                 SpotlightOverlay(
                     targetFrame: nil,
-                    title: "💣 歡迎來到 Group Bomb",
+                    title: "💣 歡迎來到 Oops Bomb",
                     description: "一起建立任務、\n分配工作、\n避免專案爆炸！",
                     actionTitle: "開始拆彈",
                     action: {

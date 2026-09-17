@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#ffca0d">
+  <title>重設密碼 · 雷包點點名</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <main>
+    <div class="language-picker"><label for="language">Language / 語言</label><select id="language"><option value="zh-Hant">中文</option><option value="en">English</option></select></div>
+    <header class="brand">
+      <div class="emblem" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M32 5 53 13v17c0 15-11 24-21 29C22 54 11 45 11 30V13L32 5Z" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/><path d="m35 16-14 19h10l-2 14 15-21H33l2-12Z" fill="currentColor"/></svg></div>
+      <p class="wordmark" data-i18n="雷包點點名">雷包點點名</p>
+      <p class="brand-caption" data-i18n="一起拆彈，一起過關。">一起拆彈，一起過關。</p>
+    </header>
+    <section class="card" aria-labelledby="title" aria-busy="true">
+      <div class="stripe" aria-hidden="true"></div>
+      <div class="card-body">
+        <span class="badge" data-i18n="帳號安全">帳號安全</span>
+        <h1 id="title" tabindex="-1">正在確認連結</h1>
+        <p id="description" class="description" role="status">請稍候，馬上就好。</p>
+        <p id="account" class="account" hidden></p>
+        <form id="reset-form" hidden novalidate>
+          <label for="password" data-i18n="新密碼">新密碼</label>
+          <div class="input-wrap"><input id="password" name="new-password" type="password" autocomplete="new-password" minlength="6" required aria-describedby="password-hint form-error"><button id="toggle-password" class="visibility" type="button" aria-label="顯示密碼" aria-pressed="false" title="顯示密碼">
+            <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9s3 6 9 6 9-6 9-6M5 12l-2 3m6-1-1 4m7-4 1 4m3-6 2 3"/></svg>
+          </button></div>
+          <p id="password-hint" class="hint" data-i18n="至少 6 個字元">至少 6 個字元</p>
+          <label for="confirmation" data-i18n="再次輸入新密碼">再次輸入新密碼</label>
+          <input id="confirmation" name="confirm-password" type="password" autocomplete="new-password" minlength="6" required aria-describedby="form-error">
+          <p id="form-error" class="error" role="alert" hidden></p>
+          <button id="submit" class="primary" type="submit">確認更改密碼 <span aria-hidden="true">↗</span></button>
+        </form>
+        <button id="retry" class="primary" type="button" hidden data-i18n="重新連線">重新連線</button>
+        <p id="next-step" class="next-step" hidden></p>
+        <noscript><p class="error">請開啟瀏覽器的 JavaScript，才能設定新密碼。 / Enable JavaScript to reset your password.</p></noscript>
+      </div>
+    </section>
+    <footer><span data-i18n="雷包點點名">雷包點點名</span> <span aria-hidden="true">✦</span> <span data-i18n="一起拆彈，一起過關。">一起拆彈，一起過關。</span></footer>
+  </main>
+</body>
+</html>

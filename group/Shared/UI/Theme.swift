@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Central palette for the Group Bomb visual system.
+/// Central palette for the Oops Bomb visual system.
 enum BombTheme {
     static let yellow = Color(red: 1, green: 0.79, blue: 0.05)
     static let ink = Color(red: 0.08, green: 0.08, blue: 0.07)
