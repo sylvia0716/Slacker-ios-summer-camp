@@ -4,7 +4,7 @@ import PackageDescription
 // Offline tests compile the same production mapping/repository source, without Firebase or UI.
 let package = Package(
     name: "GroupCloudDataTests",
-    platforms: [.macOS(.v14)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [],
     targets: [
         .target(name: "GroupCloudData", path: "group", sources: [
