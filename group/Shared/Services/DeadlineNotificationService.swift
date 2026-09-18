@@ -10,7 +10,7 @@ final class DeadlineNotificationService {
     private var updateTask: Task<Void, Never>?
 
     /// A nil plan preserves this account's existing schedule while cloud data is loading/offline.
-    func update(uid: String?, enabled: Bool, plan: [DeadlineReminder]?) {
+    func update(uid: String?, enabled: Bool, plan: [DeadlineReminder]?, categories: NotificationCategories = .init()) {
         let previous = updateTask
         previous?.cancel()
         updateTask = Task {
@@ -20,8 +20,12 @@ final class DeadlineNotificationService {
             let pending = await center.pendingNotificationRequests()
             guard !Task.isCancelled else { return }
             let owned = pending.filter { $0.identifier.hasPrefix(DeadlineReminderPlan.identifierPrefix) }
+            func allows(_ request: UNNotificationRequest) -> Bool {
+                categories.allowsReminder(isReview: request.content.userInfo["destination"] as? String == "peerReview",
+                                          isTask: request.content.userInfo["taskID"] != nil)
+            }
             let obsolete = owned.filter {
-                !enabled || uid == nil || $0.content.userInfo["recipientUID"] as? String != uid
+                !enabled || !allows($0) || uid == nil || $0.content.userInfo["recipientUID"] as? String != uid
             }
             center.removePendingNotificationRequests(withIdentifiers: obsolete.map(\.identifier))
 
@@ -29,7 +33,7 @@ final class DeadlineNotificationService {
             guard !Task.isCancelled else { return }
             center.removeDeliveredNotifications(withIdentifiers: delivered.filter {
                 $0.request.identifier.hasPrefix(DeadlineReminderPlan.identifierPrefix)
-                    && (!enabled || uid == nil || $0.request.content.userInfo["recipientUID"] as? String != uid)
+                    && (!enabled || !allows($0.request) || uid == nil || $0.request.content.userInfo["recipientUID"] as? String != uid)
             }.map { $0.request.identifier })
             guard enabled, let uid, let plan else { return }
 
@@ -42,7 +46,7 @@ final class DeadlineNotificationService {
 
             // Keep a bounded queue of the nearest reminders and leave room for poke notifications.
             let otherCount = pending.count - owned.count
-            let desired = Array(plan.filter { $0.fireDate > .now }.prefix(max(0, 60 - otherCount)))
+            let desired = Array(plan.filter { $0.fireDate > .now && categories.allowsReminder(isReview: $0.opensPeerReview, isTask: $0.taskID != nil) }.prefix(max(0, 60 - otherCount)))
             let desiredIDs = Set(desired.map(\.id))
             center.removePendingNotificationRequests(withIdentifiers: owned.filter {
                 !desiredIDs.contains($0.identifier)

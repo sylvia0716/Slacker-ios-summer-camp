@@ -6,7 +6,6 @@ struct SettingsView: View {
     let model: GroupBombModel
     let authSession: AuthSessionStore
     let onReplayTutorial: () -> Void
-    @State private var showsNotificationTest = false
     @State private var showsSignOutConfirmation = false
 
     var body: some View {
@@ -41,9 +40,13 @@ struct SettingsView: View {
 
                         SettingsDivider()
 
-                        NotificationSettingsRow(model: model) {
-                            showsNotificationTest = true
+                        NavigationLink {
+                            NotificationSettingsView(model: model)
+                        } label: {
+                            SettingsRow(icon: "bell.fill", title: "通知設定",
+                                        subtitle: "通知分類與測試")
                         }
+                        .buttonStyle(.plain)
                     }
 
                     SettingsSection(title: "支援") {
@@ -88,9 +91,6 @@ struct SettingsView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(isPresented: $showsNotificationTest) {
-            NotificationTestView(model: model)
-        }
         .bombDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
             Button("取消", role: .cancel) { }
             Button("登出", role: .destructive) {
@@ -199,107 +199,6 @@ private struct SettingsRow: View {
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 8)
-    }
-}
-
-private struct NotificationSettingsRow: View {
-    let model: GroupBombModel
-    let showsTestPage: () -> Void
-    @State private var titleTapCount = 0
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "bell.fill")
-                .font(.title3)
-                .frame(width: 34, height: 34)
-                .background(BombTheme.yellow)
-                .clipShape(.circle)
-            Button {
-                titleTapCount += 1
-                guard titleTapCount == 5 else { return }
-                titleTapCount = 0
-                showsTestPage()
-            } label: {
-                Text("通知設定").font(.body.weight(.bold))
-            }
-            .buttonStyle(.plain)
-            Spacer()
-            Toggle("通知設定", isOn: Binding(
-                get: { model.notificationsEnabled },
-                set: { model.notificationsEnabled = $0 }
-            ))
-            .labelsHidden()
-            .tint(BombTheme.green)
-        }
-        .foregroundStyle(BombTheme.ink)
-        .padding(.vertical, 8)
-    }
-}
-
-private struct NotificationTestView: View {
-    @Environment(\.dismiss) private var dismiss
-    let model: GroupBombModel
-    @State private var selectedGroupID: UUID?
-    @State private var pokeCount = 0
-    @State private var showsNotificationsDisabledAlert = false
-
-    var body: some View {
-        ZStack {
-            BombTheme.yellow.ignoresSafeArea()
-
-            VStack(spacing: 24) {
-                Picker("小組", selection: $selectedGroupID) {
-                    ForEach(model.groups) { group in
-                        Text(group.name).tag(Optional(group.id))
-                    }
-                }
-                .pickerStyle(.menu)
-                .font(.headline)
-
-                Button {
-                    guard let selectedGroupID,
-                          let count = model.sendTestPoke(in: selectedGroupID) else {
-                        showsNotificationsDisabledAlert = true
-                        return
-                    }
-                    pokeCount = count
-                } label: {
-                    Label("戳自己一下", systemImage: "hand.tap.fill")
-                        .font(.title3.weight(.black))
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 15)
-                        .foregroundStyle(.white)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
-                }
-                .buttonStyle(.plain)
-
-                if pokeCount > 0 {
-                    Text("已戳自己 \(pokeCount) 下")
-                        .font(.headline.weight(.black))
-                }
-            }
-            .padding(24)
-        }
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "通知測試") {
-                Button(action: dismiss.callAsFunction) {
-                    Image(systemName: "chevron.left")
-                }
-                .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
-            } trailing: {
-                EmptyView()
-            }
-        }
-        .onAppear {
-            selectedGroupID = selectedGroupID ?? model.groups.first?.id
-        }
-        .bombDialog("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
-            Button("好") { }
-        }
     }
 }
 

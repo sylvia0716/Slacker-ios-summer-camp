@@ -55,7 +55,7 @@ struct AppRootView: View {
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
-            guard let reception = notification.object as? PokeReception else { return }
+            guard store.receivesPokes, let reception = notification.object as? PokeReception else { return }
             pokePresentationID += 1
             activePokeReception = reception
         }

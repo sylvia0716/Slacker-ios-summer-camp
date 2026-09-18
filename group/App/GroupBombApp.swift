@@ -57,6 +57,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if PokeNotificationService.reception(from: notification) != nil,
+           !PokeDeliveryState.shared.receivesPokes {
+            completionHandler([])
+            return
+        }
         announcePokeReception(for: notification)
         completionHandler([.banner, .list, .sound])
     }
@@ -75,7 +80,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     private func announcePokeReception(for notification: UNNotification) {
-        guard let reception = PokeNotificationService.reception(from: notification) else { return }
+        guard PokeDeliveryState.shared.receivesPokes,
+              let reception = PokeNotificationService.reception(from: notification) else { return }
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .pokeReceived, object: reception)
         }
