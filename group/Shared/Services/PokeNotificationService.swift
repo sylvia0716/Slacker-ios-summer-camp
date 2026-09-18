@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 
 struct PokeReception: Equatable {
@@ -9,6 +10,8 @@ struct PokeReception: Equatable {
 
 extension Notification.Name {
     static let pokeReceived = Notification.Name("pokeReceived")
+    static let pokePushTokenUpdated = Notification.Name("pokePushTokenUpdated")
+    static let notificationAuthorizationUpdated = Notification.Name("notificationAuthorizationUpdated")
 }
 
 /// Delivers the prototype's poke alerts as device notifications.
@@ -24,7 +27,13 @@ final class PokeNotificationService {
     }
 
     func requestAuthorization() {
-        center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+                NotificationCenter.default.post(name: .notificationAuthorizationUpdated, object: nil)
+            }
+        }
     }
 
     func deliver(group: Group, pokeCount: Int, style: PokeStyle) {
@@ -47,10 +56,30 @@ final class PokeNotificationService {
         center.add(request)
     }
 
+    func deliverSummary(reception: PokeReception, unseenCount: Int, uid: String, groupID: String) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = "隊友在找你"
+        content.body = "你在「\(reception.groupName)」又被戳了 \(unseenCount) 下！"
+        content.sound = .default
+        content.userInfo = [
+            UserInfoKey.groupID: groupID,
+            UserInfoKey.groupName: reception.groupName,
+            UserInfoKey.pokeCount: reception.pokeCount,
+            UserInfoKey.style: reception.style.rawValue
+        ]
+        try await center.add(UNNotificationRequest(
+            identifier: "poke-summary-\(uid)-\(groupID)-\(reception.pokeCount)",
+            content: content,
+            trigger: nil
+        ))
+    }
+
     nonisolated static func reception(from notification: UNNotification) -> PokeReception? {
         let userInfo = notification.request.content.userInfo
         guard let groupName = userInfo[UserInfoKey.groupName] as? String,
-              let pokeCount = userInfo[UserInfoKey.pokeCount] as? Int,
+              let pokeCount = (userInfo[UserInfoKey.pokeCount] as? Int)
+                ?? (userInfo[UserInfoKey.pokeCount] as? String).flatMap(Int.init),
+              pokeCount > 0,
               let styleRawValue = userInfo[UserInfoKey.style] as? String,
               let style = PokeStyle(rawValue: styleRawValue) else { return nil }
 

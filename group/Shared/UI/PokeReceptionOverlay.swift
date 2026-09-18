@@ -67,7 +67,7 @@ struct PokeReceptionOverlay: View {
             withAnimation(.easeOut(duration: 1).repeatForever(autoreverses: false)) {
                 isPulsing = true
             }
-            withAnimation(.bouncy(duration: 0.25).repeatCount(6, autoreverses: true)) {
+            withAnimation(.bouncy(duration: 0.25).repeatForever(autoreverses: true)) {
                 isWobbling = true
             }
         }

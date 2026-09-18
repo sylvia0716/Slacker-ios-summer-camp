@@ -4,6 +4,8 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
 const { getAuth } = require("firebase-admin/auth");
 const { memberDisplayName } = require("./member-display-name");
+const { getMessaging } = require("firebase-admin/messaging");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 
 initializeApp();
 
@@ -164,6 +166,27 @@ function normalizedUpdateSubtaskData(data) {
     subtaskID: normalizedUUID(data.subtaskID, "invalid-subtask-id"),
     isComplete: data.isComplete,
   };
+}
+
+function normalizedPokeData(data) {
+  requireExactKeys(data, ["groupID", "recipientUID", "style"]);
+  const groupID = normalizedUUID(data.groupID, "invalid-group-id", true);
+  const recipientUID = typeof data.recipientUID === "string" ? data.recipientUID.trim() : "";
+  const style = typeof data.style === "string" ? data.style : "";
+  if (!recipientUID || recipientUID.length > 128 || !["輕敲", "迷因轟炸", "警報催命"].includes(style)) {
+    throw callableError("invalid-argument", "Invalid poke.", "invalid-recipient");
+  }
+  return { groupID, recipientUID, style };
+}
+
+function normalizedDeviceData(data) {
+  requireExactKeys(data, ["deviceID", "token"]);
+  const deviceID = typeof data.deviceID === "string" ? data.deviceID : "";
+  const token = typeof data.token === "string" ? data.token : "";
+  if (!deviceID || deviceID.length > 128 || !token || token.length > 4096) {
+    throw callableError("invalid-argument", "Invalid device.", "invalid-device");
+  }
+  return { deviceID, token };
 }
 
 function makeInviteCode() {
@@ -425,6 +448,75 @@ exports.updateSubtask = onCall({ region }, async (request) => {
   });
 
   return { taskID: data.taskID, subtaskID: data.subtaskID, isComplete: data.isComplete, status };
+});
+
+exports.registerPokeDevice = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  const { deviceID, token } = normalizedDeviceData(request.data);
+  await db.collection("users").doc(userID).collection("devices").doc(deviceID).set({
+    token,
+    platform: "ios",
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { registered: true };
+});
+
+exports.sendPoke = onCall({ region }, async (request) => {
+  const senderID = requireAuthenticatedUser(request);
+  const { groupID, recipientUID, style } = normalizedPokeData(request.data);
+  if (senderID === recipientUID) {
+    throw callableError("invalid-argument", "Cannot poke yourself.", "invalid-recipient");
+  }
+  const groupRef = db.collection("groups").doc(groupID);
+  return db.runTransaction(async (transaction) => {
+    const [group, sender, recipient, countSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(groupRef.collection("members").doc(senderID)),
+      transaction.get(groupRef.collection("members").doc(recipientUID)),
+      transaction.get(groupRef.collection("pokeCounts").doc(recipientUID)),
+    ]);
+    if (!group.exists || group.data()?.deleting === true) {
+      throw callableError("not-found", "Group not found.", "group-not-found");
+    }
+    if (sender.data()?.userID !== senderID || recipient.data()?.userID !== recipientUID) {
+      throw callableError("permission-denied", "Membership required.", "not-group-member");
+    }
+    const count = (countSnapshot.data()?.count || 0) + 1;
+    transaction.set(groupRef.collection("pokeCounts").doc(recipientUID), {
+      count,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.create(groupRef.collection("pokes").doc(randomUUID().toLowerCase()), {
+      senderID,
+      recipientID: recipientUID,
+      style,
+      pokeCount: count,
+      groupName: group.data().name || "你的群組",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { count };
+  });
+});
+
+exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID}/pokes/{pokeID}" }, async (event) => {
+  const poke = event.data?.data();
+  if (!poke?.recipientID || !poke?.groupName || !poke?.style || !Number.isInteger(poke?.pokeCount)) return;
+  const devices = await db.collection("users").doc(poke.recipientID).collection("devices").get();
+  const tokens = devices.docs.map((device) => device.data().token).filter((token) => typeof token === "string" && token.length > 0);
+  if (tokens.length === 0) return;
+  const body = poke.pokeCount < 5
+    ? `你被${poke.groupName}的隊員戳了${poke.pokeCount} 下！`
+    : poke.pokeCount < 10 ? "你的組員一直在戳你‼️快回來啦🫨" : "檢舉雷包，人人有責😤";
+  const response = await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: { title: "有人在找你", body },
+    data: { groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
+    apns: { payload: { aps: { sound: "default" } } },
+  });
+  await Promise.all(response.responses.map((result, index) => {
+    if (result.success || !["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(result.error?.code)) return null;
+    return devices.docs[index].ref.delete();
+  }));
 });
 
 Object.assign(exports, require('./group-membership'));

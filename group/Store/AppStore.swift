@@ -145,6 +145,10 @@ final class AppStore {
     private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
+    @ObservationIgnored private var pokeRepository: PokeRepository?
+    @ObservationIgnored private var pokeListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var hasLoadedReminderData = false
+    @ObservationIgnored private var reminderUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
@@ -180,8 +184,18 @@ final class AppStore {
     var profileAvatarSymbol = "person.fill"
     var profileAvatarData: Data?
 
-    /// 本機原型的通知開關。
-    var notificationsEnabled = true
+    /// Shared with background refresh, including launches without the settings screen.
+    var notificationsEnabled = PokeDeliveryState.shared.notificationsEnabled {
+        didSet {
+            PokeDeliveryState.shared.notificationsEnabled = notificationsEnabled
+            refreshDeadlineReminders()
+            if notificationsEnabled, dataMode == .live {
+                PokeBackgroundRefresh.shared.schedule()
+            } else {
+                PokeBackgroundRefresh.shared.cancel()
+            }
+        }
+    }
 
     /// 目前原型以本機通知模擬送往被戳隊員裝置的推播。
     private let pokeNotifications = PokeNotificationService()
@@ -191,7 +205,7 @@ final class AppStore {
 
     /// 所有已加入的群組，群組列表直接讀取這個陣列。
     var groups: [Group] = [] {
-        didSet { publishWidgetSnapshot() }
+        didSet { publishWidgetSnapshot(); refreshDeadlineReminders() }
     }
 
     /// 所有成員；以 Group.memberIDs 決定某群組要顯示哪些人。
@@ -199,11 +213,13 @@ final class AppStore {
 
     /// 所有正式任務；任務與群組、負責人的關係都用 ID 連結。
     var projectTasks: [ProjectTask] = [] {
-        didSet { publishWidgetSnapshot() }
+        didSet { publishWidgetSnapshot(); refreshDeadlineReminders() }
     }
 
     /// 截止後送出的匿名隊員互評；MVP 僅保留於目前 App 執行期間。
-    var peerReviews: [PeerReview] = []
+    var peerReviews: [PeerReview] = [] {
+        didSet { refreshDeadlineReminders() }
+    }
 
     /// 舊版任務看板資料；等 C 完成新群組詳細頁後再移除。
     var tasks: [MissionTask] = []
@@ -266,6 +282,7 @@ final class AppStore {
         guard isEnabled != isDemoMode else { return }
 
         suspendCloudSync()
+        hasLoadedReminderData = false
 
         if isEnabled {
             let demo = DemoData.make()
@@ -326,6 +343,7 @@ final class AppStore {
         if !isEnabled {
             resumeCloudSync()
         }
+        refreshDeadlineReminders()
     }
 
     private func stopAttachmentListeners() {
@@ -823,6 +841,11 @@ final class AppStore {
             submittedAt: now
         )
         peerReviews.append(review)
+        if dataMode == .live, let uid = firebaseUID, reviewerID == currentUserID,
+           hasCompletedAllReviews(reviewerID: currentUserID, groupID: groupID) {
+            ReviewReminderState.shared.recordCompletion(uid: uid, groupID: groupID,
+                revieweeIDs: Set(group.memberIDs.filter { $0 != currentUserID }))
+        }
         lastEvent = "已送出匿名隊員互評"
         return review
     }
@@ -831,6 +854,7 @@ final class AppStore {
     /// 清除指定群組互評，僅供截止後互評流程的 DEBUG 測試選單使用。
     func resetPeerReviews(for groupID: UUID) {
         peerReviews.removeAll { $0.groupID == groupID }
+        if let uid = firebaseUID { ReviewReminderState.shared.clear(uid: uid, groupID: groupID) }
     }
 #endif
 
@@ -1023,7 +1047,12 @@ final class AppStore {
 
     /// Called synchronously before AuthSession publishes a different UID.
     func changeCloudAccount(to uid: String?) {
-        guard uid != firebaseUID else { return }
+        guard uid != firebaseUID else {
+            refreshDeadlineReminders()
+            return
+        }
+        hasLoadedReminderData = false
+        PokeBackgroundRefresh.shared.cancel()
         suspendCloudSync()
         groups = []
         projectTasks = []
@@ -1053,12 +1082,50 @@ final class AppStore {
         currentUserID = uid.map(FirebaseMemberIdentity.uiID(for:))
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         publishWidgetSnapshot()
+        refreshDeadlineReminders()
+    }
+
+    func refreshDeadlineReminders() {
+        reminderUpdateTask?.cancel()
+        reminderUpdateTask = Task { [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            let enabled = self.notificationsEnabled && self.dataMode == .live
+            let plan: [DeadlineReminder]? = self.hasLoadedReminderData && !self.isLoadingCloudGroups
+                ? DeadlineReminderPlan.make(groups: self.groups, tasks: self.projectTasks,
+                    memberID: self.currentUserID, uid: self.firebaseUID ?? "", now: .now,
+                    completedReviewGroupIDs: Set(self.groups.filter { self.hasCompletedReviewReminders(in: $0) }.map(\.id)))
+                : nil
+            DeadlineNotificationService.shared.update(uid: self.firebaseUID, enabled: enabled, plan: plan)
+        }
+    }
+
+    func hasCompletedReviewReminders(in group: Group) -> Bool {
+        hasCompletedAllReviews(reviewerID: currentUserID, groupID: group.id)
+            || (firebaseUID.map { ReviewReminderState.shared.isComplete(uid: $0, groupID: group.id,
+                revieweeIDs: Set(group.memberIDs.filter { $0 != currentUserID })) } ?? false)
     }
 
     func resumeCloudSync() {
         guard dataMode == .live, firebaseUID != nil, !syncIsActive else { return }
         syncIsActive = true
+        refreshDeadlineReminders()
+        PokeBackgroundRefresh.shared.schedule()
+        registerPokeDevice()
         cloudLoadTask = Task { [weak self] in _ = await self?.reloadCloudGroups() }
+    }
+
+    func registerPokeDevice() {
+        guard dataMode == .live, firebaseUID != nil else { return }
+        Task { [weak self] in
+            do {
+                let repository = self?.pokeRepository ?? PokeRepository()
+                self?.pokeRepository = repository
+                try await repository.registerCurrentDevice()
+            } catch {
+                // Notification registration must not block cloud-group synchronization.
+            }
+        }
     }
 
     func suspendCloudSync() {
@@ -1067,6 +1134,7 @@ final class AppStore {
         cloudLoadTask?.cancel()
         cloudLoadTask = nil
         stopAttachmentSync()
+        stopPokeSync()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         for index in projectTasks.indices where projectTasks[index].firestoreDocumentID != nil {
@@ -1084,6 +1152,11 @@ final class AppStore {
         attachmentListeners.removeAll()
     }
 
+    private func stopPokeSync() {
+        pokeListeners.values.forEach { $0.remove() }
+        pokeListeners = [:]
+    }
+
     @discardableResult
     func reloadCloudGroups(reportError: Bool = true) async -> Bool {
         guard dataMode == .live,
@@ -1093,8 +1166,14 @@ final class AppStore {
         let generation = UUID()
         cloudGeneration = generation
         stopAttachmentSync()
+        stopPokeSync()
         isLoadingCloudGroups = true
-        defer { if cloudGeneration == generation { isLoadingCloudGroups = false } }
+        defer {
+            if cloudGeneration == generation {
+                isLoadingCloudGroups = false
+                refreshDeadlineReminders()
+            }
+        }
         do {
             let repository = groupRepository ?? GroupRepository.firebase()
             groupRepository = repository
@@ -1103,6 +1182,7 @@ final class AppStore {
             // Replace, never append stale account/group/task rows.
             projectTasks = loaded.flatMap(\.tasks)
             groups = loaded.map(\.group)
+            hasLoadedReminderData = true
             var byID: [UUID: Member] = [:]
             for member in loaded.flatMap(\.members) { byID[member.id] = member }
             members = byID.values.sorted { $0.id.uuidString < $1.id.uuidString }
@@ -1115,6 +1195,7 @@ final class AppStore {
             // Tasks now exist in the single source of truth; only now attach listeners.
             startAttachmentSync(for: projectTasks.map(\.id))
             for group in groups { startProgressSync(group: group, uid: uid, generation: generation) }
+            for group in groups { startPokeSync(group: group, uid: uid, generation: generation) }
             return true
         } catch {
             guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
@@ -1297,6 +1378,43 @@ final class AppStore {
         }
     }
 
+    private func startPokeSync(group: Group, uid: String, generation: UUID) {
+        guard let firestoreGroupID = group.firestoreDocumentID else { return }
+
+        let repository = pokeRepository ?? PokeRepository()
+        pokeRepository = repository
+        pokeListeners[group.id] = repository.listenForIncomingPokes(
+            groupID: firestoreGroupID,
+            recipientUID: uid
+        ) { [weak self] result in
+            Task { @MainActor in
+                guard let self,
+                      self.dataMode == .live,
+                      self.syncIsActive,
+                      self.firebaseUID == uid,
+                      self.cloudGeneration == generation else { return }
+
+                switch result {
+                case .success(let receptions):
+                    if receptions.isEmpty {
+                        _ = PokeDeliveryState.shared.unseenCount(latestCount: 0, uid: uid, groupID: firestoreGroupID)
+                    }
+                    for reception in receptions {
+                        let unseen = PokeDeliveryState.shared.unseenCount(
+                            latestCount: reception.pokeCount, uid: uid, groupID: firestoreGroupID
+                        )
+                        PokeDeliveryState.shared.markHandled(count: reception.pokeCount, uid: uid, groupID: firestoreGroupID)
+                        if self.notificationsEnabled, unseen > 0 {
+                            NotificationCenter.default.post(name: .pokeReceived, object: reception)
+                        }
+                    }
+                case .failure:
+                    self.cloudErrorMessage = "即時通知同步失敗，請確認網路後重試。"
+                }
+            }
+        }
+    }
+
     /// 切換子任務完成狀態；雲端任務等待後端確認，再由即時監聽更新畫面。
     func toggleSubtask(taskID: UUID, subtaskID: UUID) async {
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
@@ -1449,6 +1567,19 @@ final class AppStore {
         let key = PokeCountKey(groupID: groupID, memberID: memberID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
         pokeCounts[key] = pokeCount
+        if dataMode == .live,
+           let firestoreGroupID = groups.first(where: { $0.id == groupID })?.firestoreDocumentID,
+           let recipientUID = member.firebaseUID {
+            Task { [weak self] in
+                do {
+                    let repository = self?.pokeRepository ?? PokeRepository()
+                    self?.pokeRepository = repository
+                    try await repository.send(groupID: firestoreGroupID, recipientUID: recipientUID, style: style)
+                } catch {
+                    self?.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "戳戳送出失敗，請重試。"
+                }
+            }
+        }
         return pokeCount
     }
 
