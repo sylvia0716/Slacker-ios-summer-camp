@@ -16,6 +16,7 @@ struct PeerReview: Identifiable, Hashable {
 }
 
 struct PeerReviewSummary: Equatable {
+    var participantCount = 0
     var totalReviewCount = 0
     var completedReviewerCount = 0
     var taskCompletionScoreTotal = 0
@@ -27,6 +28,37 @@ struct PeerReviewSummary: Equatable {
     func average(total: Int) -> Double {
         guard totalReviewCount > 0 else { return 0 }
         return Double(total) / Double(totalReviewCount)
+    }
+}
+
+/// A private, per-project snapshot of the scores received by the signed-in user.
+struct PersonalPeerReviewProject: Identifiable, Equatable {
+    let groupID: String
+    let groupName: String
+    let completedAt: Date
+    let reviewCount: Int
+    let acceptedReviewCount: Int
+    let excludedReviewCount: Int
+    let taskCompletionScoreTotal: Int
+    let discussionScoreTotal: Int
+    let collaborationScoreTotal: Int
+    let ideaScoreTotal: Int
+    let reliabilityScoreTotal: Int
+    let taskCompletionScore: Double
+    let discussionScore: Double
+    let collaborationScore: Double
+    let ideaScore: Double
+    let reliabilityScore: Double
+
+    var id: String { groupID }
+
+    func average(total: Int) -> Double {
+        guard reviewCount > 0 else { return 0 }
+        return Double(total) / Double(reviewCount)
+    }
+
+    var overallAverage: Double {
+        (taskCompletionScore + discussionScore + collaborationScore + ideaScore + reliabilityScore) / 5
     }
 }
 

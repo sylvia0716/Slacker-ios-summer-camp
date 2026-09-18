@@ -11,6 +11,7 @@ struct PeerReviewOverlay: View {
     let tasks: [ProjectTask]
     let reviews: [PeerReview]
     let completedReviewerCount: Int
+    let peerReviewParticipantCount: Int
     let syncError: String?
     let onReturnToMeme: () -> Void
     let onSubmit: (UUID, Int, Int, Int, Int, Int, String) async throws -> Void
@@ -25,38 +26,66 @@ struct PeerReviewOverlay: View {
     @State private var errorMessage: String?
     @State private var showsResultsPlaceholder = false
     @State private var hasEnteredReview = false
+    @State private var showsExitReviewConfirmation = false
+    @FocusState private var isCommentFocused: Bool
 
     var body: some View {
         ZStack {
             BombTheme.yellow.ignoresSafeArea()
 
-            ScrollView {
-                SwiftUI.Group {
-                    if startsAtOutcomeSummary && !hasEnteredReview {
-                        outcomeSummary
-                    } else if let submittedMember {
-                        submissionSuccess(for: submittedMember)
-                    } else if let selectedMember {
-                        reviewForm(for: selectedMember)
-                    } else if hasCompletedAllReviews {
-                        completionContent
-                    } else {
-                        memberList
+            ScrollViewReader { proxy in
+                ScrollView {
+                    SwiftUI.Group {
+                        if startsAtOutcomeSummary && !hasEnteredReview {
+                            outcomeSummary
+                        } else if let submittedMember {
+                            submissionSuccess(for: submittedMember)
+                        } else if let selectedMember {
+                            reviewForm(for: selectedMember)
+                        } else if hasCompletedAllReviews {
+                            completionContent
+                        } else {
+                            memberList
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 40)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isCommentFocused = false
+                        }
+                }
+                .onChange(of: isCommentFocused) { _, isFocused in
+                    guard isFocused else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        withAnimation(.snappy) {
+                            proxy.scrollTo("peer-review-comment", anchor: .center)
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 40)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
+                .onChange(of: comment) { _, _ in
+                    guard isCommentFocused else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo("peer-review-comment", anchor: .bottom)
+                    }
+                }
             }
-            .scrollIndicators(.hidden)
 
             if showsConfirmation, let selectedMember {
                 confirmationOverlay(for: selectedMember)
             }
+
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .accessibilityElement(children: .contain)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -73,8 +102,16 @@ struct PeerReviewOverlay: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedMember != nil, submittedMember == nil, !showsConfirmation {
+            if selectedMember != nil,
+               submittedMember == nil,
+               !showsConfirmation,
+               !isCommentFocused {
                 reviewSubmitBar
+            }
+        }
+        .overlay {
+            if showsExitReviewConfirmation {
+                exitReviewConfirmationOverlay
             }
         }
     }
@@ -130,13 +167,13 @@ struct PeerReviewOverlay: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
 
-            if theme.isIncident && !unfinishedTaskTitles.isEmpty {
+            if theme.isIncident && !unfinishedTasks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("未完成工作")
                         .font(.headline.weight(.black))
 
-                    ForEach(unfinishedTaskTitles, id: \.self) { title in
-                        Label(title, systemImage: "exclamationmark.circle.fill")
+                    ForEach(unfinishedTasks) { task in
+                        Label(task.title, systemImage: "exclamationmark.circle.fill")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink)
                     }
@@ -249,12 +286,25 @@ struct PeerReviewOverlay: View {
                     Text(member.role.title).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isCommentFocused = false
+            }
 
             objectiveSummary(for: member)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isCommentFocused = false
+                }
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(ReviewCriterion.allCases.enumerated()), id: \.offset) { index, criterion in
                     ratingRow(criterion)
+                        .simultaneousGesture(
+                            TapGesture().onEnded {
+                                isCommentFocused = false
+                            }
+                        )
 
                     if index < ReviewCriterion.allCases.count - 1 {
                         Divider()
@@ -269,11 +319,21 @@ struct PeerReviewOverlay: View {
                     .padding(.vertical, 14)
             }
             .padding(.horizontal, 14)
-            .background(BombTheme.paper)
+            .background {
+                BombTheme.paper
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isCommentFocused = false
+                    }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
 
             anonymityNotice
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isCommentFocused = false
+                }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -335,6 +395,7 @@ struct PeerReviewOverlay: View {
             HStack(spacing: 2) {
                 ForEach(1...5, id: \.self) { value in
                     Button {
+                        isCommentFocused = false
                         withAnimation(.snappy) {
                             scores[criterion] = value
                         }
@@ -367,6 +428,7 @@ struct PeerReviewOverlay: View {
                 .overlay(BombTheme.ink.opacity(0.2))
 
             Button {
+                isCommentFocused = false
                 showsConfirmation = true
             } label: {
                 Text(allScoresComplete ? "送出匿名評價" : "尚有 \(ReviewCriterion.allCases.count - completedScoreCount) 項未評分")
@@ -412,6 +474,7 @@ struct PeerReviewOverlay: View {
 
                 TextEditor(text: $comment)
                     .font(.subheadline)
+                    .focused($isCommentFocused)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 112)
                     .onChange(of: comment) { _, newValue in
@@ -421,6 +484,7 @@ struct PeerReviewOverlay: View {
                     }
             }
             .padding(8)
+            .id("peer-review-comment")
             .background(Color.white.opacity(0.55))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
@@ -481,6 +545,61 @@ struct PeerReviewOverlay: View {
         }
     }
 
+    private var exitReviewConfirmationOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label("尚未送出評價", systemImage: "exclamationmark.triangle.fill")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+
+                Text("目前填寫的評分與評語尚未送出，確定要離開嗎？")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button("繼續填寫") {
+                        withAnimation(.snappy) {
+                            showsExitReviewConfirmation = false
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button("確定離開") {
+                        withAnimation(.snappy) {
+                            showsExitReviewConfirmation = false
+                        }
+                        returnToList()
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+        .transition(.opacity)
+        .zIndex(2)
+    }
+
     private func submissionSuccess(for member: Member) -> some View {
         let remainingCount = pendingMembers.count
 
@@ -517,13 +636,13 @@ struct PeerReviewOverlay: View {
                 .font(.subheadline.weight(.bold))
 
             VStack(alignment: .leading, spacing: 8) {
-                summaryRow(label: "已評價人數", value: "\(completedReviewCount) / \(otherMembers.count)")
-                summaryRow(label: "整體互評完成進度", value: "\(completedReviewerCount) / \(members.count) 位")
+                summaryRow(label: "你已評完的隊友", value: "\(completedReviewCount) / \(otherMembers.count) 位")
+                summaryRow(label: "完成全部互評的成員", value: "\(completedReviewerCount) / \(peerReviewParticipantCount) 位")
             }
 
-            Text(completedReviewerCount == members.count ? theme.everyoneCompletedMessage : theme.waitingMessage)
+            Text(completedReviewerCount >= peerReviewParticipantCount ? theme.everyoneCompletedMessage : theme.waitingMessage)
                 .font(.subheadline.weight(.black))
-                .foregroundStyle(completedReviewerCount == members.count ? theme.accentColor : BombTheme.red)
+                .foregroundStyle(completedReviewerCount >= peerReviewParticipantCount ? theme.accentColor : BombTheme.red)
 
             anonymityNotice
 
@@ -580,11 +699,11 @@ struct PeerReviewOverlay: View {
     }
 
     private var incompleteTaskCount: Int {
-        tasks.count - completedTaskCount
+        unfinishedTasks.count
     }
 
-    private var unfinishedTaskTitles: [String] {
-        Array(tasks.filter { $0.progress < 100 }.map(\.title).prefix(3))
+    private var unfinishedTasks: [ProjectTask] {
+        tasks.filter { $0.progress < 100 }
     }
 
     private var formattedDeadline: String {
@@ -632,6 +751,7 @@ struct PeerReviewOverlay: View {
         scores = [:]
         comment = ""
         errorMessage = nil
+        isCommentFocused = false
     }
 
     private func returnToList() {
@@ -639,11 +759,15 @@ struct PeerReviewOverlay: View {
         scores = [:]
         comment = ""
         errorMessage = nil
+        isCommentFocused = false
     }
 
     private func handleHeaderBack() {
+        isCommentFocused = false
         if selectedMemberID != nil {
-            returnToList()
+            withAnimation(.snappy) {
+                showsExitReviewConfirmation = true
+            }
         } else {
             onLater()
         }
@@ -669,6 +793,7 @@ struct PeerReviewOverlay: View {
         showsConfirmation = false
         errorMessage = nil
         showsResultsPlaceholder = false
+        isCommentFocused = false
         withAnimation(.snappy) { hasEnteredReview = false }
     }
 

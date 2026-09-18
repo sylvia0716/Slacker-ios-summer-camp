@@ -271,6 +271,10 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
     }
 
     if (!memberSnapshot.exists) {
+      const groupDeadline = millis(groupSnapshot.data().deadline);
+      if (groupDeadline === null || groupDeadline <= Date.now()) {
+        throw callableError("failed-precondition", "This group is already closed.", "group-closed");
+      }
       transaction.create(memberRef, {
         userID,
         role: "member",

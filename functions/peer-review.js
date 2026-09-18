@@ -1,5 +1,12 @@
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const {
+  participantUIDs: normalizedParticipantUIDs,
+  peerReviewProgress,
+  personalReviewSummaries,
+  reviewedUIDs: normalizedReviewedUIDs,
+} = require("./peer-review-calculation");
 
 const region = "asia-east1";
 
@@ -41,6 +48,59 @@ function integer(value) {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+function commentsByRevieweeForParticipants(participants, submissionDocuments, pendingSubmission = null) {
+  const result = new Map(participants.map((uid) => [uid, []]));
+  const append = (revieweeUID, comment) => {
+    const normalizedComment = typeof comment === "string" ? comment.trim() : "";
+    if (!normalizedComment || !result.has(revieweeUID)) return;
+    result.get(revieweeUID).push(normalizedComment);
+  };
+
+  submissionDocuments.forEach((document) => {
+    const submission = document.data();
+    append(submission.revieweeUID, submission.comment);
+  });
+  if (pendingSubmission) append(pendingSubmission.revieweeUID, pendingSubmission.comment);
+  result.forEach((comments) => comments.sort((left, right) => left.localeCompare(right, "zh-Hant")));
+  return result;
+}
+
+function publicSummaryData(aggregate, progress) {
+  return {
+    participantCount: progress.participantCount,
+    totalReviewCount: aggregate.totalReviewCount,
+    completedReviewerCount: progress.completedReviewerCount,
+    taskCompletionScoreTotal: progress.resultsAvailable ? aggregate.taskCompletionScoreTotal : 0,
+    discussionScoreTotal: progress.resultsAvailable ? aggregate.discussionScoreTotal : 0,
+    collaborationScoreTotal: progress.resultsAvailable ? aggregate.collaborationScoreTotal : 0,
+    ideaScoreTotal: progress.resultsAvailable ? aggregate.ideaScoreTotal : 0,
+    reliabilityScoreTotal: progress.resultsAvailable ? aggregate.reliabilityScoreTotal : 0,
+    resultsAvailable: progress.resultsAvailable,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function personalProjectData(groupID, groupData, summary) {
+  return {
+    groupID,
+    groupName: typeof groupData?.name === "string" ? groupData.name : "已完成專案",
+    completedAt: groupData?.deadline instanceof Timestamp
+      ? groupData.deadline
+      : FieldValue.serverTimestamp(),
+    ...summary,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function writePersonalProjects(transaction, db, group, groupData, participants, submissions) {
+  personalReviewSummaries(participants, submissions).forEach((summary, uid) => {
+    transaction.set(
+      db.collection("users").doc(uid).collection("peerReviewProjects").doc(group.id),
+      personalProjectData(group.id, groupData, summary),
+    );
+  });
+}
+
 exports.submitPeerReview = onCall({ region }, async (request) => {
   const reviewerUID = request.auth?.uid;
   if (!reviewerUID) fail("unauthenticated", "Sign in required.");
@@ -60,13 +120,14 @@ exports.submitPeerReview = onCall({ region }, async (request) => {
 
   await db.runTransaction(async (transaction) => {
     const [groupSnapshot, reviewerSnapshot, revieweeSnapshot, membersSnapshot,
-      submissionSnapshot, stateSnapshot, aggregateSnapshot] = await Promise.all([
+      submissionSnapshot, stateSnapshot, statesSnapshot, aggregateSnapshot] = await Promise.all([
       transaction.get(group),
       transaction.get(group.collection("members").doc(reviewerUID)),
       transaction.get(group.collection("members").doc(data.revieweeUID)),
       transaction.get(group.collection("members")),
       transaction.get(submission),
       transaction.get(state),
+      transaction.get(group.collection("peerReviewStates")),
       transaction.get(privateSummary),
     ]);
 
@@ -82,18 +143,27 @@ exports.submitPeerReview = onCall({ region }, async (request) => {
       fail("already-exists", "This review was already submitted.");
     }
 
-    const oldReviewedUIDs = Array.isArray(stateSnapshot.data()?.reviewedUIDs)
-      ? stateSnapshot.data().reviewedUIDs.filter((uid) => typeof uid === "string")
-      : [];
-    const reviewedUIDs = [...new Set([...oldReviewedUIDs, data.revieweeUID])].sort();
-    const requiredReviewCount = Math.max(membersSnapshot.size - 1, 0);
-    const wasCompleted = stateSnapshot.data()?.completed === true;
-    const isCompleted = reviewedUIDs.length >= requiredReviewCount;
-
     const old = aggregateSnapshot.data() || {};
+    const participants = normalizedParticipantUIDs(old.participantUIDs).length > 0
+      ? normalizedParticipantUIDs(old.participantUIDs)
+      : normalizedParticipantUIDs(membersSnapshot.docs.map((member) => member.id));
+    if (!participants.includes(reviewerUID) || !participants.includes(data.revieweeUID)) {
+      fail("failed-precondition", "Peer review roster is already locked.");
+    }
+    const reviewedUIDs = normalizedParticipantUIDs([
+      ...normalizedReviewedUIDs(stateSnapshot.data()),
+      data.revieweeUID,
+    ]);
+    const statesByUID = new Map(statesSnapshot.docs.map((document) => [document.id, document.data()]));
+    statesByUID.set(reviewerUID, { reviewedUIDs });
+    const progress = peerReviewProgress(participants, statesByUID);
+    const isCompleted = progress.completedUIDs.includes(reviewerUID);
+
     const aggregate = {
+      participantUIDs: progress.participantUIDs,
+      participantCount: progress.participantCount,
       totalReviewCount: integer(old.totalReviewCount) + 1,
-      completedReviewerCount: integer(old.completedReviewerCount) + (!wasCompleted && isCompleted ? 1 : 0),
+      completedReviewerCount: progress.completedReviewerCount,
       taskCompletionScoreTotal: integer(old.taskCompletionScoreTotal) + data.taskCompletionScore,
       discussionScoreTotal: integer(old.discussionScoreTotal) + data.discussionScore,
       collaborationScoreTotal: integer(old.collaborationScoreTotal) + data.collaborationScore,
@@ -101,29 +171,22 @@ exports.submitPeerReview = onCall({ region }, async (request) => {
       reliabilityScoreTotal: integer(old.reliabilityScoreTotal) + data.reliabilityScore,
       updatedAt: FieldValue.serverTimestamp(),
     };
-    const resultsAvailable = aggregate.completedReviewerCount >= membersSnapshot.size;
     let commentsByReviewee = null;
+    let completedSubmissions = null;
 
-    if (resultsAvailable) {
+    if (progress.resultsAvailable) {
       const submissionsSnapshot = await transaction.get(
         group.collection("peerReviewSubmissions"),
       );
-      commentsByReviewee = new Map(
-        membersSnapshot.docs.map((member) => [member.id, []]),
+      commentsByReviewee = commentsByRevieweeForParticipants(
+        progress.participantUIDs,
+        submissionsSnapshot.docs,
+        { revieweeUID: data.revieweeUID, comment: data.comment },
       );
-
-      const appendComment = (revieweeUID, comment) => {
-        const normalizedComment = typeof comment === "string" ? comment.trim() : "";
-        if (!normalizedComment || !commentsByReviewee.has(revieweeUID)) return;
-        commentsByReviewee.get(revieweeUID).push(normalizedComment);
-      };
-
-      submissionsSnapshot.docs.forEach((document) => {
-        const submissionData = document.data();
-        appendComment(submissionData.revieweeUID, submissionData.comment);
-      });
-      appendComment(data.revieweeUID, data.comment);
-      commentsByReviewee.forEach((comments) => comments.sort((left, right) => left.localeCompare(right, "zh-Hant")));
+      completedSubmissions = [
+        ...submissionsSnapshot.docs.map((document) => document.data()),
+        { ...data, reviewerUID },
+      ];
     }
 
     transaction.create(submission, {
@@ -143,26 +206,129 @@ exports.submitPeerReview = onCall({ region }, async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
     transaction.set(privateSummary, aggregate);
-    transaction.set(publicSummary, {
-      totalReviewCount: aggregate.totalReviewCount,
-      completedReviewerCount: aggregate.completedReviewerCount,
-      taskCompletionScoreTotal: resultsAvailable ? aggregate.taskCompletionScoreTotal : 0,
-      discussionScoreTotal: resultsAvailable ? aggregate.discussionScoreTotal : 0,
-      collaborationScoreTotal: resultsAvailable ? aggregate.collaborationScoreTotal : 0,
-      ideaScoreTotal: resultsAvailable ? aggregate.ideaScoreTotal : 0,
-      reliabilityScoreTotal: resultsAvailable ? aggregate.reliabilityScoreTotal : 0,
-      resultsAvailable,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    transaction.set(publicSummary, publicSummaryData(aggregate, progress));
     commentsByReviewee?.forEach((comments, revieweeUID) => {
       transaction.set(privateComments.doc(revieweeUID), {
         comments,
         publishedAt: FieldValue.serverTimestamp(),
       });
     });
+    if (completedSubmissions) {
+      writePersonalProjects(
+        transaction, db, group, groupSnapshot.data(), progress.participantUIDs, completedSubmissions,
+      );
+    }
   });
 
   return { submitted: true };
+});
+
+// A member can leave after reviews have started. Recalculate against the locked roster so
+// the departed member never remains an impossible reviewer or review target.
+exports.reconcilePeerReviewMemberExit = onDocumentDeleted(
+  { region, document: "groups/{groupID}/members/{userID}", retry: true },
+  async (event) => {
+    const db = getFirestore();
+    const group = db.collection("groups").doc(event.params.groupID);
+    const privateSummary = group.collection("peerReviewAggregates").doc("summary");
+    const publicSummary = group.collection("peerReviewPublic").doc("summary");
+    const privateComments = group.collection("peerReviewComments");
+
+    await db.runTransaction(async (transaction) => {
+      const [groupSnapshot, aggregateSnapshot, membersSnapshot, statesSnapshot, submissionsSnapshot] = await Promise.all([
+        transaction.get(group),
+        transaction.get(privateSummary),
+        transaction.get(group.collection("members")),
+        transaction.get(group.collection("peerReviewStates")),
+        transaction.get(group.collection("peerReviewSubmissions")),
+      ]);
+      if (!aggregateSnapshot.exists) return;
+
+      const old = aggregateSnapshot.data() || {};
+      const liveUIDs = new Set(membersSnapshot.docs.map((member) => member.id));
+      const participants = normalizedParticipantUIDs(old.participantUIDs)
+        .filter((uid) => liveUIDs.has(uid));
+      if (participants.length === normalizedParticipantUIDs(old.participantUIDs).length) return;
+
+      const statesByUID = new Map(statesSnapshot.docs.map((document) => [document.id, document.data()]));
+      const progress = peerReviewProgress(participants, statesByUID);
+      const aggregate = {
+        ...old,
+        participantUIDs: progress.participantUIDs,
+        participantCount: progress.participantCount,
+        completedReviewerCount: progress.completedReviewerCount,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      progress.participantUIDs.forEach((uid) => {
+        const oldState = statesByUID.get(uid) || {};
+        transaction.set(group.collection("peerReviewStates").doc(uid), {
+          reviewedUIDs: normalizedReviewedUIDs(oldState),
+          completed: progress.completedUIDs.includes(uid),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+      transaction.set(privateSummary, aggregate);
+      transaction.set(publicSummary, publicSummaryData(aggregate, progress));
+
+      if (progress.resultsAvailable) {
+        const comments = commentsByRevieweeForParticipants(
+          progress.participantUIDs,
+          submissionsSnapshot.docs,
+        );
+        comments.forEach((values, uid) => {
+          transaction.set(privateComments.doc(uid), {
+            comments: values,
+            publishedAt: FieldValue.serverTimestamp(),
+          });
+        });
+        writePersonalProjects(
+          transaction,
+          db,
+          group,
+          groupSnapshot.data(),
+          progress.participantUIDs,
+          submissionsSnapshot.docs.map((document) => document.data()),
+        );
+      }
+    });
+  },
+);
+
+// Backfill completed projects that the signed-in user can still access. Future reports are
+// published automatically when the final review arrives and remain available after leaving.
+exports.syncMyPeerReviewHistory = onCall({ region }, async (request) => {
+  const userID = request.auth?.uid;
+  if (!userID) fail("unauthenticated", "Sign in required.");
+  if (request.data && (typeof request.data !== "object"
+      || Array.isArray(request.data) || Object.keys(request.data).length > 0)) {
+    fail("invalid-argument", "No arguments are accepted.");
+  }
+
+  const db = getFirestore();
+  const memberships = await db.collectionGroup("members").where("userID", "==", userID).get();
+  const groupRefs = memberships.docs
+    .filter((document) => document.id === userID && document.ref.parent.parent?.parent.path === "groups")
+    .map((document) => document.ref.parent.parent);
+  let syncedProjectCount = 0;
+
+  for (const group of groupRefs) {
+    const [groupSnapshot, publicSummarySnapshot] = await Promise.all([
+      group.get(),
+      group.collection("peerReviewPublic").doc("summary").get(),
+    ]);
+    if (!groupSnapshot.exists || publicSummarySnapshot.data()?.resultsAvailable !== true) continue;
+    const submissionsSnapshot = await group.collection("peerReviewSubmissions")
+      .where("revieweeUID", "==", userID).get();
+    const personal = personalReviewSummaries(
+      [userID], submissionsSnapshot.docs.map((document) => document.data()),
+    ).get(userID);
+    if (!personal || personal.reviewCount === 0) continue;
+    await db.collection("users").doc(userID).collection("peerReviewProjects").doc(group.id)
+      .set(personalProjectData(group.id, groupSnapshot.data(), personal));
+    syncedProjectCount += 1;
+  }
+  return { syncedProjectCount };
 });
 
 exports.getPeerReviewComments = onCall({ region }, async (request) => {

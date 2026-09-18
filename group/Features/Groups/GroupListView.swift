@@ -170,6 +170,7 @@ struct GroupListView: View {
                             status: status,
                             progress: model.projectProgress(for: group.id),
                             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
+                            peerReviewParticipantCount: model.peerReviewParticipantCount(in: group.id),
                             now: now,
                             animationDelay: Double(index) * 0.09,
                             animationSequence: animationSequence
@@ -194,7 +195,8 @@ struct GroupListView: View {
         guard now >= group.deadline else { return .active }
 
         let completedReviewerCount = model.completedPeerReviewerCount(in: group.id)
-        if !group.memberIDs.isEmpty, completedReviewerCount == group.memberIDs.count {
+        let participantCount = model.peerReviewParticipantCount(in: group.id)
+        if participantCount > 0, completedReviewerCount >= participantCount {
             return .closed
         }
 
@@ -870,6 +872,7 @@ private struct GroupRow: View {
     let status: GroupListStatus
     let progress: Int
     let completedReviewerCount: Int
+    let peerReviewParticipantCount: Int
     let now: Date
     let animationDelay: TimeInterval
     let animationSequence: Int
@@ -969,6 +972,6 @@ private struct GroupRow: View {
     private var reviewProgressText: String {
         status == .closed
             ? "互評已完成"
-            : "互評進度 \(completedReviewerCount) / \(group.memberIDs.count)"
+            : "互評進度 \(completedReviewerCount) / \(peerReviewParticipantCount)"
     }
 }

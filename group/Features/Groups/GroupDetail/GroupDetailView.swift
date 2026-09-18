@@ -19,6 +19,7 @@ struct GroupDetailView: View {
     @State private var peerReviewStartsAtOutcomeSummary = false
     @State private var peerReviewRevision = 0
     @State private var showsPeerReviewPage = false
+    @State private var showsBattleReport = false
     @State private var showsExplosionMeme = false
     @State private var showsSuccessMeme = false
     @State private var hasConfiguredOutcomePresentation = false
@@ -174,6 +175,9 @@ struct GroupDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showsPeerReviewPage) {
             peerReviewDestination
+        }
+        .navigationDestination(isPresented: $showsBattleReport) {
+            PeerReviewReportView(model: model, group: currentGroup)
         }
         .bombTabBarHidden(
             showsPublishTaskSheet
@@ -605,6 +609,7 @@ struct GroupDetailView: View {
             tasks: model.projectTasks.filter { $0.groupID == group.id },
             reviews: model.reviews(for: group.id),
             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
+            peerReviewParticipantCount: model.peerReviewParticipantCount(in: group.id),
             syncError: model.peerReviewSyncError(for: group.id),
             onReturnToMeme: returnFromPeerReviewToMeme,
             onSubmit: { revieweeID, taskScore, discussionScore, collaborationScore, ideaScore, reliabilityScore, comment in
@@ -653,10 +658,13 @@ struct GroupDetailView: View {
             currentUserID: model.currentUserID,
             reviews: model.reviews(for: group.id),
             reviewSummary: model.peerReviewSummary(for: group.id),
+            personalReviewProject: model.personalPeerReviewProject(for: currentGroup),
+            personalResultSyncError: model.personalPeerReviewSyncError,
             reviewComments: model.receivedPeerReviewComments(for: group.id),
             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
             syncError: model.peerReviewSyncError(for: group.id),
             onShowMeme: showOutcomeMeme,
+            onShowBattleReport: { showsBattleReport = true },
             onBeginReview: beginPeerReview
         )
     }
@@ -1078,7 +1086,7 @@ private struct ExplosionMemeOverlay: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
 
-                        Text("本次任務未能如期完成，\n請查看戰損並完成匿名隊員互評。")
+                        Text("本次任務未能如期完成，\n請查看團隊戰報並完成匿名隊員互評。")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink.opacity(0.76))
                             .multilineTextAlignment(.center)

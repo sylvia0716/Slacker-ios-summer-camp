@@ -10,10 +10,13 @@ struct ProjectSettlementSection: View {
     let currentUserID: UUID
     let reviews: [PeerReview]
     let reviewSummary: PeerReviewSummary?
+    let personalReviewProject: PersonalPeerReviewProject?
+    let personalResultSyncError: String?
     let reviewComments: [String]
     let completedReviewerCount: Int
     let syncError: String?
     let onShowMeme: () -> Void
+    let onShowBattleReport: () -> Void
     let onBeginReview: () -> Void
 
     var body: some View {
@@ -43,12 +46,44 @@ struct ProjectSettlementSection: View {
             }
 
             damageSummary
+            battleReportButton
             peerReviewProgress
 
             if everyoneCompletedReviews {
                 reviewResults
             }
         }
+    }
+
+    private var battleReportButton: some View {
+        Button(action: onShowBattleReport) {
+            HStack(spacing: 12) {
+                Image(systemName: "scope")
+                    .font(.title2.weight(.black))
+                    .frame(width: 44, height: 44)
+                    .background(BombTheme.yellow)
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("團隊戰報")
+                        .font(.headline.weight(.black))
+                    Text("查看 AI 分析")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.black))
+            }
+            .foregroundStyle(BombTheme.ink)
+            .padding(16)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(BombTheme.ink, lineWidth: 3))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("查看團隊戰報 AI 分析")
     }
 
     private var damageSummary: some View {
@@ -74,7 +109,7 @@ struct ProjectSettlementSection: View {
                         .font(.caption.weight(.black))
                         .foregroundStyle(.secondary)
 
-                    ForEach(unfinishedTasks.prefix(3)) { task in
+                    ForEach(unfinishedTasks) { task in
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.circle.fill")
                                 .foregroundStyle(BombTheme.red)
@@ -117,8 +152,8 @@ struct ProjectSettlementSection: View {
 
                 Spacer()
 
-                Text("\(myCompletedReviewCount) / \(otherMemberCount)")
-                    .font(.subheadline.weight(.black))
+                Text("你已評 \(myCompletedReviewCount) / \(otherMemberCount) 位")
+                    .font(.caption.weight(.black))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(BombTheme.yellow)
@@ -137,11 +172,11 @@ struct ProjectSettlementSection: View {
             }
 
             HStack {
-                Text("全組完成進度")
+                Text("完成全部互評的成員")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(completedReviewerCount) / \(members.count) 位")
+                Text("\(completedReviewerCount) / \(reviewParticipantCount) 位")
                     .font(.caption.weight(.black))
             }
 
@@ -176,24 +211,44 @@ struct ProjectSettlementSection: View {
 
     private var reviewResults: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("互評結果", systemImage: "chart.bar.fill")
+            Label("我的互評結果", systemImage: "person.crop.circle.badge.checkmark")
                 .font(.headline.weight(.black))
 
-            Text("結果以全組匿名評分平均呈現")
+            Text("只顯示你在本次專案收到的匿名評分")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
 
-            ForEach(reviewMetrics) { metric in
-                HStack(spacing: 10) {
-                    Text(metric.title)
-                        .font(.subheadline.weight(.bold))
-                    Spacer()
-                    ProgressView(value: metric.average, total: 5)
-                        .tint(BombTheme.green)
-                        .frame(width: 92)
-                    Text(metric.average.formatted(.number.precision(.fractionLength(1))))
-                        .font(.subheadline.monospacedDigit().weight(.black))
-                        .frame(width: 30, alignment: .trailing)
+            if personalReviewProject == nil {
+                if let personalResultSyncError {
+                    Label(personalResultSyncError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(BombTheme.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                } else {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(BombTheme.ink)
+                        Text("正在整理你的互評結果…")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+                }
+            } else {
+                ForEach(reviewMetrics) { metric in
+                    HStack(spacing: 10) {
+                        Text(metric.title)
+                            .font(.subheadline.weight(.bold))
+                        Spacer()
+                        ProgressView(value: metric.average, total: 5)
+                            .tint(BombTheme.green)
+                            .frame(width: 92)
+                        Text(metric.average.formatted(.number.precision(.fractionLength(1))))
+                            .font(.subheadline.monospacedDigit().weight(.black))
+                            .frame(width: 30, alignment: .trailing)
+                    }
                 }
             }
 
@@ -275,30 +330,28 @@ struct ProjectSettlementSection: View {
 
     private var myReviewStatus: String {
         if myCompletedReviewCount == 0 { return "依本次合作表現完成匿名評分" }
-        if myCompletedReviewCount < otherMemberCount { return "還有隊員尚未完成評分" }
-        return "本次互評已送出"
+        if myCompletedReviewCount < otherMemberCount { return "還有隊友等你評分" }
+        return "你已評完所有隊友"
     }
 
     private var everyoneCompletedReviews: Bool {
-        !members.isEmpty && completedReviewerCount >= members.count
+        reviewParticipantCount > 0 && completedReviewerCount >= reviewParticipantCount
+    }
+
+    private var reviewParticipantCount: Int {
+        let syncedCount = reviewSummary?.participantCount ?? 0
+        return syncedCount > 0 ? syncedCount : members.count
     }
 
     private var reviewMetrics: [SettlementReviewMetric] {
-        [
-            SettlementReviewMetric(title: "任務完成", average: average(summaryTotal: reviewSummary?.taskCompletionScoreTotal, local: \.taskCompletionScore)),
-            SettlementReviewMetric(title: "討論參與", average: average(summaryTotal: reviewSummary?.discussionScoreTotal, local: \.discussionScore)),
-            SettlementReviewMetric(title: "主動協助", average: average(summaryTotal: reviewSummary?.collaborationScoreTotal, local: \.collaborationScore)),
-            SettlementReviewMetric(title: "解決問題", average: average(summaryTotal: reviewSummary?.ideaScoreTotal, local: \.ideaScore)),
-            SettlementReviewMetric(title: "準時可靠", average: average(summaryTotal: reviewSummary?.reliabilityScoreTotal, local: \.reliabilityScore))
+        guard let personalReviewProject else { return [] }
+        return [
+            SettlementReviewMetric(title: "任務完成", average: personalReviewProject.average(total: personalReviewProject.taskCompletionScoreTotal)),
+            SettlementReviewMetric(title: "討論參與", average: personalReviewProject.average(total: personalReviewProject.discussionScoreTotal)),
+            SettlementReviewMetric(title: "主動協助", average: personalReviewProject.average(total: personalReviewProject.collaborationScoreTotal)),
+            SettlementReviewMetric(title: "解決問題", average: personalReviewProject.average(total: personalReviewProject.ideaScoreTotal)),
+            SettlementReviewMetric(title: "準時可靠", average: personalReviewProject.average(total: personalReviewProject.reliabilityScoreTotal))
         ]
-    }
-
-    private func average(summaryTotal: Int?, local keyPath: KeyPath<PeerReview, Int>) -> Double {
-        if let reviewSummary, let summaryTotal {
-            return reviewSummary.average(total: summaryTotal)
-        }
-        guard !reviews.isEmpty else { return 0 }
-        return Double(reviews.reduce(0) { $0 + $1[keyPath: keyPath] }) / Double(reviews.count)
     }
 }
 

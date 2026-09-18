@@ -9,6 +9,7 @@ struct CloudPeerReviewStateDocument: Codable {
 }
 
 struct CloudPeerReviewSummaryDocument: Codable {
+    var participantCount: Int?
     var totalReviewCount: Int = 0
     var completedReviewerCount: Int = 0
     var taskCompletionScoreTotal: Int = 0
@@ -23,8 +24,89 @@ struct CloudPeerReviewCommentsDocument: Codable {
     var comments: [String] = []
 }
 
+struct CloudPersonalPeerReviewProjectDocument: Codable {
+    var groupID: String?
+    var groupName: String?
+    var completedAt: Timestamp?
+    var reviewCount: Int?
+    var acceptedReviewCount: Int?
+    var excludedReviewCount: Int?
+    var taskCompletionScoreTotal: Int?
+    var discussionScoreTotal: Int?
+    var collaborationScoreTotal: Int?
+    var ideaScoreTotal: Int?
+    var reliabilityScoreTotal: Int?
+    var taskCompletionScore: Double?
+    var discussionScore: Double?
+    var collaborationScore: Double?
+    var ideaScore: Double?
+    var reliabilityScore: Double?
+}
+
 @MainActor
 final class PeerReviewRepository {
+    func syncMyHistory() async throws {
+        guard Auth.auth().currentUser != nil else {
+            throw PeerReviewCloudError.signedOut
+        }
+        do {
+            _ = try await Functions.functions(region: "asia-east1")
+                .httpsCallable("syncMyPeerReviewHistory").call([:])
+        } catch {
+            throw PeerReviewCloudError.syncFailed
+        }
+    }
+
+    func listenToMyProjects(
+        receive: @escaping (Result<[PersonalPeerReviewProject], Error>) -> Void
+    ) -> ListenerRegistration? {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            receive(.failure(PeerReviewCloudError.signedOut))
+            return nil
+        }
+        return Firestore.firestore().collection("users").document(uid)
+            .collection("peerReviewProjects")
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    receive(.failure(error))
+                    return
+                }
+                do {
+                    let projects: [PersonalPeerReviewProject] = try (snapshot?.documents ?? []).compactMap { document in
+                        let value = try document.data(as: CloudPersonalPeerReviewProjectDocument.self)
+                        guard let groupName = value.groupName,
+                              let completedAt = value.completedAt,
+                              let reviewCount = value.reviewCount,
+                              reviewCount > 0 else { return nil }
+                        func score(_ robustScore: Double?, total: Int?) -> Double {
+                            robustScore ?? Double(total ?? 0) / Double(reviewCount)
+                        }
+                        return PersonalPeerReviewProject(
+                            groupID: value.groupID ?? document.documentID,
+                            groupName: groupName,
+                            completedAt: completedAt.dateValue(),
+                            reviewCount: reviewCount,
+                            acceptedReviewCount: value.acceptedReviewCount ?? reviewCount,
+                            excludedReviewCount: value.excludedReviewCount ?? 0,
+                            taskCompletionScoreTotal: value.taskCompletionScoreTotal ?? 0,
+                            discussionScoreTotal: value.discussionScoreTotal ?? 0,
+                            collaborationScoreTotal: value.collaborationScoreTotal ?? 0,
+                            ideaScoreTotal: value.ideaScoreTotal ?? 0,
+                            reliabilityScoreTotal: value.reliabilityScoreTotal ?? 0,
+                            taskCompletionScore: score(value.taskCompletionScore, total: value.taskCompletionScoreTotal),
+                            discussionScore: score(value.discussionScore, total: value.discussionScoreTotal),
+                            collaborationScore: score(value.collaborationScore, total: value.collaborationScoreTotal),
+                            ideaScore: score(value.ideaScore, total: value.ideaScoreTotal),
+                            reliabilityScore: score(value.reliabilityScore, total: value.reliabilityScoreTotal)
+                        )
+                    }
+                    receive(.success(projects.sorted { $0.completedAt > $1.completedAt }))
+                } catch {
+                    receive(.failure(error))
+                }
+            }
+    }
+
     func submit(
         groupID: String,
         revieweeUID: String,

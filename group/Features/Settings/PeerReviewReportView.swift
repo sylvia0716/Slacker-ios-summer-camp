@@ -1,56 +1,144 @@
 import SwiftUI
+import UIKit
 
 /// Combined peer-review and AI report styled like a compact team report card.
 struct PeerReviewReportView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
     let model: GroupBombModel
+    let group: Group
+    @State private var isGeneratingAnalysis = false
+    @State private var analysisError: String?
+    @State private var exportedReport: ExportedTeamReport?
+    @State private var exportError: String?
 
-    private var averageScore: Int {
-        guard !model.radar.isEmpty else { return 0 }
-        return Int(model.radar.map(\.score).reduce(0, +) / Double(model.radar.count) * 100)
+    private var projectAnalysis: CommunicationAnalysis? {
+        model.communicationAnalyses[group.id]
+    }
+
+    private var resultsAvailable: Bool {
+        projectAnalysis?.taskCompletionScore != nil
+            && projectAnalysis?.discussionScore != nil
+            && projectAnalysis?.collaborationScore != nil
+            && projectAnalysis?.problemSolvingScore != nil
+            && projectAnalysis?.reliabilityScore != nil
+    }
+
+    private var reportMetrics: [RadarMetric] {
+        return [
+            RadarMetric(title: "任務完成", score: normalizedScore(projectAnalysis?.taskCompletionScore)),
+            RadarMetric(title: "討論參與", score: normalizedScore(projectAnalysis?.discussionScore)),
+            RadarMetric(title: "主動協助", score: normalizedScore(projectAnalysis?.collaborationScore)),
+            RadarMetric(title: "解決問題", score: normalizedScore(projectAnalysis?.problemSolvingScore)),
+            RadarMetric(title: "準時可靠", score: normalizedScore(projectAnalysis?.reliabilityScore))
+        ]
+    }
+
+    private var averageScore: Int? {
+        guard resultsAvailable else { return nil }
+        return Int(reportMetrics.map(\.score).reduce(0, +) / Double(reportMetrics.count) * 100)
+    }
+
+    private var groupTasks: [ProjectTask] {
+        model.projectTasks.filter { $0.groupID == group.id }
+    }
+
+    private var groupMembers: [Member] {
+        group.memberIDs.compactMap { memberID in
+            model.members.first { $0.id == memberID }
+        }
+    }
+
+    private func normalizedScore(_ score: Int?) -> Double {
+        guard let score else { return 0 }
+        return min(max(Double(score) / 100, 0), 1)
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("貢獻雷達")
+                        Text("AI 專案雷達")
                             .font(.system(.largeTitle, design: .rounded, weight: .black))
                         Spacer()
-                        Text("匿名互評")
-                            .font(.caption.weight(.black))
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 7)
-                            .background(BombTheme.ink)
-                            .foregroundStyle(BombTheme.yellow)
-                            .clipShape(.capsule)
-                    }
-
-                    RadarReportCard(metrics: model.radar, averageScore: averageScore)
-
-                    Text("AI 戰情成績單")
-                        .font(.title2.weight(.black))
-                    AIReportCard(model: model)
-
-                    GeometryReader { proxy in
-                        Button {
-                            model.lastEvent = "PDF 戰報已準備完成"
-                        } label: {
-                            Label("匯出貢獻戰報 PDF", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
+                        Button(action: exportReport) {
+                            Label("匯出戰報", systemImage: "square.and.arrow.up")
+                                .font(.caption.weight(.black))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 8)
+                                .background(BombTheme.ink)
+                                .foregroundStyle(BombTheme.yellow)
+                                .clipShape(.capsule)
+                                .contentShape(.capsule)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(BombTheme.ink)
-                        .frame(width: proxy.size.width * 0.6)
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("匯出團隊戰報 PDF")
                     }
-                    .frame(height: 44)
+
+                    RadarReportCard(
+                        metrics: reportMetrics,
+                        averageScore: averageScore,
+                        groupName: group.name,
+                        analysisUpdatedAt: projectAnalysis?.updatedAt,
+                        resultsAvailable: resultsAvailable,
+                        isGenerating: isGeneratingAnalysis,
+                        errorMessage: analysisError,
+                        onRetry: { Task { await generateAnalysis() } }
+                    )
+
+                    Text("專案成果與 AI 復盤")
+                        .font(.title2.weight(.black))
+                    AIReportCard(
+                        progress: model.projectProgress(for: group.id),
+                        tasks: groupTasks,
+                        analysis: model.communicationAnalyses[group.id]
+                    )
+
+                    Text("成員貢獻明細")
+                        .font(.title2.weight(.black))
+
+                    Label(
+                        "依 App 內紀錄整理，不包含口頭討論或線下工作，不應作為評分或考核的唯一依據。",
+                        systemImage: "info.circle.fill"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    if groupMembers.isEmpty {
+                        Text("目前沒有可顯示的成員紀錄。")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(16)
+                            .background(BombTheme.paper)
+                            .clipShape(RoundedRectangle(cornerRadius: 24))
+                            .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+                    } else {
+                        ForEach(groupMembers) { member in
+                            MemberContributionCard(
+                                member: member,
+                                role: group.memberRoles[member.id] ?? member.role,
+                                tasks: groupTasks.filter { $0.ownerMemberID == member.id }
+                            )
+                        }
+                    }
+
                 }
                 .padding(16)
                 .padding(.bottom, 24)
             }
+
+            LinearGradient(
+                colors: [BombTheme.yellow.opacity(0), BombTheme.yellow.opacity(0.82), BombTheme.yellow],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 56)
+            .offset(y: safeAreaInsets.bottom)
+            .allowsHitTesting(false)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -62,30 +150,83 @@ struct PeerReviewReportView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
+                .accessibilityLabel("返回專案結算")
             } trailing: {
                 EmptyView()
             }
+        }
+        .task {
+            guard !resultsAvailable else { return }
+            await generateAnalysis()
+        }
+        .sheet(item: $exportedReport) { report in
+            TeamReportShareSheet(activityItems: [report.url])
+        }
+        .bombDialog("無法匯出戰報", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("知道了") { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    private func generateAnalysis() async {
+        guard !isGeneratingAnalysis else { return }
+        isGeneratingAnalysis = true
+        analysisError = nil
+        defer { isGeneratingAnalysis = false }
+        do {
+            _ = try await model.generateProjectAIAnalysis(groupID: group.id)
+        } catch is CancellationError {
+            return
+        } catch {
+            analysisError = error.localizedDescription
+        }
+    }
+
+    private func exportReport() {
+        do {
+            let url = try TeamReportPDFExporter.export(
+                group: group,
+                progress: model.projectProgress(for: group.id),
+                tasks: groupTasks,
+                members: groupMembers,
+                analysis: projectAnalysis
+            )
+            exportedReport = ExportedTeamReport(url: url)
+            model.lastEvent = "團隊戰報 PDF 已產生"
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 }
 
 private struct RadarReportCard: View {
     let metrics: [RadarMetric]
-    let averageScore: Int
+    let averageScore: Int?
+    let groupName: String
+    let analysisUpdatedAt: Date?
+    let resultsAvailable: Bool
+    let isGenerating: Bool
+    let errorMessage: String?
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("團隊貢獻指數")
+                    Text("AI 團隊協作指數")
                         .font(.headline.weight(.black))
-                    Text("第 4 組｜4 位完成互評")
+                    Text(analysisUpdatedAt.map {
+                        "\(groupName)｜\($0.formatted(date: .abbreviated, time: .shortened))"
+                    } ?? "\(groupName)｜根據任務與討論紀錄")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(averageScore)")
+                Text(averageScore.map(String.init) ?? "—")
                     .font(.system(size: 42, weight: .black, design: .rounded))
             }
             .padding(.horizontal, 28)
@@ -93,39 +234,216 @@ private struct RadarReportCard: View {
 
             ContributionRadar(metrics: metrics)
                 .frame(height: 280)
+                .overlay {
+                    if !resultsAvailable {
+                        VStack(spacing: 10) {
+                            if isGenerating {
+                                ProgressView()
+                                    .tint(BombTheme.ink)
+                                Text("AI 正在分析專案紀錄…")
+                                    .font(.subheadline.weight(.black))
+                            } else {
+                                Text(errorMessage ?? "尚未產生 AI 專案分析")
+                                    .font(.subheadline.weight(.black))
+                                    .multilineTextAlignment(.center)
+                                Button("重新分析", action: onRetry)
+                                    .font(.caption.weight(.black))
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(BombTheme.ink)
+                            }
+                        }
+                        .padding(16)
+                        .frame(maxWidth: 250)
+                        .background(BombTheme.paper.opacity(0.96), in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 2))
+                    }
+                }
         }
         .foregroundStyle(BombTheme.ink)
         .padding(16)
         .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
-        .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 }
 
 private struct AIReportCard: View {
-    let model: GroupBombModel
+    let progress: Int
+    let tasks: [ProjectTask]
+    let analysis: CommunicationAnalysis?
+
+    private var completedTaskCount: Int {
+        tasks.filter { $0.progress >= 100 }.count
+    }
+
+    private var finalOutcomeDetail: String {
+        let totalCount = tasks.count
+        let unfinishedCount = max(totalCount - completedTaskCount, 0)
+        guard totalCount > 0 else {
+            return "本次專案沒有建立任務紀錄，最終完成度為 \(progress)%。"
+        }
+        return "最終完成度 \(progress)%，完成 \(completedTaskCount) / \(totalCount) 項任務，未完成 \(unfinishedCount) 項。"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            CommunicationAnalysisRow(analysis: model.latestCommunicationAnalysis)
+            AIReportRow(
+                icon: "checkmark.seal.fill", title: "最終任務成果",
+                detail: finalOutcomeDetail
+            )
+            Divider()
+            CommunicationAnalysisRow(analysis: analysis)
             Divider()
             AIReportRow(
-                icon: "chart.bar.fill", title: "團隊進度摘要",
-                detail: "團隊目前完成 \(model.teamProgress)%，多數任務皆按計畫推進，整體進度維持穩定。"
+                icon: "doc.text.magnifyingglass", title: "專案復盤結論",
+                detail: analysis?.strength ?? "AI 分析完成後，將整理本次專案值得延續的合作方式。"
             )
             Divider()
             AIReportRow(
-                icon: "exclamationmark.triangle.fill", title: "延誤風險",
-                detail: "米米目前進度偏慢，可能影響後續整合，建議優先確認交付時間與需要的支援。"
-            )
-            Divider()
-            AIReportRow(
-                icon: "arrow.right.circle.fill", title: "建議下一步",
-                detail: "先完成市場資料整理與來源確認，再集中處理簡報視覺統整，降低重複修改。"
+                icon: "arrow.clockwise.circle.fill", title: "下次合作建議",
+                detail: analysis?.suggestion ?? "AI 分析完成後，將提供下一次合作可採取的改善方向。"
             )
         }
-        .comicCard()
+        .padding(16)
+        .background(BombTheme.paper)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+    }
+}
+
+private struct MemberContributionCard: View {
+    let member: Member
+    let role: MemberRole
+    let tasks: [ProjectTask]
+
+    private var completedTaskCount: Int {
+        tasks.filter { $0.progress >= 100 }.count
+    }
+
+    private var averageProgress: Int {
+        guard !tasks.isEmpty else { return 0 }
+        return tasks.reduce(0) { $0 + $1.progress } / tasks.count
+    }
+
+    private var totalSubtaskCount: Int {
+        tasks.reduce(0) { $0 + $1.subtasks.count }
+    }
+
+    private var completedSubtaskCount: Int {
+        tasks.reduce(0) { total, task in
+            total + task.subtasks.filter(\.isComplete).count
+        }
+    }
+
+    private var submittedDeliverableCount: Int {
+        tasks.compactMap(\.deliverable).count
+    }
+
+    private var approvedDeliverableCount: Int {
+        tasks.compactMap(\.deliverable).filter(\.isApproved).count
+    }
+
+    private var overdueIncompleteCount: Int {
+        tasks.filter {
+            $0.deadline != .distantFuture && $0.deadline < .now && $0.progress < 100
+        }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: member.avatarSymbol)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(BombTheme.yellow)
+                    .frame(width: 44, height: 44)
+                    .background(BombTheme.ink)
+                    .clipShape(.circle)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(member.name)
+                        .font(.headline.weight(.black))
+                    Text(role.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text("\(averageProgress)%")
+                    .font(.title2.weight(.black).monospacedDigit())
+            }
+
+            if tasks.isEmpty {
+                Text("目前沒有指派給此成員的任務紀錄。")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView(value: Double(averageProgress), total: 100)
+                    .tint(BombTheme.ink)
+                    .scaleEffect(y: 1.4)
+
+                Grid(horizontalSpacing: 16, verticalSpacing: 10) {
+                    GridRow {
+                        contributionValue("\(completedTaskCount) / \(tasks.count)", label: "完成任務")
+                        contributionValue("\(completedSubtaskCount) / \(totalSubtaskCount)", label: "完成子任務")
+                    }
+                    GridRow {
+                        contributionValue("\(submittedDeliverableCount)", label: "成果交付")
+                        contributionValue("\(approvedDeliverableCount)", label: "成果驗收")
+                    }
+                }
+
+                if overdueIncompleteCount > 0 {
+                    Label("期限已過且尚未完成 \(overdueIncompleteCount) 項", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(BombTheme.red)
+                }
+
+                Divider()
+
+                ForEach(tasks.sorted(by: { $0.deadline < $1.deadline })) { task in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(task.progress >= 100 ? BombTheme.green : BombTheme.yellow)
+                            .frame(width: 9, height: 9)
+                            .padding(.top, 5)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(task.title)
+                                .font(.subheadline.weight(.black))
+                            Text(taskDeadlineText(task))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Text("\(task.progress)%")
+                            .font(.subheadline.weight(.black).monospacedDigit())
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(BombTheme.paper)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+    }
+
+    private func contributionValue(_ value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.headline.weight(.black).monospacedDigit())
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func taskDeadlineText(_ task: ProjectTask) -> String {
+        guard task.deadline != .distantFuture else { return "未設定期限" }
+        return "期限 \(task.deadline.formatted(date: .abbreviated, time: .shortened))"
     }
 }
 
@@ -157,12 +475,6 @@ private struct CommunicationAnalysisRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let analysis {
-                    Text("建議：\(analysis.suggestion)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.7))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
             Spacer(minLength: 0)
         }
@@ -256,5 +568,328 @@ struct ContributionRadar: View {
     private func radarPoint(index: Int, count: Int, radius: Double, center: CGPoint) -> CGPoint {
         let angle = (Double(index) / Double(count) * 2 * .pi) - (.pi / 2)
         return CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+    }
+}
+
+private struct ExportedTeamReport: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct TeamReportShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
+}
+
+private enum TeamReportPDFExporter {
+    private static let pageBounds = CGRect(x: 0, y: 0, width: 595, height: 842)
+
+    static func export(
+        group: Group,
+        progress: Int,
+        tasks: [ProjectTask],
+        members: [Member],
+        analysis: CommunicationAnalysis?
+    ) throws -> URL {
+        let filename = "\(safeFilename(group.name))-團隊戰報-\(timestamp()).pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try? FileManager.default.removeItem(at: url)
+
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = [
+            kCGPDFContextTitle as String: "\(group.name) 團隊戰報",
+            kCGPDFContextCreator as String: "Group Bomb"
+        ]
+        let renderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: format)
+
+        try renderer.writePDF(to: url) { context in
+            let writer = TeamReportPDFWriter(context: context, pageBounds: pageBounds, group: group)
+            writer.beginPage()
+
+            let metricScores: [(String, Int?)] = [
+                ("任務完成", analysis?.taskCompletionScore),
+                ("討論參與", analysis?.discussionScore),
+                ("主動協助", analysis?.collaborationScore),
+                ("解決問題", analysis?.problemSolvingScore),
+                ("準時可靠", analysis?.reliabilityScore)
+            ]
+            writer.drawSectionTitle("AI 團隊協作指數")
+            for metric in metricScores {
+                writer.drawMetric(title: metric.0, score: metric.1)
+            }
+
+            let completedCount = tasks.filter { $0.progress >= 100 }.count
+            writer.drawSectionTitle("最終任務成果")
+            writer.drawBody("最終完成度 \(progress)%，完成 \(completedCount) / \(tasks.count) 項任務，未完成 \(max(tasks.count - completedCount, 0)) 項。")
+
+            if !tasks.isEmpty {
+                writer.drawSubheading("任務明細")
+                for task in tasks.sorted(by: { $0.deadline < $1.deadline }) {
+                    writer.drawTask(task)
+                }
+            }
+
+            writer.drawSectionTitle("成員貢獻明細")
+            writer.drawBody("以下內容依 App 內的任務、子任務、期限與成果紀錄整理，未包含口頭討論或線下工作，不應作為評分或考核的唯一依據。")
+            if members.isEmpty {
+                writer.drawBody("目前沒有可匯出的成員紀錄。")
+            } else {
+                for member in members {
+                    let memberTasks = tasks.filter { $0.ownerMemberID == member.id }
+                    writer.drawMemberContribution(
+                        member: member,
+                        role: group.memberRoles[member.id] ?? member.role,
+                        tasks: memberTasks
+                    )
+                }
+            }
+
+            writer.drawSectionTitle("AI 溝通分析")
+            if let analysis {
+                writer.drawBody("溝通分數：\(analysis.score) 分")
+                writer.drawBody(analysis.summary)
+            } else {
+                writer.drawBody("尚未產生 AI 溝通分析。")
+            }
+
+            writer.drawSectionTitle("專案復盤結論")
+            writer.drawBody(analysis?.strength ?? "尚未產生 AI 專案復盤結論。")
+
+            writer.drawSectionTitle("下次合作建議")
+            writer.drawBody(analysis?.suggestion ?? "尚未產生下一次合作建議。")
+        }
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard (attributes[.size] as? NSNumber)?.intValue ?? 0 > 0 else {
+            throw TeamReportPDFExportError.emptyFile
+        }
+        return url
+    }
+
+    private static func safeFilename(_ value: String) -> String {
+        let pieces = value.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        return pieces.isEmpty ? "Group-Bomb" : pieces.joined(separator: "-")
+    }
+
+    private static func timestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: .now)
+    }
+}
+
+private enum TeamReportPDFExportError: LocalizedError {
+    case emptyFile
+
+    var errorDescription: String? {
+        "PDF 產生失敗，請稍後再試。"
+    }
+}
+
+private final class TeamReportPDFWriter {
+    private let context: UIGraphicsPDFRendererContext
+    private let pageBounds: CGRect
+    private let group: Group
+    private let margin: CGFloat = 40
+    private let footerHeight: CGFloat = 44
+    private var cursorY: CGFloat = 0
+
+    private let yellow = UIColor(red: 1, green: 0.79, blue: 0.05, alpha: 1)
+    private let ink = UIColor(red: 0.08, green: 0.08, blue: 0.07, alpha: 1)
+    private let secondary = UIColor(white: 0.38, alpha: 1)
+    private let rule = UIColor(white: 0.86, alpha: 1)
+
+    init(context: UIGraphicsPDFRendererContext, pageBounds: CGRect, group: Group) {
+        self.context = context
+        self.pageBounds = pageBounds
+        self.group = group
+    }
+
+    func beginPage() {
+        context.beginPage()
+        UIColor.white.setFill()
+        context.cgContext.fill(pageBounds)
+
+        yellow.setFill()
+        context.cgContext.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 118))
+        drawRawText("GROUP BOMB", x: margin, y: 24, width: pageBounds.width - margin * 2,
+                    height: 20, font: .systemFont(ofSize: 14, weight: .black), color: ink)
+        drawRawText("團隊戰報", x: margin, y: 47, width: pageBounds.width - margin * 2,
+                    height: 40, font: .systemFont(ofSize: 28, weight: .black), color: ink)
+        drawRawText(group.name, x: margin, y: 91, width: pageBounds.width - margin * 2,
+                    height: 20, font: .systemFont(ofSize: 12, weight: .bold), color: ink)
+
+        let footer = "\(group.name)  ·  匯出於 \(Date.now.formatted(date: .abbreviated, time: .shortened))"
+        drawRawText(footer, x: margin, y: pageBounds.height - 30, width: pageBounds.width - margin * 2,
+                    font: .systemFont(ofSize: 9, weight: .medium), color: secondary)
+        cursorY = 138
+    }
+
+    func drawSectionTitle(_ title: String) {
+        ensureSpace(54)
+        let rect = CGRect(x: margin, y: cursorY, width: pageBounds.width - margin * 2, height: 36)
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: 12)
+        yellow.setFill()
+        path.fill()
+        drawRawText(title, x: rect.minX + 14, y: rect.minY + 8, width: rect.width - 28,
+                    font: .systemFont(ofSize: 16, weight: .black), color: ink)
+        cursorY = rect.maxY + 12
+    }
+
+    func drawSubheading(_ title: String) {
+        ensureSpace(32)
+        drawRawText(title, x: margin, y: cursorY, width: pageBounds.width - margin * 2,
+                    font: .systemFont(ofSize: 14, weight: .black), color: ink)
+        cursorY += 28
+    }
+
+    func drawMetric(title: String, score: Int?) {
+        ensureSpace(34)
+        let availableWidth = pageBounds.width - margin * 2
+        drawRawText(title, x: margin, y: cursorY, width: 120,
+                    font: .systemFont(ofSize: 12, weight: .bold), color: ink)
+        drawRawText(score.map { "\($0)" } ?? "尚未分析", x: pageBounds.width - margin - 80, y: cursorY,
+                    width: 80, font: .monospacedDigitSystemFont(ofSize: 12, weight: .black), color: ink,
+                    alignment: .right)
+
+        let barX = margin + 126
+        let barWidth = availableWidth - 216
+        let barRect = CGRect(x: barX, y: cursorY + 5, width: barWidth, height: 8)
+        rule.setFill()
+        UIBezierPath(roundedRect: barRect, cornerRadius: 4).fill()
+        if let score {
+            yellow.setFill()
+            UIBezierPath(
+                roundedRect: CGRect(x: barX, y: cursorY + 5, width: barWidth * CGFloat(min(max(score, 0), 100)) / 100, height: 8),
+                cornerRadius: 4
+            ).fill()
+        }
+        cursorY += 28
+    }
+
+    func drawBody(_ text: String) {
+        let font = UIFont.systemFont(ofSize: 12.5, weight: .regular)
+        let width = pageBounds.width - margin * 2
+        let height = measuredHeight(text, width: width, font: font, lineSpacing: 3)
+        ensureSpace(height + 14)
+        drawRawText(text, x: margin, y: cursorY, width: width, height: height,
+                    font: font, color: secondary, lineSpacing: 3)
+        cursorY += height + 14
+    }
+
+    func drawTask(_ task: ProjectTask) {
+        let deadline = task.deadline == .distantFuture
+            ? "未設定期限"
+            : task.deadline.formatted(date: .abbreviated, time: .shortened)
+        let detail = "\(task.status.title) · \(task.progress)% · \(deadline)"
+        let titleFont = UIFont.systemFont(ofSize: 12.5, weight: .bold)
+        let detailFont = UIFont.systemFont(ofSize: 10.5, weight: .medium)
+        let width = pageBounds.width - margin * 2 - 20
+        let titleHeight = measuredHeight(task.title, width: width, font: titleFont, lineSpacing: 1)
+        ensureSpace(titleHeight + 35)
+
+        yellow.setFill()
+        context.cgContext.fillEllipse(in: CGRect(x: margin, y: cursorY + 3, width: 8, height: 8))
+        drawRawText(task.title, x: margin + 18, y: cursorY, width: width, height: titleHeight,
+                    font: titleFont, color: ink)
+        cursorY += titleHeight + 3
+        drawRawText(detail, x: margin + 18, y: cursorY, width: width,
+                    font: detailFont, color: secondary)
+        cursorY += 25
+    }
+
+    func drawMemberContribution(member: Member, role: MemberRole, tasks: [ProjectTask]) {
+        let completedTasks = tasks.filter { $0.progress >= 100 }.count
+        let totalSubtasks = tasks.reduce(0) { $0 + $1.subtasks.count }
+        let completedSubtasks = tasks.reduce(0) { total, task in
+            total + task.subtasks.filter(\.isComplete).count
+        }
+        let submittedDeliverables = tasks.compactMap(\.deliverable)
+        let approvedDeliverables = submittedDeliverables.filter(\.isApproved).count
+        let overdueIncompleteTasks = tasks.filter {
+            $0.deadline != .distantFuture && $0.deadline < .now && $0.progress < 100
+        }.count
+        let averageProgress = tasks.isEmpty
+            ? 0
+            : tasks.reduce(0) { $0 + $1.progress } / tasks.count
+
+        ensureSpace(92)
+        let headerRect = CGRect(x: margin, y: cursorY, width: pageBounds.width - margin * 2, height: 34)
+        UIColor(red: 1, green: 0.93, blue: 0.62, alpha: 1).setFill()
+        UIBezierPath(roundedRect: headerRect, cornerRadius: 10).fill()
+        drawRawText(member.name, x: headerRect.minX + 12, y: headerRect.minY + 8,
+                    width: headerRect.width - 120, font: .systemFont(ofSize: 14, weight: .black), color: ink)
+        drawRawText(role.title, x: headerRect.maxX - 100, y: headerRect.minY + 8,
+                    width: 88, font: .systemFont(ofSize: 11, weight: .bold), color: secondary,
+                    alignment: .right)
+        cursorY = headerRect.maxY + 9
+
+        if tasks.isEmpty {
+            drawBody("目前沒有指派給此成員的任務紀錄。")
+            return
+        }
+
+        let summary = [
+            "負責任務 \(tasks.count) 項，完成 \(completedTasks) 項，平均進度 \(averageProgress)%",
+            "子任務完成 \(completedSubtasks) / \(totalSubtasks) 項",
+            "成果已交付 \(submittedDeliverables.count) 項，其中驗收 \(approvedDeliverables) 項",
+            "期限已過且尚未完成 \(overdueIncompleteTasks) 項"
+        ].joined(separator: "\n")
+        drawBody(summary)
+
+        for task in tasks.sorted(by: { $0.deadline < $1.deadline }) {
+            drawTask(task)
+        }
+    }
+
+    private func ensureSpace(_ requiredHeight: CGFloat) {
+        if cursorY + requiredHeight > pageBounds.height - footerHeight {
+            beginPage()
+        }
+    }
+
+    private func measuredHeight(
+        _ text: String,
+        width: CGFloat,
+        font: UIFont,
+        lineSpacing: CGFloat
+    ) -> CGFloat {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        return ceil((text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph],
+            context: nil
+        ).height)
+    }
+
+    private func drawRawText(
+        _ text: String,
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        height: CGFloat = 24,
+        font: UIFont,
+        color: UIColor,
+        lineSpacing: CGFloat = 0,
+        alignment: NSTextAlignment = .left
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        paragraph.alignment = alignment
+        (text as NSString).draw(
+            with: CGRect(x: x, y: y, width: width, height: height),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph],
+            context: nil
+        )
     }
 }
