@@ -12,6 +12,8 @@ struct AppRootView: View {
     @State private var safeAreaInsets = EdgeInsets()
     @State private var activePokeReception: PokeReception?
     @State private var pokePresentationID = 0
+    @State private var reviewNotificationPath: [ReviewNotificationRoute] = []
+    private let reviewRouter = ReviewNotificationRouter.shared
 
     var body: some View {
         SwiftUI.Group {
@@ -36,11 +38,20 @@ struct AppRootView: View {
             if scenePhase == .active { store.resumeCloudSync() }
         }
         .onChange(of: authSession.currentUserID) { _, _ in
+            reviewNotificationPath = []
             if scenePhase == .active { store.resumeCloudSync() }
+            openPendingReview()
         }
+        .onChange(of: reviewRouter.pending) { _, _ in openPendingReview() }
+        .onChange(of: authSession.isCheckingSession) { _, _ in openPendingReview() }
+        .onChange(of: store.isLoadingCloudGroups) { _, _ in openPendingReview() }
+        .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.resumeCloudSync() }
-            else if phase == .background { store.suspendCloudSync() }
+            else if phase == .background {
+                store.suspendCloudSync()
+                if !store.isDemoMode { PokeBackgroundRefresh.shared.schedule() }
+            }
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
@@ -50,6 +61,9 @@ struct AppRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .pokePushTokenUpdated)) { _ in
             store.registerPokeDevice()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .notificationAuthorizationUpdated)) { _ in
+            store.refreshDeadlineReminders()
         }
         .overlay {
             if let activePokeReception {
@@ -70,13 +84,18 @@ struct AppRootView: View {
 
     private var authenticatedContent: some View {
         ZStack {
-            NavigationStack {
+            NavigationStack(path: $reviewNotificationPath) {
                 GroupListView(
                     model: store,
                     isSelected: tab == .groups,
                     tutorialStep: $tutorialStep,
                     onReplayTutorial: replayTutorial
                 )
+                .navigationDestination(for: ReviewNotificationRoute.self) { route in
+                    if let group = store.groups.first(where: { $0.id == route.groupID }) {
+                        GroupDetailView(group: group, model: store, opensPeerReview: true)
+                    }
+                }
             }
             .opacity(tab == .groups ? 1 : 0)
             .allowsHitTesting(tab == .groups)
@@ -143,6 +162,22 @@ struct AppRootView: View {
                 .controlSize(.large)
                 .tint(BombTheme.ink)
         }
+    }
+
+    private func openPendingReview() {
+        guard let destination = reviewRouter.pending, !authSession.isCheckingSession else { return }
+        guard destination.uid == authSession.currentUserID else {
+            reviewRouter.pending = nil
+            return
+        }
+        guard store.firebaseUID == destination.uid, !store.isLoadingCloudGroups else { return }
+        guard let group = store.groups.first(where: { $0.id == destination.groupID }),
+              group.memberIDs.contains(store.currentUserID) else { return }
+        reviewRouter.pending = nil
+        tab = .groups
+        tutorialStep = nil
+        guard !store.hasCompletedReviewReminders(in: group) else { return }
+        reviewNotificationPath = [ReviewNotificationRoute(groupID: group.id)]
     }
 
     private func tutorialFrames(

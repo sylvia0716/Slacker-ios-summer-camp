@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { after, before, beforeEach, describe, test } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, Timestamp, updateDoc,
+  collection, deleteDoc, doc, getDoc, getDocs, query, where, orderBy, limit, serverTimestamp, setDoc, Timestamp, updateDoc,
 } from "firebase/firestore";
 
 // Always local: FIRESTORE_RULES_FILE selects a Rules snapshot, never a production project.
@@ -86,6 +86,33 @@ beforeEach(async () => {
 });
 
 after(async () => { await testEnv.cleanup(); });
+
+describe("戳戳接收權限", () => {
+  test("只有仍在群組的接收者能讀取；用戶端不能偽造或修改事件", async () => {
+    const path = `groups/${groupID}/pokes/poke-one`;
+    const event = { senderID: teammateID, recipientID: memberID, style: "輕敲", pokeCount: 1,
+      groupName: "測試群組", createdAt: Timestamp.fromMillis(1000) };
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), path), event);
+    });
+    await assertSucceeds(getDoc(doc(db(memberID), path)));
+    await assertSucceeds(getDocs(query(collection(db(memberID), `groups/${groupID}/pokes`),
+      where("recipientID", "==", memberID), orderBy("createdAt"))));
+    await assertSucceeds(getDocs(query(collection(db(memberID), `groups/${groupID}/pokes`),
+      where("recipientID", "==", memberID), orderBy("createdAt", "desc"), limit(1))));
+    for (const uid of [teammateID, leaderID, outsiderID, null]) {
+      await assertFails(getDoc(doc(db(uid), path)));
+    }
+    await assertFails(getDocs(collection(db(memberID), `groups/${groupID}/pokes`)));
+    await assertFails(setDoc(doc(db(memberID), `${path}-forged`), event));
+    await assertFails(updateDoc(doc(db(memberID), path), { pokeCount: 99 }));
+    await assertFails(deleteDoc(doc(db(memberID), path)));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await deleteDoc(doc(context.firestore(), `groups/${groupID}/members/${memberID}`));
+    });
+    await assertFails(getDoc(doc(db(memberID), path)));
+  });
+});
 
 describe("Group Bomb 聊天室相容性與存取回歸", () => {
   test("成員可傳送訊息，其他組員可讀取與列出訊息", async () => {

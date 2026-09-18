@@ -32,11 +32,15 @@ struct GroupDetailView: View {
     init(
         group: Group,
         model: AppStore,
-        tutorialStep: Binding<TutorialStep?>? = nil
+        tutorialStep: Binding<TutorialStep?>? = nil,
+        opensPeerReview: Bool = false
     ) {
         self.group = group
         self.model = model
         self.tutorialStep = tutorialStep
+        _peerReviewStartsAtOutcomeSummary = State(initialValue: !opensPeerReview)
+        _showsExplosionMeme = State(initialValue: !opensPeerReview)
+        _showsSuccessMeme = State(initialValue: !opensPeerReview)
     }
 
 #if DEBUG

@@ -13,7 +13,9 @@ let package = Package(
             "Models/Subtask.swift", "Models/Deliverable.swift", "Models/TaskAttachment.swift",
             "Shared/Services/GroupRepository.swift", "Models/AttachmentOperationError.swift",
             "Shared/Services/AttachmentDownloadService.swift", "Shared/Services/AttachmentDeletionService.swift",
-            "Store/AttachmentActionStore.swift", "Shared/Services/ProfileNicknameRepository.swift"
+            "Store/AttachmentActionStore.swift", "Shared/Services/ProfileNicknameRepository.swift",
+            "Shared/Services/PokeDeliveryState.swift", "Shared/Services/DeadlineReminderPlan.swift",
+            "Shared/Services/ReviewReminderState.swift", "Shared/Services/ReviewNotificationRouter.swift"
         ]),
         .testTarget(name: "GroupCloudDataTests", dependencies: ["GroupCloudData"], path: "ios-cloud-tests")
     ],

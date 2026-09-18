@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
         UNUserNotificationCenter.current().delegate = self
         Messaging.messaging().delegate = self
+        PokeBackgroundRefresh.shared.register()
         return true
     }
 
@@ -65,6 +66,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let destination = ReviewNotificationDestination(userInfo: response.notification.request.content.userInfo) {
+            Task { @MainActor in ReviewNotificationRouter.shared.pending = destination }
+        }
         announcePokeReception(for: response.notification)
         completionHandler()
     }

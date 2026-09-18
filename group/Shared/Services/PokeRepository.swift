@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseFirestore
 import FirebaseFunctions
 import FirebaseMessaging
 import Foundation
@@ -25,9 +26,14 @@ enum PokeRepositoryError: LocalizedError {
 @MainActor
 final class PokeRepository {
     private let functions: Functions
+    private let firestore: Firestore
 
-    init(functions: Functions = Functions.functions(region: "asia-east1")) {
+    init(
+        functions: Functions = Functions.functions(region: "asia-east1"),
+        firestore: Firestore = Firestore.firestore()
+    ) {
         self.functions = functions
+        self.firestore = firestore
     }
 
     func send(groupID: String, recipientUID: String, style: PokeStyle) async throws {
@@ -55,6 +61,46 @@ final class PokeRepository {
         } catch {
             throw Self.map(error)
         }
+    }
+
+    @discardableResult
+    func listenForIncomingPokes(
+        groupID: String,
+        recipientUID: String,
+        onReceive: @escaping (Result<[PokeReception], Error>) -> Void
+    ) -> ListenerRegistration {
+        incomingQuery(groupID: groupID, recipientUID: recipientUID)
+            .addSnapshotListener(includeMetadataChanges: true) { snapshot, error in
+                if let error {
+                    onReceive(.failure(error))
+                    return
+                }
+
+                // Cached snapshots must not establish or advance the delivery baseline.
+                guard let snapshot, !snapshot.metadata.isFromCache else { return }
+                onReceive(.success(snapshot.documents.compactMap { Self.reception(from: $0.data()) }))
+            }
+    }
+
+    func latestIncomingPoke(groupID: String, recipientUID: String) async throws -> PokeReception? {
+        let snapshot = try await incomingQuery(groupID: groupID, recipientUID: recipientUID)
+            .getDocuments(source: .server)
+        return snapshot.documents.first.flatMap { Self.reception(from: $0.data()) }
+    }
+
+    private func incomingQuery(groupID: String, recipientUID: String) -> Query {
+        firestore.collection("groups").document(groupID).collection("pokes")
+            .whereField("recipientID", isEqualTo: recipientUID)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 1)
+    }
+
+    nonisolated private static func reception(from data: [String: Any]) -> PokeReception? {
+        guard let groupName = data["groupName"] as? String,
+              let pokeCount = data["pokeCount"] as? Int, pokeCount > 0,
+              let styleRawValue = data["style"] as? String,
+              let style = PokeStyle(rawValue: styleRawValue) else { return nil }
+        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style)
     }
 
     private static func map(_ error: Error) -> PokeRepositoryError {
