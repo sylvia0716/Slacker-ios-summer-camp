@@ -428,3 +428,4 @@ exports.updateSubtask = onCall({ region }, async (request) => {
 });
 
 Object.assign(exports, require('./group-membership'));
+Object.assign(exports, require('./peer-review'));

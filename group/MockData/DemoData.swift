@@ -129,7 +129,11 @@ enum DemoData {
                         collaborationScore: 4,
                         ideaScore: 4,
                         reliabilityScore: 4,
-                        comment: "",
+                        comment: reviewer.id == xiaoYu.id
+                            ? "合作時很可靠，也會主動回報進度。"
+                            : reviewer.id == miMi.id
+                                ? "討論時提供了很實用的想法。"
+                                : "遇到問題時願意一起找解法。",
                         submittedAt: deadline.addingTimeInterval(60)
                     )
                 }

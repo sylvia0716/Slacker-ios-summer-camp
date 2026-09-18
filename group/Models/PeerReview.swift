@@ -15,6 +15,21 @@ struct PeerReview: Identifiable, Hashable {
     let submittedAt: Date
 }
 
+struct PeerReviewSummary: Equatable {
+    var totalReviewCount = 0
+    var completedReviewerCount = 0
+    var taskCompletionScoreTotal = 0
+    var discussionScoreTotal = 0
+    var collaborationScoreTotal = 0
+    var ideaScoreTotal = 0
+    var reliabilityScoreTotal = 0
+
+    func average(total: Int) -> Double {
+        guard totalReviewCount > 0 else { return 0 }
+        return Double(total) / Double(totalReviewCount)
+    }
+}
+
 enum PeerReviewSubmissionError: LocalizedError {
     case groupNotFound
     case groupStillActive

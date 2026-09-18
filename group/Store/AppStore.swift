@@ -145,6 +145,14 @@ final class AppStore {
     private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
+    @ObservationIgnored private var peerReviewRepository: PeerReviewRepository?
+    @ObservationIgnored private var peerReviewStateListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var peerReviewSummaryListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var peerReviewCommentsListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var peerReviewSyncErrorsByGroupID: [UUID: String] = [:]
+    @ObservationIgnored private var peerReviewCommentsSyncErrorsByGroupID: [UUID: String] = [:]
+    private(set) var peerReviewSummariesByGroupID: [UUID: PeerReviewSummary] = [:]
+    private(set) var peerReviewCommentsByGroupID: [UUID: [String]] = [:]
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
     @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
@@ -245,6 +253,8 @@ final class AppStore {
         members = []
         projectTasks = []
         peerReviews = []
+        peerReviewSummariesByGroupID = [:]
+        peerReviewCommentsByGroupID = [:]
         tasks = []
         agents = []
         radar = []
@@ -280,6 +290,8 @@ final class AppStore {
             members = demo.members
             projectTasks = demo.projectTasks
             peerReviews = demo.peerReviews
+            peerReviewSummariesByGroupID = [:]
+            peerReviewCommentsByGroupID = [:]
             tasks = demo.tasks
             agents = demo.agents
             radar = demo.radar
@@ -312,6 +324,8 @@ final class AppStore {
             members = []
             projectTasks = []
             peerReviews = []
+            peerReviewSummariesByGroupID = [:]
+            peerReviewCommentsByGroupID = [:]
             tasks = []
             agents = []
             radar = []
@@ -331,6 +345,17 @@ final class AppStore {
     private func stopAttachmentListeners() {
         attachmentListeners.values.forEach { $0.remove() }
         attachmentListeners.removeAll()
+    }
+
+    private func stopPeerReviewSync() {
+        peerReviewStateListeners.values.forEach { $0.remove() }
+        peerReviewStateListeners.removeAll()
+        peerReviewSummaryListeners.values.forEach { $0.remove() }
+        peerReviewSummaryListeners.removeAll()
+        peerReviewCommentsListeners.values.forEach { $0.remove() }
+        peerReviewCommentsListeners.removeAll()
+        peerReviewSyncErrorsByGroupID.removeAll()
+        peerReviewCommentsSyncErrorsByGroupID.removeAll()
     }
 
     /// 舊任務看板中「我已認領幾項任務」的數值。
@@ -762,10 +787,42 @@ final class AppStore {
 
     /// 群組內已完成全部互評的成員人數。
     func completedPeerReviewerCount(in groupID: UUID) -> Int {
+        if dataMode == .live {
+            return peerReviewSummariesByGroupID[groupID]?.completedReviewerCount ?? 0
+        }
         guard let group = groups.first(where: { $0.id == groupID }) else { return 0 }
         return group.memberIDs.filter {
             hasCompletedAllReviews(reviewerID: $0, groupID: groupID)
         }.count
+    }
+
+    func peerReviewSummary(for groupID: UUID) -> PeerReviewSummary? {
+        if dataMode == .live { return peerReviewSummariesByGroupID[groupID] }
+        let reviews = reviews(for: groupID)
+        guard !reviews.isEmpty else { return nil }
+        return PeerReviewSummary(
+            totalReviewCount: reviews.count,
+            completedReviewerCount: completedPeerReviewerCount(in: groupID),
+            taskCompletionScoreTotal: reviews.reduce(0) { $0 + $1.taskCompletionScore },
+            discussionScoreTotal: reviews.reduce(0) { $0 + $1.discussionScore },
+            collaborationScoreTotal: reviews.reduce(0) { $0 + $1.collaborationScore },
+            ideaScoreTotal: reviews.reduce(0) { $0 + $1.ideaScore },
+            reliabilityScoreTotal: reviews.reduce(0) { $0 + $1.reliabilityScore }
+        )
+    }
+
+    func peerReviewSyncError(for groupID: UUID) -> String? {
+        peerReviewSyncErrorsByGroupID[groupID] ?? peerReviewCommentsSyncErrorsByGroupID[groupID]
+    }
+
+    func receivedPeerReviewComments(for groupID: UUID) -> [String] {
+        if dataMode == .live {
+            return peerReviewCommentsByGroupID[groupID] ?? []
+        }
+        return reviews(for: groupID)
+            .filter { $0.revieweeMemberID == currentUserID }
+            .map { $0.comment.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// 驗證並送出匿名隊員互評。評價內容不對外暴露 reviewer 身份。
@@ -781,6 +838,113 @@ final class AppStore {
         reliabilityScore: Int,
         comment: String,
         now: Date = .now
+    ) throws -> PeerReview {
+        let review = try makePeerReview(
+            id: UUID(),
+            groupID: groupID,
+            reviewerID: reviewerID,
+            revieweeID: revieweeID,
+            taskCompletionScore: taskCompletionScore,
+            discussionScore: discussionScore,
+            collaborationScore: collaborationScore,
+            ideaScore: ideaScore,
+            reliabilityScore: reliabilityScore,
+            comment: comment,
+            now: now
+        )
+        peerReviews.append(review)
+        lastEvent = "已送出匿名隊員互評"
+        return review
+    }
+
+    func submitPeerReviewToCloud(
+        groupID: UUID,
+        reviewerID: UUID,
+        revieweeID: UUID,
+        taskCompletionScore: Int,
+        discussionScore: Int,
+        collaborationScore: Int,
+        ideaScore: Int,
+        reliabilityScore: Int,
+        comment: String,
+        now: Date = .now
+    ) async throws -> PeerReview {
+        if dataMode == .demo {
+            return try submitPeerReview(
+                groupID: groupID,
+                reviewerID: reviewerID,
+                revieweeID: revieweeID,
+                taskCompletionScore: taskCompletionScore,
+                discussionScore: discussionScore,
+                collaborationScore: collaborationScore,
+                ideaScore: ideaScore,
+                reliabilityScore: reliabilityScore,
+                comment: comment,
+                now: now
+            )
+        }
+
+        guard let firebaseUID,
+              Auth.auth().currentUser?.uid == firebaseUID else {
+            throw PeerReviewCloudError.signedOut
+        }
+        guard let group = groups.first(where: { $0.id == groupID }),
+              let cloudGroupID = group.firestoreDocumentID,
+              let revieweeUID = members.first(where: { $0.id == revieweeID })?.firebaseUID else {
+            throw PeerReviewCloudError.memberNotFound
+        }
+
+        let review = try makePeerReview(
+            id: FirebaseMemberIdentity.uiID(for: "peer-review/\(firebaseUID)/\(revieweeUID)"),
+            groupID: groupID,
+            reviewerID: reviewerID,
+            revieweeID: revieweeID,
+            taskCompletionScore: taskCompletionScore,
+            discussionScore: discussionScore,
+            collaborationScore: collaborationScore,
+            ideaScore: ideaScore,
+            reliabilityScore: reliabilityScore,
+            comment: comment,
+            now: now
+        )
+
+        let repository = peerReviewRepository ?? PeerReviewRepository()
+        peerReviewRepository = repository
+        try await repository.submit(
+            groupID: cloudGroupID,
+            revieweeUID: revieweeUID,
+            taskCompletionScore: taskCompletionScore,
+            discussionScore: discussionScore,
+            collaborationScore: collaborationScore,
+            ideaScore: ideaScore,
+            reliabilityScore: reliabilityScore,
+            comment: comment
+        )
+
+        guard self.firebaseUID == firebaseUID else {
+            throw PeerReviewCloudError.signedOut
+        }
+        if let index = peerReviews.firstIndex(where: { $0.id == review.id }) {
+            peerReviews[index] = review
+        } else {
+            peerReviews.append(review)
+        }
+        lastEvent = "已同步匿名隊員互評"
+        return review
+    }
+
+    private func makePeerReview(
+        id: UUID,
+        groupID: UUID,
+        reviewerID: UUID,
+        revieweeID: UUID,
+        taskCompletionScore: Int,
+        discussionScore: Int,
+        collaborationScore: Int,
+        ideaScore: Int,
+        reliabilityScore: Int,
+        comment: String,
+        now: Date
     ) throws -> PeerReview {
         guard let group = groups.first(where: { $0.id == groupID }) else {
             throw PeerReviewSubmissionError.groupNotFound
@@ -809,8 +973,8 @@ final class AppStore {
             throw PeerReviewSubmissionError.duplicateReview
         }
 
-        let review = PeerReview(
-            id: UUID(),
+        return PeerReview(
+            id: id,
             groupID: groupID,
             reviewerMemberID: reviewerID,
             revieweeMemberID: revieweeID,
@@ -822,15 +986,14 @@ final class AppStore {
             comment: String(comment.prefix(200)),
             submittedAt: now
         )
-        peerReviews.append(review)
-        lastEvent = "已送出匿名隊員互評"
-        return review
     }
 
 #if DEBUG
     /// 清除指定群組互評，僅供截止後互評流程的 DEBUG 測試選單使用。
     func resetPeerReviews(for groupID: UUID) {
         peerReviews.removeAll { $0.groupID == groupID }
+        peerReviewSummariesByGroupID[groupID] = nil
+        peerReviewCommentsByGroupID[groupID] = nil
     }
 #endif
 
@@ -1029,6 +1192,8 @@ final class AppStore {
         projectTasks = []
         members = []
         peerReviews = []
+        peerReviewSummariesByGroupID = [:]
+        peerReviewCommentsByGroupID = [:]
         tasks = []
         agents = []
         radar = []
@@ -1067,6 +1232,7 @@ final class AppStore {
         cloudLoadTask?.cancel()
         cloudLoadTask = nil
         stopAttachmentSync()
+        stopPeerReviewSync()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         for index in projectTasks.indices where projectTasks[index].firestoreDocumentID != nil {
@@ -1093,6 +1259,7 @@ final class AppStore {
         let generation = UUID()
         cloudGeneration = generation
         stopAttachmentSync()
+        stopPeerReviewSync()
         isLoadingCloudGroups = true
         defer { if cloudGeneration == generation { isLoadingCloudGroups = false } }
         do {
@@ -1115,6 +1282,7 @@ final class AppStore {
             // Tasks now exist in the single source of truth; only now attach listeners.
             startAttachmentSync(for: projectTasks.map(\.id))
             for group in groups { startProgressSync(group: group, uid: uid, generation: generation) }
+            for group in groups { startPeerReviewSync(group: group, uid: uid, generation: generation) }
             return true
         } catch {
             guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
@@ -1187,6 +1355,8 @@ final class AppStore {
         groups.removeAll { $0.id == groupID }
         projectTasks.removeAll { $0.groupID == groupID }
         peerReviews.removeAll { $0.groupID == groupID }
+        peerReviewSummariesByGroupID[groupID] = nil
+        peerReviewCommentsByGroupID[groupID] = nil
         communicationAnalyses[groupID] = nil
         chatItemsByGroupID[groupID] = nil
         saveChatItems()
@@ -1293,6 +1463,111 @@ final class AppStore {
                 }
                 self.progressSyncErrorsByGroupID[group.id] = nil
                 self.cloudGroupSyncErrorMessage = self.progressSyncErrorsByGroupID.values.first
+            }
+        }
+    }
+
+    private func startPeerReviewSync(group: Group, uid: String, generation: UUID) {
+        guard let path = group.firestoreDocumentID else { return }
+        let repository = peerReviewRepository ?? PeerReviewRepository()
+        peerReviewRepository = repository
+
+        peerReviewStateListeners[group.id]?.remove()
+        peerReviewStateListeners[group.id] = repository.listenToMyState(groupID: path) { [weak self] result in
+            Task { @MainActor in
+                guard let self,
+                      self.firebaseUID == uid,
+                      self.cloudGeneration == generation,
+                      self.syncIsActive else { return }
+
+                switch result {
+                case .success(let state):
+                    let mapped = state.reviewedUIDs.map { revieweeUID in
+                        PeerReview(
+                            id: FirebaseMemberIdentity.uiID(for: "peer-review/\(uid)/\(revieweeUID)"),
+                            groupID: group.id,
+                            reviewerMemberID: self.currentUserID,
+                            revieweeMemberID: FirebaseMemberIdentity.uiID(for: revieweeUID),
+                            taskCompletionScore: 0,
+                            discussionScore: 0,
+                            collaborationScore: 0,
+                            ideaScore: 0,
+                            reliabilityScore: 0,
+                            comment: "",
+                            submittedAt: .distantPast
+                        )
+                    }
+                    self.peerReviews.removeAll { $0.groupID == group.id }
+                    self.peerReviews.append(contentsOf: mapped)
+                    self.peerReviewSyncErrorsByGroupID[group.id] = nil
+                case .failure(let error):
+                    self.peerReviewSyncErrorsByGroupID[group.id] = Self.cloudMessage(error)
+                }
+            }
+        }
+
+        peerReviewSummaryListeners[group.id]?.remove()
+        peerReviewSummaryListeners[group.id] = repository.listenToSummary(groupID: path) { [weak self] result in
+            Task { @MainActor in
+                guard let self,
+                      self.firebaseUID == uid,
+                      self.cloudGeneration == generation,
+                      self.syncIsActive else { return }
+
+                switch result {
+                case .success(let value):
+                    self.peerReviewSummariesByGroupID[group.id] = PeerReviewSummary(
+                        totalReviewCount: value.totalReviewCount,
+                        completedReviewerCount: value.completedReviewerCount,
+                        taskCompletionScoreTotal: value.taskCompletionScoreTotal,
+                        discussionScoreTotal: value.discussionScoreTotal,
+                        collaborationScoreTotal: value.collaborationScoreTotal,
+                        ideaScoreTotal: value.ideaScoreTotal,
+                        reliabilityScoreTotal: value.reliabilityScoreTotal
+                    )
+                    self.peerReviewSyncErrorsByGroupID[group.id] = nil
+                    if value.resultsAvailable {
+                        Task { @MainActor [weak self] in
+                            do {
+                                let comments = try await repository.loadMyComments(groupID: path)
+                                guard let self,
+                                      self.firebaseUID == uid,
+                                      self.cloudGeneration == generation,
+                                      self.syncIsActive else { return }
+                                self.peerReviewCommentsByGroupID[group.id] = comments
+                                self.peerReviewCommentsSyncErrorsByGroupID[group.id] = nil
+                            } catch {
+                                guard let self,
+                                      self.firebaseUID == uid,
+                                      self.cloudGeneration == generation,
+                                      self.syncIsActive else { return }
+                                self.peerReviewCommentsSyncErrorsByGroupID[group.id] = Self.cloudMessage(error)
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    self.peerReviewSyncErrorsByGroupID[group.id] = Self.cloudMessage(error)
+                }
+            }
+        }
+
+        peerReviewCommentsListeners[group.id]?.remove()
+        peerReviewCommentsListeners[group.id] = repository.listenToMyComments(groupID: path) { [weak self] result in
+            Task { @MainActor in
+                guard let self,
+                      self.firebaseUID == uid,
+                      self.cloudGeneration == generation,
+                      self.syncIsActive else { return }
+
+                switch result {
+                case .success(let value):
+                    self.peerReviewCommentsByGroupID[group.id] = value.comments
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    self.peerReviewCommentsSyncErrorsByGroupID[group.id] = nil
+                case .failure(let error):
+                    self.peerReviewCommentsSyncErrorsByGroupID[group.id] = Self.cloudMessage(error)
+                }
             }
         }
     }

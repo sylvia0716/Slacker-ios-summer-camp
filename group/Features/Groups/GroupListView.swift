@@ -204,13 +204,8 @@ struct GroupListView: View {
     }
 
     @ViewBuilder
-    private func destination(for group: Group, status: GroupListStatus) -> some View {
-        switch status {
-        case .active, .awaitingReviewCompleted, .awaitingReviewExploded:
-            GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
-        case .closed:
-            PostGameReviewView(groupName: group.name)
-        }
+    private func destination(for group: Group, status _: GroupListStatus) -> some View {
+        GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
     }
 
     private func restoreCreateGroupTutorialIfNeeded() {
@@ -925,7 +920,7 @@ private struct GroupRow: View {
 
             if status == .closed {
                 HStack(spacing: 5) {
-                    Text("查看賽後回顧")
+                    Text("查看專案結算")
                     Image(systemName: "chevron.right")
                 }
                 .font(.caption.weight(.black))

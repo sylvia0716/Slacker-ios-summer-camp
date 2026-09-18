@@ -221,6 +221,33 @@ service cloud.firestore {
         allow delete: if isCurrentUser(userID);
       }
 
+      // Raw submissions and score totals stay server-only so reviewers cannot be identified.
+      match /peerReviewSubmissions/{reviewID} {
+        allow read, write: if false;
+      }
+
+      match /peerReviewAggregates/{documentID} {
+        allow read, write: if false;
+      }
+
+      // A member may only read their own list of completed review targets.
+      match /peerReviewStates/{userID} {
+        allow read: if isGroupMember(groupID) && isCurrentUser(userID);
+        allow write: if false;
+      }
+
+      // This document contains only group-level counts and anonymized totals.
+      match /peerReviewPublic/{documentID} {
+        allow read: if isGroupMember(groupID) && documentID == 'summary';
+        allow write: if false;
+      }
+
+      // Published only after everyone finishes; each member sees only comments received by them.
+      match /peerReviewComments/{userID} {
+        allow read: if isGroupMember(groupID) && isCurrentUser(userID);
+        allow write: if false;
+      }
+
       match /tasks/{taskID} {
         allow read: if isGroupMember(groupID);
         allow write: if false;
