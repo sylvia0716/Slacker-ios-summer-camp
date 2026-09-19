@@ -188,12 +188,26 @@ final class AppStore {
     var notificationsEnabled = PokeDeliveryState.shared.notificationsEnabled {
         didSet {
             PokeDeliveryState.shared.notificationsEnabled = notificationsEnabled
-            refreshDeadlineReminders()
-            if notificationsEnabled, dataMode == .live {
-                PokeBackgroundRefresh.shared.schedule()
-            } else {
-                PokeBackgroundRefresh.shared.cancel()
-            }
+            notificationSettingsChanged()
+        }
+    }
+
+    var notificationCategories = PokeDeliveryState.shared.categories {
+        didSet {
+            PokeDeliveryState.shared.categories = notificationCategories
+            notificationSettingsChanged()
+        }
+    }
+
+    var receivesPokes: Bool { notificationsEnabled && notificationCategories.pokes }
+
+    private func notificationSettingsChanged() {
+        refreshDeadlineReminders()
+        if receivesPokes, dataMode == .live {
+            PokeBackgroundRefresh.shared.schedule()
+        } else {
+            PokeBackgroundRefresh.shared.cancel()
+            pokeNotifications.cancelPendingPokes()
         }
     }
 
@@ -1096,7 +1110,7 @@ final class AppStore {
                     memberID: self.currentUserID, uid: self.firebaseUID ?? "", now: .now,
                     completedReviewGroupIDs: Set(self.groups.filter { self.hasCompletedReviewReminders(in: $0) }.map(\.id)))
                 : nil
-            DeadlineNotificationService.shared.update(uid: self.firebaseUID, enabled: enabled, plan: plan)
+            DeadlineNotificationService.shared.update(uid: self.firebaseUID, enabled: enabled, plan: plan, categories: self.notificationCategories)
         }
     }
 
@@ -1404,7 +1418,7 @@ final class AppStore {
                             latestCount: reception.pokeCount, uid: uid, groupID: firestoreGroupID
                         )
                         PokeDeliveryState.shared.markHandled(count: reception.pokeCount, uid: uid, groupID: firestoreGroupID)
-                        if self.notificationsEnabled, unseen > 0 {
+                        if self.receivesPokes, unseen > 0 {
                             NotificationCenter.default.post(name: .pokeReceived, object: reception)
                         }
                     }
@@ -1583,10 +1597,10 @@ final class AppStore {
         return pokeCount
     }
 
-    /// 僅供隱藏測試頁使用，模擬目前使用者收到群組的戳一戳通知。
+    /// 供通知設定的測試頁使用，模擬目前使用者收到群組的戳一戳通知。
     @discardableResult
     func sendTestPoke(in groupID: UUID) -> Int? {
-        guard notificationsEnabled,
+        guard receivesPokes,
               let group = groups.first(where: { $0.id == groupID }) else { return nil }
 
         let key = PokeCountKey(groupID: groupID, memberID: currentUserID)

@@ -36,7 +36,17 @@ final class PokeNotificationService {
         }
     }
 
+    func cancelPendingPokes() {
+        Task {
+            let pending = await center.pendingNotificationRequests()
+            guard !PokeDeliveryState.shared.receivesPokes else { return }
+            center.removePendingNotificationRequests(withIdentifiers:
+                pending.filter { $0.identifier.hasPrefix("poke-") }.map(\.identifier))
+        }
+    }
+
     func deliver(group: Group, pokeCount: Int, style: PokeStyle) {
+        guard PokeDeliveryState.shared.receivesPokes else { return }
         let content = UNMutableNotificationContent()
         content.title = "有人在找你"
         content.body = message(for: group.name, pokeCount: pokeCount)
@@ -57,6 +67,7 @@ final class PokeNotificationService {
     }
 
     func deliverSummary(reception: PokeReception, unseenCount: Int, uid: String, groupID: String) async throws {
+        guard PokeDeliveryState.shared.receivesPokes else { return }
         let content = UNMutableNotificationContent()
         content.title = "隊友在找你"
         content.body = "你在「\(reception.groupName)」又被戳了 \(unseenCount) 下！"

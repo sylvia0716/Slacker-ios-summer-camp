@@ -18,9 +18,15 @@ service cloud.firestore {
     function hasValidMessageShape(messageID) {
       let data = request.resource.data;
       let baseKeys = ['id', 'senderID', 'senderName', 'text', 'kind', 'createdAt'];
-      let analysisKeys = [
+      let legacyAnalysisKeys = [
         'id', 'senderID', 'senderName', 'text', 'kind', 'createdAt',
         'analysisScore', 'analysisStrength', 'analysisSuggestion'
+      ];
+      let projectAnalysisKeys = [
+        'id', 'senderID', 'senderName', 'text', 'kind', 'createdAt',
+        'analysisScore', 'analysisStrength', 'analysisSuggestion',
+        'taskCompletionScore', 'discussionScore', 'collaborationScore',
+        'problemSolvingScore', 'reliabilityScore'
       ];
       return data.keys().hasAll(baseKeys)
         && data.id == messageID
@@ -37,8 +43,29 @@ service cloud.firestore {
           (data.kind in ['message', 'botReply'] && data.keys().hasOnly(baseKeys))
           ||
           (data.kind == 'botAnalysis'
-            && data.keys().hasAll(analysisKeys)
-            && data.keys().hasOnly(analysisKeys)
+            && data.keys().hasAll(legacyAnalysisKeys)
+            && (
+              data.keys().hasOnly(legacyAnalysisKeys)
+              || (
+                data.keys().hasAll(projectAnalysisKeys)
+                && data.keys().hasOnly(projectAnalysisKeys)
+                && data.taskCompletionScore is int
+                && data.taskCompletionScore >= 0
+                && data.taskCompletionScore <= 100
+                && data.discussionScore is int
+                && data.discussionScore >= 0
+                && data.discussionScore <= 100
+                && data.collaborationScore is int
+                && data.collaborationScore >= 0
+                && data.collaborationScore <= 100
+                && data.problemSolvingScore is int
+                && data.problemSolvingScore >= 0
+                && data.problemSolvingScore <= 100
+                && data.reliabilityScore is int
+                && data.reliabilityScore >= 0
+                && data.reliabilityScore <= 100
+              )
+            )
             && data.analysisScore is int
             && data.analysisScore >= 0
             && data.analysisScore <= 100
@@ -61,6 +88,13 @@ service cloud.firestore {
         && data.displayName.size() <= 60
         && data.isOnline is bool
         && data.lastSeenAt == request.time;
+    }
+
+    // Personal review history is published by trusted Cloud Functions only. It remains
+    // available to its owner after leaving a completed group.
+    match /users/{userID}/peerReviewProjects/{groupID} {
+      allow read: if isCurrentUser(userID);
+      allow write: if false;
     }
 
     function isGroupLeader(groupID) {
@@ -219,6 +253,33 @@ service cloud.firestore {
           && hasValidPresenceShape(userID);
         // Keep self-presence cleanup working even after leaving the group.
         allow delete: if isCurrentUser(userID);
+      }
+
+      // Raw submissions and score totals stay server-only so reviewers cannot be identified.
+      match /peerReviewSubmissions/{reviewID} {
+        allow read, write: if false;
+      }
+
+      match /peerReviewAggregates/{documentID} {
+        allow read, write: if false;
+      }
+
+      // A member may only read their own list of completed review targets.
+      match /peerReviewStates/{userID} {
+        allow read: if isGroupMember(groupID) && isCurrentUser(userID);
+        allow write: if false;
+      }
+
+      // This document contains only group-level counts and anonymized totals.
+      match /peerReviewPublic/{documentID} {
+        allow read: if isGroupMember(groupID) && documentID == 'summary';
+        allow write: if false;
+      }
+
+      // Published only after everyone finishes; each member sees only comments received by them.
+      match /peerReviewComments/{userID} {
+        allow read: if isGroupMember(groupID) && isCurrentUser(userID);
+        allow write: if false;
       }
 
       match /pokes/{pokeID} {

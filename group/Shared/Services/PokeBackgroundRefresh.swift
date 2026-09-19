@@ -27,7 +27,7 @@ final class PokeBackgroundRefresh {
     func schedule() {
         guard FirebaseApp.app() != nil,
               Auth.auth().currentUser != nil,
-              PokeDeliveryState.shared.notificationsEnabled else {
+              PokeDeliveryState.shared.receivesPokes else {
             cancel()
             return
         }
@@ -74,7 +74,7 @@ final class PokeBackgroundRefresh {
     func checkForPokes() async throws {
         guard FirebaseApp.app() != nil,
               let uid = Auth.auth().currentUser?.uid,
-              PokeDeliveryState.shared.notificationsEnabled else { return }
+              PokeDeliveryState.shared.receivesPokes else { return }
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
         let groups = try await GroupJoinRepository().fetchAccessibleGroups()
@@ -84,13 +84,13 @@ final class PokeBackgroundRefresh {
         for group in groups {
             try Task.checkCancellation()
             guard Auth.auth().currentUser?.uid == uid,
-                  PokeDeliveryState.shared.notificationsEnabled,
+                  PokeDeliveryState.shared.receivesPokes,
                   UIApplication.shared.applicationState == .background else { return }
             do {
                 let reception = try await repository.latestIncomingPoke(groupID: group.pathID, recipientUID: uid)
                 try Task.checkCancellation()
                 guard Auth.auth().currentUser?.uid == uid,
-                      PokeDeliveryState.shared.notificationsEnabled,
+                      PokeDeliveryState.shared.receivesPokes,
                       UIApplication.shared.applicationState == .background else { return }
                 let latestCount = reception?.pokeCount ?? 0
                 let unseen = PokeDeliveryState.shared.unseenCount(
