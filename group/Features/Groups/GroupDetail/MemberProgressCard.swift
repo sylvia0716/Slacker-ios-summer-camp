@@ -251,16 +251,11 @@ struct MemberProgressCard: View {
             ForEach(groupMemberIDs, id: \.self) { id in
                 let confirmed = confirmedIDs.contains(id)
                 let name = model.members.first(where: { $0.id == id })?.name ?? "成員"
-                Circle()
-                    .fill(confirmed ? BombTheme.ink : Color(uiColor: .systemGray4))
-                    .frame(width: 32, height: 32)
-                    .overlay {
-                        if confirmed {
-                            Text(String(name.prefix(1)).uppercased())
-                                .font(.subheadline.weight(.black))
-                                .foregroundStyle(BombTheme.yellow)
-                        }
-                    }
+                MemberPhotoAvatar(
+                    groupID: tasks.first?.firestoreGroupID,
+                    uid: model.members.first(where: { $0.id == id })?.firebaseUID,
+                    name: name, confirmed: confirmed
+                )
                     .accessibilityLabel("\(name)：\(confirmed ? "已確認" : "尚未確認")")
             }
             Text(isFullyConfirmed ? "已全部確認" : "待確認")

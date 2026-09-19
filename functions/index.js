@@ -428,3 +428,29 @@ exports.updateSubtask = onCall({ region }, async (request) => {
 });
 
 Object.assign(exports, require('./group-membership'));
+
+// Confirm only the current cloud attachment; progress remains driven by subtasks.
+exports.confirmTaskAttachment = onCall({ region }, async request => {
+  const uid = requireAuthenticatedUser(request);
+  const { groupID, taskID, attachmentID } = request.data || {};
+  const uuid = /^[a-f0-9-]{36}$/i;
+  if (![groupID, taskID, attachmentID].every(v => typeof v === 'string' && uuid.test(v))) {
+    throw new HttpsError('invalid-argument', 'Invalid attachment identifiers');
+  }
+  const group = db.collection('groups').doc(groupID);
+  const task = group.collection('tasks').doc(taskID);
+  await db.runTransaction(async tx => {
+    const [member, snapshot, attachments] = await Promise.all([
+      tx.get(group.collection('members').doc(uid)), tx.get(task),
+      tx.get(task.collection('attachments').where('status', '==', 'ready'))
+    ]);
+    if (!member.exists) throw new HttpsError('permission-denied', 'Membership required');
+    if (!snapshot.exists) throw new HttpsError('not-found', 'Task missing');
+    const latest = attachments.docs.sort((a,b) => (b.data().createdAt?.toMillis() || 0) - (a.data().createdAt?.toMillis() || 0) || a.id.localeCompare(b.id))[0];
+    if (latest?.id !== attachmentID) throw new HttpsError('failed-precondition', 'Attachment changed');
+    const data = snapshot.data();
+    const confirmed = data.confirmedAttachmentID === attachmentID ? (data.confirmedMemberUIDs || []) : [];
+    tx.update(task, { confirmedAttachmentID: attachmentID, confirmedMemberUIDs: [...new Set([...confirmed, uid])] });
+  });
+  return { confirmed: true };
+});

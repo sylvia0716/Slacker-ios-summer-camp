@@ -1049,6 +1049,11 @@ final class AppStore {
         firebaseUID = uid
         if let uid, Auth.auth().currentUser?.uid == uid {
             profileName = Auth.auth().currentUser?.displayName ?? ""
+            Task { [weak self] in
+                let data = try? await ProfilePhotoService().load(uid: uid)
+                guard let self, self.firebaseUID == uid else { return }
+                self.profileAvatarData = data
+            }
         }
         currentUserID = uid.map(FirebaseMemberIdentity.uiID(for:))
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
@@ -1115,6 +1120,10 @@ final class AppStore {
             // Tasks now exist in the single source of truth; only now attach listeners.
             startAttachmentSync(for: projectTasks.map(\.id))
             for group in groups { startProgressSync(group: group, uid: uid, generation: generation) }
+            if let photo = try? await ProfilePhotoService().load(uid: uid), firebaseUID == uid {
+                profileAvatarData = photo
+                try? await ProfilePhotoService().share(photo, uid: uid, groupIDs: groups.compactMap(\.firestoreDocumentID))
+            }
             return true
         } catch {
             guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }

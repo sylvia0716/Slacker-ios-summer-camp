@@ -37,6 +37,21 @@ struct TaskProgressTests {
         t.cloudStatus = .completed
         #expect(t.isCompleted)
     }
+    @Test func uncheckingCompletedSubtaskRestoresWeightedProgress() {
+        var t = task()
+        t.subtasks = [Subtask(id: UUID(), title: "A", isComplete: true, weight: 1),
+                      Subtask(id: UUID(), title: "B", isComplete: false, weight: 3)]
+        #expect(t.progress == 25)
+        t.subtasks[1].isComplete.toggle()
+        #expect(t.progress == 100)
+        #expect(t.isCompleted)
+        t.cloudStatus = .completed
+        t.subtasks[1].isComplete.toggle()
+        #expect(t.progress == 25)
+        #expect(!t.isCompleted)
+        #expect(t.status == .inProgress)
+    }
+
     @Test func cloudApprovalFieldsDecode() throws {
         let data = Data(#"{"title":"工作","status":"completed","confirmedAttachmentID":"result-id","confirmedMemberUIDs":["A","B"]}"#.utf8)
         let decoded = try JSONDecoder().decode(CloudTaskDocument.self, from: data)

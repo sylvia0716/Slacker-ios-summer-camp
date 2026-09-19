@@ -184,6 +184,14 @@ service cloud.firestore {
         );
     }
 
+    match /profiles/{userID} {
+      allow read: if isCurrentUser(userID);
+      allow create, update: if isCurrentUser(userID)
+        && request.resource.data.keys().hasOnly(['avatarPath'])
+        && request.resource.data.avatarPath is string
+        && request.resource.data.avatarPath.matches('^avatars/' + userID + '/[a-f0-9-]{36}\\.jpg$');
+    }
+
     match /groups/{groupID} {
       allow read: if isGroupMember(groupID);
       allow write: if false;
@@ -196,10 +204,15 @@ service cloud.firestore {
 
         // Preserve the deployed chat profile update; identity and role stay immutable.
         allow update: if isCurrentUser(userID)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
-          && request.resource.data.displayName is string
-          && request.resource.data.displayName.size() > 0
-          && request.resource.data.displayName.size() <= 60;
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'avatarPath', 'avatarVersion'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarPath', 'avatarVersion'])
+            || (request.resource.data.avatarPath == 'groups/' + groupID + '/avatars/' + userID + '/avatar.jpg'
+              && request.resource.data.avatarVersion is string
+              && request.resource.data.avatarVersion.size() <= 40))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName'])
+            || (request.resource.data.displayName is string
+              && request.resource.data.displayName.size() > 0
+              && request.resource.data.displayName.size() <= 60));
 
         // The callable serializes exits with joins and schedules empty-group cleanup.
         allow delete: if false;
@@ -219,6 +232,12 @@ service cloud.firestore {
           && hasValidPresenceShape(userID);
         // Keep self-presence cleanup working even after leaving the group.
         allow delete: if isCurrentUser(userID);
+      }
+
+      match /pokes/{pokeID} {
+        allow read: if isGroupMember(groupID)
+          && resource.data.recipientID == request.auth.uid;
+        allow write: if false;
       }
 
       match /tasks/{taskID} {
