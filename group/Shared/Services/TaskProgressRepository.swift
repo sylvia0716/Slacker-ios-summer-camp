@@ -7,13 +7,23 @@ import Foundation
 final class TaskProgressRepository {
     func update(groupID: String, taskID: String, action: String, subtaskID: String? = nil,
                 isComplete: Bool? = nil, attachmentID: String? = nil) async throws {
-        guard Auth.auth().currentUser != nil else { throw AttachmentOperationError.signedOut }
+        guard let uid = Auth.auth().currentUser?.uid else { throw AttachmentOperationError.signedOut }
+        if action == "setSubtask" {
+            guard let subtaskID, let id = UUID(uuidString: subtaskID), let isComplete else {
+                throw TaskMutationError.invalidData
+            }
+            try await TaskMutationRepository().setSubtaskCompletion(
+                expectedUserID: uid, groupID: groupID, taskID: taskID,
+                subtaskID: id, isComplete: isComplete
+            )
+            return
+        }
         var data: [String: Any] = ["groupID": groupID, "taskID": taskID, "action": action]
         if let subtaskID { data["subtaskID"] = subtaskID }
         if let isComplete { data["isComplete"] = isComplete }
         if let attachmentID { data["attachmentID"] = attachmentID }
         do {
-            _ = try await Functions.functions(region: "asia-east1").httpsCallable("updateTaskProgress").call(data)
+            _ = try await Functions.functions(region: "asia-east1").httpsCallable("confirmTaskAttachment").call(data)
         } catch {
             let ns = error as NSError
             switch FunctionsErrorCode(rawValue: ns.code) {

@@ -169,3 +169,19 @@ describe("Group Bomb Storage Security Rules", () => {
     await assertSucceeds(deleteObject(ref(storageFor(leaderID), validPath)));
   });
 });
+
+test('private profile photos: only owner reads and uploads', async () => {
+  const path = `avatars/${uploaderID}/12345678-1234-1234-1234-123456789abc.jpg`;
+  await assertSucceeds(upload(storageFor(uploaderID), path, 'image/jpeg', uploaderID));
+  await assertFails(getBytes(ref(storageFor(teammateID), path)));
+  await assertFails(getBytes(ref(storageFor(null), path)));
+  await assertFails(upload(storageFor(teammateID), path, 'image/jpeg', teammateID));
+});
+
+test('group avatars are readable only by members and writable only by owner', async () => {
+ const path = `groups/${groupID}/avatars/${uploaderID}/avatar.jpg`;
+ await assertSucceeds(upload(storageFor(uploaderID), path, 'image/jpeg', uploaderID));
+ await assertSucceeds(getBytes(ref(storageFor(teammateID), path)));
+ await assertFails(getBytes(ref(storageFor(outsiderID), path)));
+ await assertFails(upload(storageFor(teammateID), path, 'image/jpeg', teammateID));
+});

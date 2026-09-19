@@ -254,14 +254,16 @@ struct AuthenticationView: View {
     }
 }
 
-private struct PasswordResetView: View {
+struct PasswordResetView: View {
+    let completionTitle: String
     let session: AuthSessionStore
     @Environment(\.dismiss) private var dismiss
     @State private var email: String
     @State private var isSent = false
     @FocusState private var isEmailFocused: Bool
 
-    init(session: AuthSessionStore, initialEmail: String) {
+    init(session: AuthSessionStore, initialEmail: String, completionTitle: String = "返回登入") {
+        self.completionTitle = completionTitle
         self.session = session
         _email = State(initialValue: initialEmail)
     }
@@ -280,7 +282,7 @@ private struct PasswordResetView: View {
                             .foregroundStyle(BombTheme.ink.opacity(0.65))
                             .multilineTextAlignment(.center)
 
-                        Button(session.text("返回登入")) { dismiss() }
+                        Button(session.text(completionTitle)) { dismiss() }
                             .font(.headline.weight(.black))
                             .foregroundStyle(BombTheme.yellow)
                             .frame(maxWidth: .infinity)
@@ -306,6 +308,7 @@ private struct PasswordResetView: View {
                         }
                         .font(.body.weight(.semibold))
                         .padding(.horizontal, 14)
+
                         .frame(height: 52)
                         .background(.white.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -345,9 +348,12 @@ private struct PasswordResetView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(session.text("取消")) { dismiss() }
+                        .disabled(session.isWorking)
                 }
             }
         }
+
+        .interactiveDismissDisabled(session.isWorking)
         .presentationDetents([.medium, .large])
         .presentationBackground(BombTheme.paper)
         .onAppear {

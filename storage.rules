@@ -75,6 +75,23 @@ service firebase.storage {
         );
     }
 
+    match /groups/{groupID}/avatars/{userID}/avatar.jpg {
+      allow read: if isGroupMember(groupID);
+      allow create, update: if isGroupMember(groupID) && request.auth.uid == userID
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size > 0 && request.resource.size <= 2 * 1024 * 1024;
+      allow delete: if isGroupMember(groupID) && request.auth.uid == userID;
+    }
+
+    match /avatars/{userID}/{filename} {
+      allow read: if isSignedIn() && request.auth.uid == userID;
+      allow create: if isSignedIn() && request.auth.uid == userID
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size > 0 && request.resource.size <= 2 * 1024 * 1024
+        && filename.matches('^[a-f0-9-]{36}\\.jpg$');
+      allow delete: if isSignedIn() && request.auth.uid == userID;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

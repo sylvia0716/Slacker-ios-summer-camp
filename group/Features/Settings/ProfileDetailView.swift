@@ -13,6 +13,7 @@ struct ProfileDetailView: View {
     @State private var draftAvatarData: Data?
     @State private var selectedAvatarItem: PhotosPickerItem?
     @State private var isLoadingAvatar = false
+    @State private var isSavingProfile = false
     @State private var saveError: String?
 
     init(model: GroupBombModel) {
@@ -53,15 +54,22 @@ struct ProfileDetailView: View {
                 }
                 .buttonStyle(BombHeaderButtonStyle())
                 .accessibilityLabel("返回設定")
-                .disabled(model.isSavingNickname)
+                .disabled(isSavingProfile || model.isSavingNickname)
             } trailing: {
                 EmptyView()
             }
         }
-        .interactiveDismissDisabled(model.isSavingNickname)
+        .interactiveDismissDisabled(isSavingProfile || model.isSavingNickname)
         .alert("儲存失敗", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("確定", role: .cancel) { saveError = nil }
         } message: { Text(saveError ?? "") }
+        .task {
+            guard let uid = model.firebaseUID else { return }
+            if let data = try? await ProfilePhotoService().load(uid: uid), selectedAvatarItem == nil {
+                draftAvatarData = data
+                model.profileAvatarData = data
+            }
+        }
         .onChange(of: selectedAvatarItem) { _, newItem in
             guard let newItem else { return }
             isLoadingAvatar = true
@@ -160,20 +168,32 @@ struct ProfileDetailView: View {
         Button {
             let name = draftName, role = draftRole, bio = draftBio
             let symbol = draftAvatarSymbol, avatar = draftAvatarData
+            isSavingProfile = true
             Task {
+                defer { isSavingProfile = false }
+                var savingPhoto = false
                 do {
-                    try await model.saveProfileNickname(name)
+                    let nameChanged = name.trimmingCharacters(in: .whitespacesAndNewlines) != model.profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if nameChanged { _ = try ProfileNicknameRepository.normalized(name) }
+                    if selectedAvatarItem != nil, let avatar, model.firebaseUID != nil {
+                        savingPhoto = true
+                        try await ProfilePhotoService().save(avatar, groupIDs: model.groups.compactMap(\.firestoreDocumentID))
+                        savingPhoto = false
+                    }
+                    if nameChanged { try await model.saveProfileNickname(name) }
                     model.profileRole = role.trimmingCharacters(in: .whitespacesAndNewlines)
                     model.profileBio = bio.trimmingCharacters(in: .whitespacesAndNewlines)
                     model.profileAvatarSymbol = symbol
                     model.profileAvatarData = avatar
                     dismiss()
                 } catch {
-                    saveError = (error as? NicknameError)?.localizedDescription ?? NicknameError.network.localizedDescription
+                    saveError = savingPhoto
+                        ? "頭貼上傳或群組同步失敗，請確認網路後重試。"
+                        : (error as? LocalizedError)?.errorDescription ?? "個人資料儲存失敗，請稍後重試。"
                 }
             }
         } label: {
-            Label(model.isSavingNickname ? "儲存中…" : "儲存變更", systemImage: "checkmark.circle.fill")
+            Label(isSavingProfile ? "儲存中…" : "儲存變更", systemImage: "checkmark.circle.fill")
                 .font(.headline.weight(.black))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -187,9 +207,7 @@ struct ProfileDetailView: View {
     }
 
     private var canSave: Bool {
-        !model.isSavingNickname && !isLoadingAvatar &&
-        !draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !draftRole.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isSavingProfile && !model.isSavingNickname && !isLoadingAvatar
     }
 
 }

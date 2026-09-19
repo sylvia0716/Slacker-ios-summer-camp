@@ -512,4 +512,20 @@ describe("匿名互評資料隔離", () => {
       `groups/${groupID}/peerReviewComments/${uploaderID}`,
     ), { comments: ["偽造評語"] }));
   });
+test('profile photo metadata belongs to its account', async () => {
+  const path = `profiles/${uploaderID}`;
+  const value = {avatarPath: `avatars/${uploaderID}/12345678-1234-1234-1234-123456789abc.jpg`};
+  await assertSucceeds(setDoc(doc(firestoreFor(uploaderID), path), value));
+  await assertFails(getDoc(doc(firestoreFor(teammateID), path)));
+  await assertFails(getDoc(doc(firestoreFor(null), path)));
+  await assertFails(setDoc(doc(firestoreFor(teammateID), path), value));
+  await assertFails(setDoc(doc(firestoreFor(uploaderID), path), {avatarPath: `avatars/${teammateID}/12345678-1234-1234-1234-123456789abc.jpg`}));
+});
+
+test('members can publish only their own group avatar path', async () => {
+ const path = `groups/${groupID}/members/${uploaderID}`;
+ const value = {avatarPath: `groups/${groupID}/avatars/${uploaderID}/avatar.jpg`, avatarVersion: 'v1'};
+ await assertSucceeds(updateDoc(doc(firestoreFor(uploaderID), path), value));
+ await assertFails(updateDoc(doc(firestoreFor(teammateID), path), value));
+ await assertFails(updateDoc(doc(firestoreFor(uploaderID), path), {...value, avatarPath: `groups/${groupID}/avatars/${teammateID}/avatar.jpg`}));
 });

@@ -18,12 +18,11 @@ final class AuthSessionStore {
 
     @ObservationIgnored private var authStateHandle: AuthStateDidChangeListenerHandle?
     @ObservationIgnored private var hasStarted = false
-#if DEBUG
-    @ObservationIgnored private var isPreviewSession = false
-#endif
+    private(set) var isPreviewSession = false
     @ObservationIgnored private var onUserChange: ((String?) -> Void)?
 
-    var isAuthenticated: Bool { currentUserID != nil }
+    var isAuthenticated: Bool { currentUserID != nil && !isPreviewSession }
+    var canEnterApp: Bool { isAuthenticated || isPreviewSession }
 
     /// App 啟動且 Firebase 完成設定後才開始監聽，避免缺少 plist 時存取 Auth 而閃退。
     func start(onUserChange: ((String?) -> Void)? = nil) {
@@ -93,6 +92,7 @@ final class AuthSessionStore {
     }
 
     func sendPasswordReset(email: String) async -> Bool {
+        guard !isWorking else { return false }
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedEmail.isEmpty, normalizedEmail.contains("@") else {
             errorKey = "請輸入有效的電子郵件地址。"
@@ -121,6 +121,7 @@ final class AuthSessionStore {
 #if DEBUG
     /// 本機 UI 驗證專用；不建立 Firebase 帳號，也不會出現在正式版本。
     func enterPreviewSession() {
+        updateSession(userID: nil, email: nil)
         isPreviewSession = true
         updateSession(userID: "debug-preview", email: "preview@local")
         errorKey = nil
