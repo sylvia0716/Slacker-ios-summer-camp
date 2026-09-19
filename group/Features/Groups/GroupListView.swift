@@ -695,7 +695,12 @@ private struct AddGroupSheet: View {
         filter.message = Data(code.utf8)
         filter.correctionLevel = "M"
 
-        guard let outputImage = filter.outputImage?.transformed(
+        let colors = CIFilter.falseColor()
+        colors.inputImage = filter.outputImage
+        colors.color0 = CIColor(color: UIColor(BombTheme.ink))
+        colors.color1 = CIColor.clear
+
+        guard let outputImage = colors.outputImage?.transformed(
             by: CGAffineTransform(scaleX: 10, y: 10)
         ) else { return nil }
 
