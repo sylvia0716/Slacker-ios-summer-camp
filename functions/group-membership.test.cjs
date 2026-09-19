@@ -28,12 +28,14 @@ function setup(uids) {
   const context = {exports:{}, require: name => {
     if(name === 'firebase-admin/app') return {initializeApp(){}};
     if(name === 'firebase-admin/auth') return {getAuth:()=>({getUser:async()=>({displayName:'Test'})})};
+    if(name === 'firebase-admin/messaging') return {getMessaging:()=>({sendEachForMulticast:async()=>({responses:[]})})};
     if(name === 'node:crypto') return require('node:crypto');
-    if(name === './task-progress' || name === './group-membership') return {};
+    if(name === './member-display-name') return {memberDisplayName:()=> 'Test'};
+    if(name === './task-progress' || name === './group-membership' || name === './peer-review') return {};
     if(name === 'firebase-admin/firestore') return {getFirestore:()=>db, FieldValue:{serverTimestamp:()=>1}, Timestamp:class Timestamp {}};
     if(name === 'firebase-admin/storage') return {getStorage:()=>({bucket:()=>({deleteFiles:async ({prefix})=>{if(storageFailures-- > 0) throw Error('storage unavailable'); removedPrefixes.push(prefix);}})})};
     if(name === 'firebase-functions/v2/https') return {onCall:(opts,fn)=>fn, HttpsError};
-    if(name === 'firebase-functions/v2/firestore') return {onDocumentUpdated:(opts,fn)=>fn};
+    if(name === 'firebase-functions/v2/firestore') return {onDocumentCreated:(opts,fn)=>fn, onDocumentUpdated:(opts,fn)=>fn};
     throw Error(name);
   }};
   vm.runInNewContext(fs.readFileSync(__dirname+'/group-membership.js','utf8'),context);
@@ -73,5 +75,13 @@ test('cleanup refuses a group that still has a member',async()=>{
 test('invite cannot admit a new member once final exit has marked cleanup', async()=>{
  const s=setup(['a']); s.documents.set('groupInviteCodes/ABC123',{groupID:gid,isActive:true});
  await s.leave('a'); await assert.rejects(s.join('ABC123'),e=>e.code==='not-found');
+ assert(!s.documents.has(`groups/${gid}/members/new`));
+});
+
+test('invite cannot add a new member after the group deadline', async()=>{
+ const s=setup(['a']);
+ s.documents.set(`groups/${gid}`, {deadline:{toMillis:()=>Date.now()-1}});
+ s.documents.set('groupInviteCodes/ABC123',{groupID:gid,isActive:true});
+ await assert.rejects(s.join('ABC123'),e=>e.code==='failed-precondition');
  assert(!s.documents.has(`groups/${gid}/members/new`));
 });

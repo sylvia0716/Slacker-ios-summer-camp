@@ -408,12 +408,12 @@ struct ChatRoomView: View {
             return
         }
 
-        if command.contains("分析溝通") {
+        if command.contains("分析溝通") || command.contains("分析專案") {
             guard conversation.count >= 2 else {
                 await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
                 return
             }
-            await requestAICommunicationAnalysis(conversation: conversation)
+            await requestAIProjectAnalysis(conversation: conversation)
             return
         }
 
@@ -470,7 +470,7 @@ struct ChatRoomView: View {
                     await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
                     return
                 }
-                await requestAICommunicationAnalysis(conversation: conversation)
+                await requestAIProjectAnalysis(conversation: conversation)
             }
         }
     }
@@ -543,12 +543,18 @@ struct ChatRoomView: View {
         }
     }
 
-    private func requestAICommunicationAnalysis(conversation: [String]) async {
+    private func requestAIProjectAnalysis(conversation: [String]) async {
         isAIResponding = true
         defer { isAIResponding = false }
         do {
             let generated = try await AppleIntelligenceService()
-                .analyzeCommunication(conversation: conversation)
+                .analyzeProject(
+                    groupName: group.name,
+                    groupDeadline: group.deadline,
+                    tasks: model.projectTasks.filter { $0.groupID == group.id },
+                    members: model.members.filter { group.memberIDs.contains($0.id) },
+                    conversation: conversation
+                )
             let analysis = model.saveCommunicationAnalysis(
                 groupID: group.id,
                 generated: generated
@@ -599,7 +605,7 @@ private enum ChatShortcut: CaseIterable, Identifiable {
     var command: String {
         switch self {
         case .query: "@機器人 幫我們查詢"
-        case .analyze: "@機器人 分析溝通"
+        case .analyze: "@機器人 分析專案"
         }
     }
 
@@ -636,7 +642,7 @@ private struct ChatShortcutBar: View {
     }
 }
 
-/// 聊天室內的 AI 回覆卡；完整報告可在設定的 AI 戰情成績單查看。
+/// 聊天室內的 AI 回覆卡；完整報告可在專案結算查看。
 private struct ChatBotAnalysisCard: View {
     let analysis: CommunicationAnalysis
 
@@ -655,7 +661,7 @@ private struct ChatBotAnalysisCard: View {
             }
             Text(analysis.summary)
                 .font(.subheadline.weight(.semibold))
-            Text("完整報告已送至「設定 > 戰力報告」。")
+            Text("完整報告可至專案結算的「戰力報告」查看。")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.65))
             Text(analysis.updatedAt.formatted(date: .omitted, time: .shortened))

@@ -29,16 +29,18 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
 
                     SettingsSection(title: "工作空間") {
-                        NavigationLink { PeerReviewReportView(model: model) } label: {
+                        NavigationLink {
+                            PersonalBattleReportView(model: model)
+                        } label: {
                             SettingsRow(
-                                icon: "scope",
-                                title: "戰力報告",
-                                subtitle: "AI 分析、互評與貢獻雷達"
+                                icon: "chart.line.uptrend.xyaxis",
+                                title: "個人戰力檔案",
+                                subtitle: "累積每個專案收到的匿名互評"
                             )
                         }
                         .buttonStyle(.plain)
 
-                        SettingsDivider()
+                        Divider()
 
                         NavigationLink {
                             NotificationSettingsView(model: model)
@@ -166,15 +168,6 @@ private struct SettingsSection<Content: View>: View {
             VStack(spacing: 0) { content }
                 .comicCard()
         }
-    }
-}
-
-private struct SettingsDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(BombTheme.ink.opacity(0.14))
-            .frame(height: 1)
-            .padding(.leading, 48)
     }
 }
 

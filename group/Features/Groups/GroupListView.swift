@@ -170,6 +170,7 @@ struct GroupListView: View {
                             status: status,
                             progress: model.projectProgress(for: group.id),
                             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
+                            peerReviewParticipantCount: model.peerReviewParticipantCount(in: group.id),
                             now: now,
                             animationDelay: Double(index) * 0.09,
                             animationSequence: animationSequence
@@ -194,7 +195,8 @@ struct GroupListView: View {
         guard now >= group.deadline else { return .active }
 
         let completedReviewerCount = model.completedPeerReviewerCount(in: group.id)
-        if !group.memberIDs.isEmpty, completedReviewerCount == group.memberIDs.count {
+        let participantCount = model.peerReviewParticipantCount(in: group.id)
+        if participantCount > 0, completedReviewerCount >= participantCount {
             return .closed
         }
 
@@ -204,13 +206,8 @@ struct GroupListView: View {
     }
 
     @ViewBuilder
-    private func destination(for group: Group, status: GroupListStatus) -> some View {
-        switch status {
-        case .active, .awaitingReviewCompleted, .awaitingReviewExploded:
-            GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
-        case .closed:
-            PostGameReviewView(groupName: group.name)
-        }
+    private func destination(for group: Group, status _: GroupListStatus) -> some View {
+        GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
     }
 
     private func restoreCreateGroupTutorialIfNeeded() {
@@ -875,6 +872,7 @@ private struct GroupRow: View {
     let status: GroupListStatus
     let progress: Int
     let completedReviewerCount: Int
+    let peerReviewParticipantCount: Int
     let now: Date
     let animationDelay: TimeInterval
     let animationSequence: Int
@@ -925,7 +923,7 @@ private struct GroupRow: View {
 
             if status == .closed {
                 HStack(spacing: 5) {
-                    Text("查看賽後回顧")
+                    Text("查看專案結算")
                     Image(systemName: "chevron.right")
                 }
                 .font(.caption.weight(.black))
@@ -974,6 +972,6 @@ private struct GroupRow: View {
     private var reviewProgressText: String {
         status == .closed
             ? "互評已完成"
-            : "互評進度 \(completedReviewerCount) / \(group.memberIDs.count)"
+            : "互評進度 \(completedReviewerCount) / \(peerReviewParticipantCount)"
     }
 }

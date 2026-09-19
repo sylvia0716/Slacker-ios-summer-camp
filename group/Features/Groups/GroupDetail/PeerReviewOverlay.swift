@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 截止後的單一互評視窗，集中處理隊員列表、評分、確認與完成狀態。
+/// 截止後的互評頁面，集中處理隊員列表、評分、確認與完成狀態。
 struct PeerReviewOverlay: View {
     let group: Group
     let outcome: GroupDeadlineOutcome
@@ -11,7 +11,10 @@ struct PeerReviewOverlay: View {
     let tasks: [ProjectTask]
     let reviews: [PeerReview]
     let completedReviewerCount: Int
-    let onSubmit: (UUID, Int, Int, Int, Int, Int, String) throws -> Void
+    let peerReviewParticipantCount: Int
+    let syncError: String?
+    let onReturnToMeme: () -> Void
+    let onSubmit: (UUID, Int, Int, Int, Int, Int, String) async throws -> Void
     let onLater: () -> Void
 
     @State private var selectedMemberID: UUID?
@@ -19,16 +22,18 @@ struct PeerReviewOverlay: View {
     @State private var scores: [ReviewCriterion: Int] = [:]
     @State private var comment = ""
     @State private var showsConfirmation = false
+    @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showsResultsPlaceholder = false
     @State private var hasEnteredReview = false
+    @State private var showsExitReviewConfirmation = false
+    @FocusState private var isCommentFocused: Bool
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                BombTheme.ink.opacity(0.6)
-                    .ignoresSafeArea()
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
 
+            ScrollViewReader { proxy in
                 ScrollView {
                     SwiftUI.Group {
                         if startsAtOutcomeSummary && !hasEnteredReview {
@@ -43,34 +48,86 @@ struct PeerReviewOverlay: View {
                             memberList
                         }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 40)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
                 }
                 .scrollIndicators(.hidden)
-                .background(BombTheme.paper)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(BombTheme.ink, lineWidth: 4))
-                .overlay(alignment: .topTrailing) {
-                    if theme.isIncident {
-                        incidentCornerDecoration
+                .scrollDismissesKeyboard(.interactively)
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isCommentFocused = false
+                        }
+                }
+                .onChange(of: isCommentFocused) { _, isFocused in
+                    guard isFocused else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        withAnimation(.snappy) {
+                            proxy.scrollTo("peer-review-comment", anchor: .center)
+                        }
                     }
                 }
-                .shadow(color: BombTheme.ink, radius: 0, x: 7, y: 7)
-                .frame(maxWidth: 560)
-                .frame(maxHeight: max(320, proxy.size.height - 32))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-
-                if showsConfirmation, let selectedMember {
-                    confirmationOverlay(for: selectedMember)
+                .onChange(of: comment) { _, _ in
+                    guard isCommentFocused else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo("peer-review-comment", anchor: .bottom)
+                    }
                 }
             }
+
+            if showsConfirmation, let selectedMember {
+                confirmationOverlay(for: selectedMember)
+            }
+
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .accessibilityElement(children: .contain)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .bombTabBarHidden(true)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: "匿名互評", subtitle: group.name) {
+                Button(action: handleHeaderBack) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel(selectedMember == nil ? "返回群組" : "返回隊員列表")
+            } trailing: {
+                EmptyView()
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if selectedMember != nil,
+               submittedMember == nil,
+               !showsConfirmation,
+               !isCommentFocused {
+                reviewSubmitBar
+            }
+        }
+        .overlay {
+            if showsExitReviewConfirmation {
+                exitReviewConfirmationOverlay
+            }
+        }
     }
 
     private var outcomeSummary: some View {
         VStack(alignment: .leading, spacing: 18) {
+            Button(action: onReturnToMeme) {
+                Image(systemName: "chevron.left")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(width: 44, height: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("返回梗圖")
+
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: theme.iconName)
                     .font(.system(size: 32, weight: .black))
@@ -90,33 +147,33 @@ struct PeerReviewOverlay: View {
                 }
             }
 
-            if theme.isIncident {
-                incidentWarning
-            }
-
             VStack(alignment: .leading, spacing: 10) {
-                summaryRow(label: "群組名稱", value: group.name)
-                summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%")
-                summaryRow(label: theme.completedTaskLabel, value: "\(completedTaskCount) / \(tasks.count)")
+                summaryRow(label: "群組名稱", value: group.name, font: .subheadline)
+                summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%", font: .subheadline)
+                summaryRow(
+                    label: theme.completedTaskLabel,
+                    value: "\(completedTaskCount) / \(tasks.count)",
+                    font: .subheadline
+                )
 
                 if theme.isIncident {
-                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)")
+                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)", font: .subheadline)
                 }
 
-                summaryRow(label: "截止時間", value: formattedDeadline)
+                summaryRow(label: "截止時間", value: formattedDeadline, font: .subheadline)
             }
             .padding(14)
             .background(theme.summaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
 
-            if theme.isIncident && !unfinishedTaskTitles.isEmpty {
+            if theme.isIncident && !unfinishedTasks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("未完成工作")
                         .font(.headline.weight(.black))
 
-                    ForEach(unfinishedTaskTitles, id: \.self) { title in
-                        Label(title, systemImage: "exclamationmark.circle.fill")
+                    ForEach(unfinishedTasks) { task in
+                        Label(task.title, systemImage: "exclamationmark.circle.fill")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink)
                     }
@@ -135,41 +192,19 @@ struct PeerReviewOverlay: View {
         }
     }
 
-    private var incidentWarning: some View {
-        HStack(spacing: 7) {
-            Rectangle().fill(BombTheme.red).frame(width: 34, height: 4)
-            Rectangle().fill(BombTheme.ink).frame(width: 18, height: 4)
-            Text("截止警報")
-                .font(.caption.weight(.black))
-                .foregroundStyle(BombTheme.red)
-            Spacer()
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var incidentCornerDecoration: some View {
-        ZStack {
-            Circle()
-                .fill(BombTheme.ink.opacity(0.12))
-                .frame(width: 74, height: 74)
-                .offset(x: 24, y: -25)
-
-            Image(systemName: "flame.fill")
-                .font(.title2.weight(.black))
-                .foregroundStyle(BombTheme.red)
-                .padding(12)
-                .background(BombTheme.paper)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
-                .offset(x: -10, y: 10)
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
     private var memberList: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if startsAtOutcomeSummary {
+                returnToOutcomeSummaryButton
+            }
+
             titleBlock
+
+            if let syncError {
+                Label(syncError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+            }
 
             Text("已完成 \(completedReviewCount) / \(otherMembers.count)")
                 .font(.subheadline.weight(.black))
@@ -180,13 +215,17 @@ struct PeerReviewOverlay: View {
 
             anonymityNotice
 
-            Button("稍後再評", action: onLater)
-                .font(.subheadline.weight(.black))
-                .foregroundStyle(BombTheme.ink)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
-                .buttonStyle(.plain)
+            Button(action: onLater) {
+                Text("稍後再評")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -212,14 +251,14 @@ struct PeerReviewOverlay: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(member.name).font(.headline.weight(.black))
                 Text(member.role.title).font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                Text(isSubmitted ? "已完成" : "尚未評分")
+                Text(isSubmitted ? "已評分" : "尚未評分")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(isSubmitted ? BombTheme.green : BombTheme.red)
             }
 
             Spacer(minLength: 8)
 
-            Button(isSubmitted ? "已送出" : "開始評分") {
+            Button(isSubmitted ? "已評分" : "開始評分") {
                 beginReview(member)
             }
             .font(.caption.weight(.black))
@@ -233,60 +272,74 @@ struct PeerReviewOverlay: View {
             .disabled(isSubmitted)
         }
         .padding(12)
-        .background(Color.white.opacity(0.34))
+        .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
     }
 
     private func reviewForm(for member: Member) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Button {
-                returnToList()
-            } label: {
-                Label("返回隊員列表", systemImage: "chevron.left")
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-            }
-            .buttonStyle(.plain)
-
             HStack(spacing: 12) {
-                avatar(for: member, size: 56)
+                avatar(for: member, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(member.name).font(.title2.weight(.black))
                     Text(member.role.title).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
                 }
             }
-
-            objectiveSummary(for: member)
-
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(ReviewCriterion.allCases) { criterion in
-                    ratingRow(criterion)
-                }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isCommentFocused = false
             }
 
-            commentEditor
+            objectiveSummary(for: member)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isCommentFocused = false
+                }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(ReviewCriterion.allCases.enumerated()), id: \.offset) { index, criterion in
+                    ratingRow(criterion)
+                        .simultaneousGesture(
+                            TapGesture().onEnded {
+                                isCommentFocused = false
+                            }
+                        )
+
+                    if index < ReviewCriterion.allCases.count - 1 {
+                        Divider()
+                            .overlay(BombTheme.ink.opacity(0.18))
+                    }
+                }
+
+                Divider()
+                    .overlay(BombTheme.ink.opacity(0.18))
+
+                commentEditor
+                    .padding(.vertical, 14)
+            }
+            .padding(.horizontal, 14)
+            .background {
+                BombTheme.paper
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isCommentFocused = false
+                    }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
+
             anonymityNotice
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isCommentFocused = false
+                }
 
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.red)
             }
-
-            Button {
-                showsConfirmation = true
-            } label: {
-                Text("送出匿名評價")
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(allScoresComplete ? BombTheme.ink : BombTheme.ink.opacity(0.35))
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .disabled(!allScoresComplete)
         }
     }
 
@@ -309,16 +362,16 @@ struct PeerReviewOverlay: View {
             }
         }
         .padding(12)
-        .background(BombTheme.yellow.opacity(0.32))
+        .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
     }
 
-    private func summaryRow(label: String, value: String) -> some View {
+    private func summaryRow(label: String, value: String, font: Font = .caption) -> some View {
         HStack {
-            Text(label).font(.caption.weight(.bold))
+            Text(label).font(font.weight(.bold))
             Spacer()
-            Text(value).font(.caption.weight(.black))
+            Text(value).font(font.weight(.black))
         }
     }
 
@@ -342,20 +395,60 @@ struct PeerReviewOverlay: View {
             HStack(spacing: 2) {
                 ForEach(1...5, id: \.self) { value in
                     Button {
-                        scores[criterion] = value
+                        isCommentFocused = false
+                        withAnimation(.snappy) {
+                            scores[criterion] = value
+                        }
                     } label: {
-                        Circle()
-                            .fill(value <= score ? theme.ratingFill : Color.clear)
-                            .frame(width: 22, height: 22)
-                            .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .contentShape(Rectangle())
+                        VStack(spacing: 2) {
+                            Circle()
+                                .fill(value <= score ? theme.ratingFill : Color.clear)
+                                .frame(width: 24, height: 24)
+                                .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
+
+                            Text(value == 1 || value == 5 ? "\(value)" : " ")
+                                .font(.caption2.weight(.black))
+                                .foregroundStyle(BombTheme.ink.opacity(0.7))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(criterion.title) \(value) 分")
+                    .accessibilityAddTraits(value == score ? .isSelected : [])
                 }
             }
         }
+        .padding(.vertical, 14)
+    }
+
+    private var reviewSubmitBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .overlay(BombTheme.ink.opacity(0.2))
+
+            Button {
+                isCommentFocused = false
+                showsConfirmation = true
+            } label: {
+                Text(allScoresComplete ? "送出匿名評價" : "尚有 \(ReviewCriterion.allCases.count - completedScoreCount) 項未評分")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(allScoresComplete ? Color.white : BombTheme.ink.opacity(0.65))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(allScoresComplete ? BombTheme.ink : BombTheme.paper)
+                    .clipShape(.capsule)
+                    .overlay(
+                        Capsule()
+                            .stroke(BombTheme.ink, lineWidth: allScoresComplete ? 0 : 2)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!allScoresComplete)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .background(BombTheme.yellow)
     }
 
     private var commentEditor: some View {
@@ -381,6 +474,7 @@ struct PeerReviewOverlay: View {
 
                 TextEditor(text: $comment)
                     .font(.subheadline)
+                    .focused($isCommentFocused)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 112)
                     .onChange(of: comment) { _, newValue in
@@ -390,6 +484,7 @@ struct PeerReviewOverlay: View {
                     }
             }
             .padding(8)
+            .id("peer-review-comment")
             .background(Color.white.opacity(0.55))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
@@ -418,25 +513,91 @@ struct PeerReviewOverlay: View {
                         .padding(.vertical, 12)
                         .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                         .buttonStyle(.plain)
+                        .disabled(isSubmitting)
 
-                    Button("確認送出") { submitReview(for: member) }
+                    Button {
+                        Task { await submitReview(for: member) }
+                    } label: {
+                        SwiftUI.Group {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("確認送出")
+                            }
+                        }
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(BombTheme.ink)
                         .clipShape(.capsule)
-                        .buttonStyle(.plain)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSubmitting)
                 }
             }
             .padding(20)
             .background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 22))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
-            .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
             .padding(.horizontal, 28)
             .frame(maxWidth: 480)
         }
+    }
+
+    private var exitReviewConfirmationOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label("尚未送出評價", systemImage: "exclamationmark.triangle.fill")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+
+                Text("目前填寫的評分與評語尚未送出，確定要離開嗎？")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button("繼續填寫") {
+                        withAnimation(.snappy) {
+                            showsExitReviewConfirmation = false
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button("確定離開") {
+                        withAnimation(.snappy) {
+                            showsExitReviewConfirmation = false
+                        }
+                        returnToList()
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+        .transition(.opacity)
+        .zIndex(2)
     }
 
     private func submissionSuccess(for member: Member) -> some View {
@@ -465,19 +626,23 @@ struct PeerReviewOverlay: View {
 
     private var completionContent: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if startsAtOutcomeSummary {
+                returnToOutcomeSummaryButton
+            }
+
             titleBlock
             Text(theme.completionTitle).font(.title2.weight(.black))
             Text(theme.completionMessage)
                 .font(.subheadline.weight(.bold))
 
             VStack(alignment: .leading, spacing: 8) {
-                summaryRow(label: "已評價人數", value: "\(completedReviewCount) / \(otherMembers.count)")
-                summaryRow(label: "整體互評完成進度", value: "\(completedReviewerCount) / \(members.count) 位")
+                summaryRow(label: "你已評完的隊友", value: "\(completedReviewCount) / \(otherMembers.count) 位")
+                summaryRow(label: "完成全部互評的成員", value: "\(completedReviewerCount) / \(peerReviewParticipantCount) 位")
             }
 
-            Text(completedReviewerCount == members.count ? theme.everyoneCompletedMessage : theme.waitingMessage)
+            Text(completedReviewerCount >= peerReviewParticipantCount ? theme.everyoneCompletedMessage : theme.waitingMessage)
                 .font(.subheadline.weight(.black))
-                .foregroundStyle(completedReviewerCount == members.count ? theme.accentColor : BombTheme.red)
+                .foregroundStyle(completedReviewerCount >= peerReviewParticipantCount ? theme.accentColor : BombTheme.red)
 
             anonymityNotice
 
@@ -534,11 +699,11 @@ struct PeerReviewOverlay: View {
     }
 
     private var incompleteTaskCount: Int {
-        tasks.count - completedTaskCount
+        unfinishedTasks.count
     }
 
-    private var unfinishedTaskTitles: [String] {
-        Array(tasks.filter { $0.progress < 100 }.map(\.title).prefix(3))
+    private var unfinishedTasks: [ProjectTask] {
+        tasks.filter { $0.progress < 100 }
     }
 
     private var formattedDeadline: String {
@@ -565,6 +730,10 @@ struct PeerReviewOverlay: View {
         !otherMembers.isEmpty && pendingMembers.isEmpty
     }
 
+    private var completedScoreCount: Int {
+        ReviewCriterion.allCases.filter { (1...5).contains(scores[$0] ?? 0) }.count
+    }
+
     private var allScoresComplete: Bool {
         ReviewCriterion.allCases.allSatisfy { (1...5).contains(scores[$0] ?? 0) }
     }
@@ -582,6 +751,7 @@ struct PeerReviewOverlay: View {
         scores = [:]
         comment = ""
         errorMessage = nil
+        isCommentFocused = false
     }
 
     private func returnToList() {
@@ -589,11 +759,50 @@ struct PeerReviewOverlay: View {
         scores = [:]
         comment = ""
         errorMessage = nil
+        isCommentFocused = false
     }
 
-    private func submitReview(for member: Member) {
+    private func handleHeaderBack() {
+        isCommentFocused = false
+        if selectedMemberID != nil {
+            withAnimation(.snappy) {
+                showsExitReviewConfirmation = true
+            }
+        } else {
+            onLater()
+        }
+    }
+
+    private var returnToOutcomeSummaryButton: some View {
+        Button(action: returnToOutcomeSummary) {
+            Image(systemName: "chevron.left")
+                .font(.headline.weight(.black))
+                .foregroundStyle(BombTheme.ink)
+                .frame(width: 44, height: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(theme.isIncident ? "返回戰損摘要" : "返回結算摘要")
+    }
+
+    private func returnToOutcomeSummary() {
+        selectedMemberID = nil
+        submittedMemberID = nil
+        scores = [:]
+        comment = ""
+        showsConfirmation = false
+        errorMessage = nil
+        showsResultsPlaceholder = false
+        isCommentFocused = false
+        withAnimation(.snappy) { hasEnteredReview = false }
+    }
+
+    private func submitReview(for member: Member) async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
         do {
-            try onSubmit(
+            try await onSubmit(
                 member.id,
                 scores[.taskCompletion] ?? 0,
                 scores[.discussion] ?? 0,
@@ -604,7 +813,7 @@ struct PeerReviewOverlay: View {
             )
             showsConfirmation = false
             selectedMemberID = nil
-            submittedMemberID = member.id
+            submittedMemberID = nil
             errorMessage = nil
         } catch {
             showsConfirmation = false
