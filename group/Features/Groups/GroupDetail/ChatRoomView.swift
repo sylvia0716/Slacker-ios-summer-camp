@@ -14,6 +14,7 @@ struct ChatRoomView: View {
     @State private var showsShortcuts = false
     @State private var isAIResponding = false
     @State private var isAwayFromLatest = false
+    @State private var pinnedScrollTargetID: String?
     @FocusState private var isComposerFocused: Bool
 
     init(
@@ -33,6 +34,7 @@ struct ChatRoomView: View {
             VStack(spacing: 0) {
                 topBar
                 memberStatus
+                pinnedMessageBar
 
                 ScrollViewReader { proxy in
                     ZStack(alignment: .bottomTrailing) {
@@ -41,6 +43,17 @@ struct ChatRoomView: View {
                                 ForEach(model.chatItems(for: group.id)) { item in
                                     chatItem(item)
                                         .id(item.id)
+                                        .contextMenu {
+                                            if let message = pinnableMessage(for: item) {
+                                                let isPinned = model.pinnedChatMessageByGroupID[group.id]?.id == item.id
+                                                Button(isPinned ? "取消置頂" : "置頂訊息",
+                                                       systemImage: isPinned ? "pin.slash" : "pin") {
+                                                    model.setPinnedChatMessage(
+                                                        isPinned ? nil : message, groupID: group.id
+                                                    )
+                                                }
+                                            }
+                                        }
                                 }
 
                                 Color.clear
@@ -78,6 +91,11 @@ struct ChatRoomView: View {
                         .onChange(of: isComposerFocused) { _, isFocused in
                             guard isFocused else { return }
                             scrollToBottom(using: proxy)
+                        }
+                        .onChange(of: pinnedScrollTargetID) { _, targetID in
+                            guard let targetID else { return }
+                            withAnimation(.snappy) { proxy.scrollTo(targetID, anchor: .center) }
+                            pinnedScrollTargetID = nil
                         }
 
                         if isAwayFromLatest {
@@ -121,6 +139,11 @@ struct ChatRoomView: View {
                 displayName: model.profileName,
                 isOnline: phase == .active
             )
+            if phase == .active { model.markLatestChatMessageRead(groupID: group.id) }
+        }
+        .onChange(of: model.cloudChatMessageIDsByGroupID[group.id]?.last) {
+            guard scenePhase == .active else { return }
+            model.markLatestChatMessageRead(groupID: group.id)
         }
         .onDisappear {
             model.stopChatSync(groupID: group.id, displayName: model.profileName)
@@ -181,6 +204,20 @@ struct ChatRoomView: View {
                     .foregroundStyle(BombTheme.red)
                     .lineLimit(2)
             }
+
+            if let syncError = model.chatReadSyncErrorsByGroupID[group.id] {
+                Label("已讀同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+                    .lineLimit(2)
+            }
+
+            if let syncError = model.chatPinSyncErrorsByGroupID[group.id] {
+                Label("置頂同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.red)
+                    .lineLimit(2)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -189,6 +226,59 @@ struct ChatRoomView: View {
 
     private var onlineMembers: [ChatPresence] {
         model.onlineMembers(for: group.id)
+    }
+
+    @ViewBuilder
+    private var pinnedMessageBar: some View {
+        if let message = model.pinnedChatMessageByGroupID[group.id] {
+            HStack(spacing: 8) {
+                Button {
+                    pinnedScrollTargetID = message.id
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "pin.fill")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(message.senderName).font(.caption2.weight(.black))
+                            Text(message.text).font(.caption).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("跳到置頂訊息：\(message.text)")
+
+                Button {
+                    model.setPinnedChatMessage(nil, groupID: group.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.black))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("取消置頂訊息")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(BombTheme.paper)
+        }
+    }
+
+    private func pinnableMessage(for item: ChatRoomItem) -> ChatPinnedMessage? {
+        switch item {
+        case let .message(id, sender, text, _, _, _, deliveryState):
+            guard deliveryState == .sent else { return nil }
+            return ChatPinnedMessage(messageID: id, senderName: sender, text: text)
+        case let .botReply(id, text, _):
+            return ChatPinnedMessage(messageID: id, senderName: "拆彈 AI 通訊官", text: text)
+        case let .botAnalysis(id, analysis):
+            return ChatPinnedMessage(messageID: id, senderName: "拆彈 AI 通訊官", text: analysis.summary)
+        case .systemEvent:
+            return nil
+        }
     }
 
     @ViewBuilder
@@ -255,9 +345,15 @@ struct ChatRoomView: View {
                 if isCurrentUser, deliveryState != .sent {
                     messageDeliveryStatus(id: id, text: text, deliveryState: deliveryState)
                 } else {
-                    Text(time)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.5))
+                    HStack(spacing: 6) {
+                        Text(time)
+                        if isCurrentUser {
+                            let count = model.readCount(for: id, in: group.id)
+                            if count > 0 { Text("已讀 \(count)") }
+                        }
+                    }
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.5))
                 }
             }
 
