@@ -27,6 +27,14 @@ function presenceRef(uid, target = uid) {
   return doc(db(uid), `groups/${groupID}/presence/${target}`);
 }
 
+function readReceiptRef(uid, target = uid) {
+  return doc(db(uid), `groups/${groupID}/readReceipts/${target}`);
+}
+
+function pinRef(uid) {
+  return doc(db(uid), `groups/${groupID}/chatSettings/pin`);
+}
+
 function memberRef(uid, target = uid) {
   return doc(db(uid), `groups/${groupID}/members/${target}`);
 }
@@ -88,6 +96,34 @@ beforeEach(async () => {
 after(async () => { await testEnv.cleanup(); });
 
 describe("Group Bomb 聊天室相容性與存取回歸", () => {
+  test("成員可回報自己的已讀位置，其他成員可讀，但不能冒用別人或不存在的訊息", async () => {
+    await seedMessage();
+    await assertSucceeds(setDoc(readReceiptRef(memberID), {
+      messageID: "message-one", readAt: serverTimestamp(),
+    }));
+    assert.equal((await assertSucceeds(getDoc(readReceiptRef(teammateID, memberID)))).data().messageID, "message-one");
+    await assertFails(setDoc(readReceiptRef(memberID, teammateID), {
+      messageID: "message-one", readAt: serverTimestamp(),
+    }));
+    await assertFails(setDoc(readReceiptRef(memberID), {
+      messageID: "missing", readAt: serverTimestamp(),
+    }));
+    await assertFails(setDoc(readReceiptRef(outsiderID), {
+      messageID: "message-one", readAt: serverTimestamp(),
+    }));
+  });
+
+  test("置頂只能引用原訊息內容，成員可取消，非成員不可操作", async () => {
+    await seedMessage();
+    const pinned = { messageID: "message-one", senderName: "測試組員", text: "今天已完成簡報" };
+    await assertSucceeds(setDoc(pinRef(memberID), pinned));
+    assert.equal((await assertSucceeds(getDoc(pinRef(teammateID)))).data().text, pinned.text);
+    await assertFails(setDoc(pinRef(memberID), { ...pinned, text: "偽造內容" }));
+    await assertFails(setDoc(pinRef(outsiderID), pinned));
+    await assertFails(getDoc(pinRef(outsiderID)));
+    await assertSucceeds(deleteDoc(pinRef(teammateID)));
+  });
+
   test("成員可傳送訊息，其他組員可讀取與列出訊息", async () => {
     await assertSucceeds(setDoc(messageRef(memberID), message()));
     const received = await assertSucceeds(getDoc(messageRef(teammateID)));

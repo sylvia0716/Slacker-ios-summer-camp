@@ -37,6 +37,19 @@ struct ChatPresence: Identifiable {
     var id: String { userID }
 }
 
+struct ChatReadReceipt: Identifiable {
+    let userID: String
+    let messageID: String
+    var id: String { userID }
+}
+
+struct ChatPinnedMessage: Identifiable {
+    let messageID: String
+    let senderName: String
+    let text: String
+    var id: String { messageID }
+}
+
 /// 集中處理聊天室訊息、成員身分與在線狀態，避免 SwiftUI View 直接操作 Firebase。
 final class ChatRepository {
     private let firestore: Firestore
@@ -248,6 +261,65 @@ final class ChatRepository {
             "isOnline": isOnline,
             "lastSeenAt": FieldValue.serverTimestamp()
         ])
+    }
+
+    @discardableResult
+    func listenToReadReceipts(
+        groupID: String,
+        onChange: @escaping (Result<[ChatReadReceipt], Error>) -> Void
+    ) -> ListenerRegistration {
+        firestore.collection("groups").document(groupID).collection("readReceipts")
+            .addSnapshotListener { snapshot, error in
+                if let error { onChange(.failure(error)); return }
+                onChange(.success((snapshot?.documents ?? []).compactMap { document in
+                    guard let messageID = document.data()["messageID"] as? String else { return nil }
+                    return ChatReadReceipt(userID: document.documentID, messageID: messageID)
+                }))
+            }
+    }
+
+    func markRead(groupID: String, messageID: String) async throws {
+        let userID = try currentUserID()
+        try await firestore.collection("groups").document(groupID)
+            .collection("readReceipts").document(userID).setData([
+                "messageID": messageID,
+                "readAt": FieldValue.serverTimestamp()
+            ])
+    }
+
+    @discardableResult
+    func listenToPinnedMessage(
+        groupID: String,
+        onChange: @escaping (Result<ChatPinnedMessage?, Error>) -> Void
+    ) -> ListenerRegistration {
+        firestore.collection("groups").document(groupID).collection("chatSettings")
+            .document("pin").addSnapshotListener { snapshot, error in
+                if let error { onChange(.failure(error)); return }
+                guard let data = snapshot?.data(),
+                      let messageID = data["messageID"] as? String,
+                      let senderName = data["senderName"] as? String,
+                      let text = data["text"] as? String else {
+                    onChange(.success(nil))
+                    return
+                }
+                onChange(.success(ChatPinnedMessage(
+                    messageID: messageID, senderName: senderName, text: text
+                )))
+            }
+    }
+
+    func setPinnedMessage(groupID: String, message: ChatPinnedMessage?) async throws {
+        let reference = firestore.collection("groups").document(groupID)
+            .collection("chatSettings").document("pin")
+        if let message {
+            try await reference.setData([
+                "messageID": message.messageID,
+                "senderName": message.senderName,
+                "text": message.text
+            ])
+        } else {
+            try await reference.delete()
+        }
     }
 
     private func messagesCollection(groupID: String) -> CollectionReference {
