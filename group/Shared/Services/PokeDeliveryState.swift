@@ -29,6 +29,24 @@ final class PokeDeliveryState {
         }
     }
 
+    var deadlineReminderTime: Date {
+        get {
+            let minutes = min(max(defaults.integer(forKey: "notifications.deadlineReminderMinutes"), 0), 1_439)
+            let storedMinutes = defaults.object(forKey: "notifications.deadlineReminderMinutes") == nil ? 9 * 60 : minutes
+            return Calendar.current.date(
+                bySettingHour: storedMinutes / 60,
+                minute: storedMinutes % 60,
+                second: 0,
+                of: .now
+            ) ?? .now
+        }
+        set {
+            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            defaults.set((components.hour ?? 9) * 60 + (components.minute ?? 0),
+                         forKey: "notifications.deadlineReminderMinutes")
+        }
+    }
+
     var receivesPokes: Bool { notificationsEnabled && categories.pokes }
 
     /// The first server snapshot establishes a baseline instead of replaying old history.

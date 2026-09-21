@@ -211,6 +211,13 @@ final class AppStore {
         }
     }
 
+    var deadlineReminderTime = PokeDeliveryState.shared.deadlineReminderTime {
+        didSet {
+            PokeDeliveryState.shared.deadlineReminderTime = deadlineReminderTime
+            notificationSettingsChanged()
+        }
+    }
+
     var receivesPokes: Bool { notificationsEnabled && notificationCategories.pokes }
 
     private func notificationSettingsChanged() {
@@ -1418,6 +1425,7 @@ final class AppStore {
             let plan: [DeadlineReminder]? = self.hasLoadedReminderData && !self.isLoadingCloudGroups
                 ? DeadlineReminderPlan.make(groups: self.groups, tasks: self.projectTasks,
                     memberID: self.currentUserID, uid: self.firebaseUID ?? "", now: .now,
+                    reminderTime: Calendar.current.dateComponents([.hour, .minute], from: self.deadlineReminderTime),
                     completedReviewGroupIDs: Set(self.groups.filter { self.hasCompletedReviewReminders(in: $0) }.map(\.id)))
                 : nil
             DeadlineNotificationService.shared.update(uid: self.firebaseUID, enabled: enabled, plan: plan, categories: self.notificationCategories)

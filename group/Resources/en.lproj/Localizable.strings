@@ -128,6 +128,10 @@
 "好" = "OK";
 "允許通知" = "Allow notifications";
 "通知分類" = "Notification categories";
+"提醒時間" = "Reminder time";
+"任務與專案提醒時間" = "Task and project reminder time";
+"截止提醒會在指定時間送出；戳戳與互評仍會即時提醒。" = "Deadline reminders use this time. Pokes and peer-review alerts remain immediate.";
+"「{0}」即將截止，請留意進度。" = "“{0}” is due soon. Check its progress.";
 "戳戳" = "Pokes";
 "我的任務提醒" = "My task reminders";
 "專案倒數" = "Project countdown";
