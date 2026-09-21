@@ -12,7 +12,7 @@ struct NotificationTestView: View {
             BombTheme.yellow.ignoresSafeArea()
 
             VStack(spacing: 24) {
-                Picker("小組", selection: $selectedGroupID) {
+                Picker(L10n.text("小組"), selection: $selectedGroupID) {
                     ForEach(model.groups) { group in
                         Text(group.name).tag(Optional(group.id))
                     }
@@ -28,7 +28,7 @@ struct NotificationTestView: View {
                     }
                     pokeCount = count
                 } label: {
-                    Label("戳自己一下", systemImage: "hand.tap.fill")
+                    Label(L10n.text("戳自己一下"), systemImage: "hand.tap.fill")
                         .font(.title3.weight(.black))
                         .padding(.horizontal, 22)
                         .padding(.vertical, 15)
@@ -40,11 +40,11 @@ struct NotificationTestView: View {
                 .disabled(selectedGroupID == nil)
 
                 if model.groups.isEmpty {
-                    Text("加入專案後即可測試").font(.subheadline)
+                    Text(L10n.text("加入專案後即可測試")).font(.subheadline)
                 }
 
                 if pokeCount > 0 {
-                    Text("已戳自己 \(pokeCount) 下")
+                    Text(L10n.format("已戳自己 {0} 下", String(describing: pokeCount)))
                         .font(.headline.weight(.black))
                 }
             }
@@ -53,12 +53,12 @@ struct NotificationTestView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "通知測試") {
+            BombHeader(title: L10n.text("通知測試")) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回通知設定")
+                .accessibilityLabel(L10n.text("返回通知設定"))
             } trailing: {
                 EmptyView()
             }
@@ -66,8 +66,8 @@ struct NotificationTestView: View {
         .onAppear {
             selectedGroupID = selectedGroupID ?? model.groups.first?.id
         }
-        .bombDialog("請先開啟通知及戳戳提醒", isPresented: $showsNotificationsDisabledAlert) {
-            Button("好") { }
+        .bombDialog(L10n.text("請先開啟通知及戳戳提醒"), isPresented: $showsNotificationsDisabledAlert) {
+            Button(L10n.text("好")) { }
         }
     }
 }

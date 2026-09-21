@@ -4,6 +4,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
 const { getAuth } = require("firebase-admin/auth");
 const { memberDisplayName } = require("./member-display-name");
+const { pokeNotification } = require("./poke-notification");
 const { getMessaging } = require("firebase-admin/messaging");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 
@@ -180,13 +181,17 @@ function normalizedPokeData(data) {
 }
 
 function normalizedDeviceData(data) {
-  requireExactKeys(data, ["deviceID", "token"]);
+  requireExactKeys(data, data?.languageCode === undefined
+    ? ["deviceID", "token"] : ["deviceID", "token", "languageCode"]);
+  if (data.languageCode !== undefined && !["en", "zh-Hant"].includes(data.languageCode)) {
+    throw callableError("invalid-argument", "Invalid language.", "invalid-device");
+  }
   const deviceID = typeof data.deviceID === "string" ? data.deviceID : "";
   const token = typeof data.token === "string" ? data.token : "";
   if (!deviceID || deviceID.length > 128 || !token || token.length > 4096) {
     throw callableError("invalid-argument", "Invalid device.", "invalid-device");
   }
-  return { deviceID, token };
+  return { deviceID, token, languageCode: data.languageCode || "zh-Hant" };
 }
 
 function makeInviteCode() {
@@ -456,9 +461,10 @@ exports.updateSubtask = onCall({ region }, async (request) => {
 
 exports.registerPokeDevice = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
-  const { deviceID, token } = normalizedDeviceData(request.data);
+  const { deviceID, token, languageCode } = normalizedDeviceData(request.data);
   await db.collection("users").doc(userID).collection("devices").doc(deviceID).set({
     token,
+    languageCode,
     platform: "ios",
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -506,21 +512,23 @@ exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID
   const poke = event.data?.data();
   if (!poke?.recipientID || !poke?.groupName || !poke?.style || !Number.isInteger(poke?.pokeCount)) return;
   const devices = await db.collection("users").doc(poke.recipientID).collection("devices").get();
-  const tokens = devices.docs.map((device) => device.data().token).filter((token) => typeof token === "string" && token.length > 0);
-  if (tokens.length === 0) return;
-  const body = poke.pokeCount < 5
-    ? `你被${poke.groupName}的隊員戳了${poke.pokeCount} 下！`
-    : poke.pokeCount < 10 ? "你的組員一直在戳你‼️快回來啦🫨" : "檢舉雷包，人人有責😤";
-  const response = await getMessaging().sendEachForMulticast({
-    tokens,
-    notification: { title: "有人在找你", body },
-    data: { groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
-    apns: { payload: { aps: { sound: "default" } } },
+  const recipients = devices.docs.filter((device) => {
+    const token = device.data().token;
+    return typeof token === "string" && token.length > 0;
   });
-  await Promise.all(response.responses.map((result, index) => {
-    if (result.success || !["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(result.error?.code)) return null;
-    return devices.docs[index].ref.delete();
-  }));
+  for (let offset = 0; offset < recipients.length; offset += 500) {
+    const batch = recipients.slice(offset, offset + 500);
+    const response = await getMessaging().sendEach(batch.map((device) => ({
+      token: device.data().token,
+      notification: pokeNotification(poke, device.data().languageCode),
+      data: { groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
+      apns: { payload: { aps: { sound: "default" } } },
+    })));
+    await Promise.all(response.responses.map((result, index) => {
+      if (result.success || !["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(result.error?.code)) return null;
+      return batch[index].ref.delete();
+    }));
+  }
 });
 
 Object.assign(exports, require('./group-membership'));

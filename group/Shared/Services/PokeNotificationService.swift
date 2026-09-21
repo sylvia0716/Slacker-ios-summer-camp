@@ -48,7 +48,7 @@ final class PokeNotificationService {
     func deliver(group: Group, pokeCount: Int, style: PokeStyle) {
         guard PokeDeliveryState.shared.receivesPokes else { return }
         let content = UNMutableNotificationContent()
-        content.title = "有人在找你"
+        content.title = L10n.text("有人在找你")
         content.body = message(for: group.name, pokeCount: pokeCount)
         content.sound = .default
         content.userInfo = [
@@ -69,8 +69,8 @@ final class PokeNotificationService {
     func deliverSummary(reception: PokeReception, unseenCount: Int, uid: String, groupID: String) async throws {
         guard PokeDeliveryState.shared.receivesPokes else { return }
         let content = UNMutableNotificationContent()
-        content.title = "隊友在找你"
-        content.body = "你在「\(reception.groupName)」又被戳了 \(unseenCount) 下！"
+        content.title = L10n.text("隊友在找你")
+        content.body = L10n.format("你在「{0}」又被戳了 {1} 下！", String(describing: reception.groupName), String(describing: unseenCount))
         content.sound = .default
         content.userInfo = [
             UserInfoKey.groupID: groupID,
@@ -100,11 +100,11 @@ final class PokeNotificationService {
     private func message(for groupName: String, pokeCount: Int) -> String {
         switch pokeCount {
         case 1...4:
-            "你被\(groupName)的隊員戳了\(pokeCount) 下！"
+            L10n.format("你被{0}的隊員戳了{1} 下！", String(describing: groupName), String(describing: pokeCount))
         case 5...9:
-            "你的組員一直在戳你‼️快回來啦🫨"
+            L10n.text("你的組員一直在戳你‼️快回來啦🫨")
         default:
-            "檢舉雷包，人人有責😤"
+            L10n.text("檢舉雷包，人人有責😤")
         }
     }
 }

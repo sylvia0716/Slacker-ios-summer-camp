@@ -80,6 +80,7 @@ struct BombHeader<Leading: View, Trailing: View>: View {
                 Text(title)
                     .font(.system(.title2, design: .rounded, weight: .black))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.65)
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption.weight(.bold))

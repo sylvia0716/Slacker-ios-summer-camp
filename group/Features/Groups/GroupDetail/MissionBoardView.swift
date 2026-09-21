@@ -22,17 +22,17 @@ struct MissionBoardView: View {
                 VStack(spacing: 18) {
                     ProjectStatusHeader(name: group.name, progress: model.teamProgress)
                     HStack {
-                        Stat(value: "\(model.claimedCount)", label: "我的任務")
-                        Stat(value: "\(model.teamProgress)%", label: "拆彈進度")
-                        Stat(value: "2天", label: "剩餘時間")
+                        Stat(value: "\(model.claimedCount)", label: L10n.text("我的任務"))
+                        Stat(value: "\(model.teamProgress)%", label: L10n.text("拆彈進度"))
+                        Stat(value: L10n.text("2天"), label: L10n.text("剩餘時間"))
                     }
                     .comicCard()
 
                     HStack {
-                        Text("任務看板").font(.system(.title2, design: .rounded, weight: .black))
+                        Text(L10n.text("任務看板")).font(.system(.title2, design: .rounded, weight: .black))
                         Spacer()
                         Button { shieldOpen = true } label: {
-                            Label("我在做了", systemImage: "shield.fill")
+                            Label(L10n.text("我在做了"), systemImage: "shield.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(BombTheme.green)
@@ -57,10 +57,10 @@ struct MissionBoardView: View {
             }
         }
         .sheet(isPresented: $shieldOpen) { ShieldSheet(model: model) }
-        .bombDialog("群組已建立", isPresented: $isTaskPromptPresented) {
-            Button("知道了") { }
+        .bombDialog(L10n.text("群組已建立"), isPresented: $isTaskPromptPresented) {
+            Button(L10n.text("知道了")) { }
         } message: {
-            Text("現在可以新增任務，邀請隊友一起拆彈。")
+            Text(L10n.text("現在可以新增任務，邀請隊友一起拆彈。"))
         }
         .onAppear {
             isTaskPromptPresented = showsNewGroupPrompt
@@ -77,9 +77,9 @@ struct ProjectStatusHeader: View {
         VStack(spacing: 10) {
             HStack {
                 Image(systemName: "timer").foregroundStyle(BombTheme.yellow)
-                Text("行動代號：\(name)").font(.headline)
+                Text(L10n.format("行動代號：{0}", String(describing: name))).font(.headline)
                 Spacer()
-                Text("LIVE").font(.caption.weight(.black)).foregroundStyle(BombTheme.red)
+                Text(L10n.text("LIVE")).font(.caption.weight(.black)).foregroundStyle(BombTheme.red)
             }
             HStack(alignment: .firstTextBaseline) {
                 Text("48:16:09").font(.system(size: 38, weight: .black, design: .monospaced))
@@ -128,13 +128,13 @@ private struct MissionCard: View {
             Text(task.detail).font(.subheadline).foregroundStyle(.secondary)
             HStack {
                 if let owner = task.owner {
-                    Label(owner == "我" ? "由我拆彈" : "\(owner) 處理中", systemImage: owner == "我" ? "checkmark.seal.fill" : "person.fill")
+                    Label(owner == "我" ? L10n.text("由我拆彈") : L10n.format("{0} 處理中", String(describing: owner)), systemImage: owner == "我" ? "checkmark.seal.fill" : "person.fill")
                         .font(.subheadline.bold())
                         .foregroundStyle(owner == "我" ? BombTheme.green : .secondary)
                 } else {
-                    Text("尚未認領").font(.subheadline.bold())
+                    Text(L10n.text("尚未認領")).font(.subheadline.bold())
                     Spacer()
-                    Button("認領任務", action: claim)
+                    Button(L10n.text("認領任務"), action: claim)
                         .buttonStyle(.borderedProminent)
                         .tint(BombTheme.ink)
                         .sensoryFeedback(.success, trigger: task.owner)
@@ -151,32 +151,32 @@ private struct ShieldSheet: View {
     @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     @State private var minutes = 30
-    @State private var note = "正在完成資料整理"
+    @State private var note = L10n.text("正在完成資料整理")
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("護盾時間", selection: $minutes) {
-                        Text("15 分鐘").tag(15)
-                        Text("30 分鐘").tag(30)
-                        Text("60 分鐘").tag(60)
+                    Picker(L10n.text("護盾時間"), selection: $minutes) {
+                        Text(L10n.text("15 分鐘")).tag(15)
+                        Text(L10n.text("30 分鐘")).tag(30)
+                        Text(L10n.text("60 分鐘")).tag(60)
                     }
                     .pickerStyle(.segmented)
                 }
-                Section("進度廣播") { TextField("我正在做⋯", text: $note) }
+                Section(L10n.text("進度廣播")) { TextField(L10n.text("我正在做⋯"), text: $note) }
                 Section {
                     Button {
                         model.shield(minutes: minutes, note: note)
                         dismiss()
                     } label: {
-                        Label("啟動護盾", systemImage: "shield.checkered").frame(maxWidth: .infinity)
+                        Label(L10n.text("啟動護盾"), systemImage: "shield.checkered").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(BombTheme.green)
                 }
             }
-            .navigationTitle("我在做了")
+            .navigationTitle(L10n.text("我在做了"))
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium])

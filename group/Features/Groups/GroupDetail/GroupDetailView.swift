@@ -71,7 +71,7 @@ struct GroupDetailView: View {
                                 Button(role: .destructive) {
                                     showsLeaveConfirmation = true
                                 } label: {
-                                    Label(isLeaving ? "退出中…" : "退出群組", systemImage: "rectangle.portrait.and.arrow.right")
+                                    Label(isLeaving ? L10n.text("退出中…") : L10n.text("退出群組"), systemImage: "rectangle.portrait.and.arrow.right")
                                         .font(.headline.weight(.black))
                                         .foregroundStyle(BombTheme.paper)
                                         .frame(width: (proxy.size.width - 32) * 0.6, height: 52)
@@ -155,25 +155,25 @@ struct GroupDetailView: View {
                 }
             }
         }
-        .bombDialog("確定退出「\(currentGroup.name)」？", isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
-            Button("取消", role: .cancel) { }
-            Button("退出群組", role: .destructive) {
+        .bombDialog(L10n.format("確定退出「{0}」？", String(describing: currentGroup.name)), isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("退出群組"), role: .destructive) {
                 isLeaving = true
                 Task {
                     defer { isLeaving = false }
                     do {
                         try await model.leaveGroup(groupID: group.id)
                         dismiss()
-                    } catch { leaveError = "退出失敗，請確認網路後重試。" }
+                    } catch { leaveError = L10n.text("退出失敗，請確認網路後重試。") }
                 }
             }
         } message: {
-            Text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。")
+            Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
         }
-        .bombDialog("無法退出群組", isPresented: Binding(
+        .bombDialog(L10n.text("無法退出群組"), isPresented: Binding(
             get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: { Text(leaveError ?? "") }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -220,31 +220,31 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showsNameSheet) {
             GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
         }
-        .bombDialog("無法修改期限", isPresented: Binding(
+        .bombDialog(L10n.text("無法修改期限"), isPresented: Binding(
             get: { deadlineError != nil },
             set: { if !$0 { deadlineError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: {
             Text(deadlineError ?? "")
         }
-        .bombDialog("無法修改群組名稱", isPresented: Binding(
+        .bombDialog(L10n.text("無法修改群組名稱"), isPresented: Binding(
             get: { nameError != nil },
             set: { if !$0 { nameError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: {
             Text(nameError ?? "")
         }
     }
 
     private var topBar: some View {
-        BombHeader(title: "專案任務", subtitle: currentGroup.name) {
+        BombHeader(title: L10n.text("專案任務"), subtitle: currentGroup.name) {
             Button(action: dismiss.callAsFunction) {
                 Image(systemName: "chevron.left")
             }
             .buttonStyle(BombHeaderButtonStyle())
-            .accessibilityLabel("返回群組")
+            .accessibilityLabel(L10n.text("返回群組"))
         } trailing: {
             HStack(spacing: 8) {
 #if DEBUG
@@ -256,7 +256,7 @@ struct GroupDetailView: View {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("聊天室")
+                .accessibilityLabel(L10n.text("聊天室"))
                 .tutorialTarget(
                     .chatButton,
                     enabled: tutorialStep?.wrappedValue == .chatEntry
@@ -277,7 +277,7 @@ struct GroupDetailView: View {
         Button {
             showsDebugPanel = true
         } label: {
-            Text("測試")
+            Text(L10n.text("測試"))
                 .font(.caption2.weight(.black))
                 .foregroundStyle(BombTheme.ink)
                 .padding(.horizontal, 9)
@@ -298,16 +298,16 @@ struct GroupDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("測試工具")
+                        Text(L10n.text("測試工具"))
                             .font(.title2.weight(.black))
                         Spacer()
-                        Button("關閉") { showsDebugPanel = false }
+                        Button(L10n.text("關閉")) { showsDebugPanel = false }
                             .font(.caption.weight(.black))
                             .foregroundStyle(BombTheme.ink)
                             .buttonStyle(.plain)
                     }
 
-                    debugAction("測試被戳特效") {
+                    debugAction(L10n.text("測試被戳特效")) {
                         NotificationCenter.default.post(
                             name: .pokeReceived,
                             object: PokeReception(
@@ -317,7 +317,7 @@ struct GroupDetailView: View {
                             )
                         )
                     }
-                    debugAction("正常進行中") {
+                    debugAction(L10n.text("正常進行中")) {
                         debugDeadlineOutcome = .active
                         reviewDeferred = false
                         showsExplosionMeme = false
@@ -325,43 +325,43 @@ struct GroupDetailView: View {
                         peerReviewStartsAtOutcomeSummary = true
                         peerReviewRevision += 1
                     }
-                    debugAction("成功拆彈摘要") {
+                    debugAction(L10n.text("成功拆彈摘要")) {
                         presentDebugPeerReview(outcome: .completed, startsAtSummary: true)
                     }
-                    debugAction("直接顯示成功梗圖") {
+                    debugAction(L10n.text("直接顯示成功梗圖")) {
                         presentDebugSuccessMeme()
                     }
-                    debugAction("直接顯示爆炸梗圖") {
+                    debugAction(L10n.text("直接顯示爆炸梗圖")) {
                         presentDebugExplosionMeme()
                     }
-                    debugAction("關閉爆炸梗圖") {
+                    debugAction(L10n.text("關閉爆炸梗圖")) {
                         debugDeadlineOutcome = .incomplete
                         showsExplosionMeme = false
                         reviewDeferred = true
                     }
-                    debugAction("重新顯示爆炸梗圖") {
+                    debugAction(L10n.text("重新顯示爆炸梗圖")) {
                         presentDebugExplosionMeme()
                     }
-                    debugAction("直接跳到戰損摘要") {
+                    debugAction(L10n.text("直接跳到戰損摘要")) {
                         presentDebugPeerReview(outcome: .incomplete, startsAtSummary: true)
                     }
-                    debugAction("直接跳到雷包點點名") {
+                    debugAction(L10n.text("直接跳到雷包點點名")) {
                         let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
                         presentDebugPeerReview(outcome: outcome, startsAtSummary: false, resetReviews: true)
                     }
-                    debugAction("模擬部分成員已評分") {
+                    debugAction(L10n.text("模擬部分成員已評分")) {
                         seedCurrentUserReviews(count: 1)
                         presentDebugPeerReview(outcome: .incomplete, startsAtSummary: false)
                     }
-                    debugAction("模擬全部評分完成") {
+                    debugAction(L10n.text("模擬全部評分完成")) {
                         seedAllPeerReviews()
                         presentDebugPeerReview(outcome: .incomplete, startsAtSummary: false)
                     }
-                    debugAction("重設互評進度") {
+                    debugAction(L10n.text("重設互評進度")) {
                         let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
                         presentDebugPeerReview(outcome: outcome, startsAtSummary: true, resetReviews: true)
                     }
-                    debugAction("重新顯示結果摘要") {
+                    debugAction(L10n.text("重新顯示結果摘要")) {
                         let outcome = debugDeadlineOutcome == .completed ? GroupDeadlineOutcome.completed : .incomplete
                         presentDebugPeerReview(outcome: outcome, startsAtSummary: true)
                     }
@@ -516,17 +516,17 @@ struct GroupDetailView: View {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.bubble.fill")
                     .foregroundStyle(BombTheme.ink)
-                Text("尚有匿名互評未完成")
+                Text(L10n.text("尚有匿名互評未完成"))
                     .font(.headline.weight(.black))
             }
 
             HStack {
-                Text("還剩 \(remainingReviewCount) 位隊員")
+                Text(L10n.format("還剩 {0} 位隊員", String(describing: remainingReviewCount)))
                     .font(.subheadline.weight(.bold))
 
                 Spacer()
 
-                Button("繼續評分") {
+                Button(L10n.text("繼續評分")) {
                     peerReviewStartsAtOutcomeSummary = false
                     peerReviewRevision += 1
                     reviewDeferred = false
@@ -680,12 +680,12 @@ struct GroupDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                Text("群組代碼：\(currentGroup.inviteCode)")
+                Text(L10n.format("群組代碼：{0}", String(describing: currentGroup.inviteCode)))
                     .font(.subheadline.weight(.black))
                     .lineLimit(1)
 
                 Button(action: copyInviteCode) {
-                    Label("複製", systemImage: "doc.on.doc.fill")
+                    Label(L10n.text("複製"), systemImage: "doc.on.doc.fill")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
@@ -696,7 +696,7 @@ struct GroupDetailView: View {
                 .buttonStyle(.plain)
 
                 ShareLink(
-                    item: "加入「\(currentGroup.name)」的群組，邀請碼：\(currentGroup.inviteCode)"
+                    item: L10n.format("加入「{0}」的群組，邀請碼：{1}", String(describing: currentGroup.name), String(describing: currentGroup.inviteCode))
                 ) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.caption.weight(.black))
@@ -708,12 +708,12 @@ struct GroupDetailView: View {
                 }
 
                 Menu {
-                    Button("修改群組名稱", systemImage: "pencil") {
+                    Button(L10n.text("修改群組名稱"), systemImage: "pencil") {
                         nameDraft = currentGroup.name
                         showsNameSheet = true
                     }
 
-                    Button("修改截止時間", systemImage: "calendar.badge.clock") {
+                    Button(L10n.text("修改截止時間"), systemImage: "calendar.badge.clock") {
                         deadlineDraft = currentGroup.deadline
                         showsDeadlineSheet = true
                     }
@@ -726,7 +726,7 @@ struct GroupDetailView: View {
                         .background(BombTheme.ink)
                         .clipShape(.capsule)
                 }
-                .accessibilityLabel("修改群組")
+                .accessibilityLabel(L10n.text("修改群組"))
             }
             .tutorialTarget(
                 .inviteCode,
@@ -734,7 +734,7 @@ struct GroupDetailView: View {
             )
 
             if showsCopiedFeedback {
-                Text("群組代碼已複製")
+                Text(L10n.text("群組代碼已複製"))
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.green)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -747,12 +747,12 @@ struct GroupDetailView: View {
             HStack(spacing: 8) {
                 Image(systemName: "timer")
                     .foregroundStyle(BombTheme.yellow)
-                Text("行動代號：\(missionName)")
+                Text(L10n.format("行動代號：{0}", String(describing: missionName)))
                     .font(.headline.weight(.black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer()
-                Text("LIVE")
+                Text(L10n.text("LIVE"))
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.red)
             }
@@ -788,7 +788,7 @@ struct GroupDetailView: View {
     private var memberSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text("成員進度")
+                Text(L10n.text("成員進度"))
                     .font(.system(.title2, design: .rounded, weight: .black))
                     .layoutPriority(1)
 
@@ -797,7 +797,7 @@ struct GroupDetailView: View {
                 Button {
                     withAnimation(.snappy) { showsPublishTaskSheet = true }
                 } label: {
-                    Text(isGroupDeadlinePassed ? "已截止" : "＋ 發布任務")
+                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11)
@@ -890,7 +890,7 @@ struct GroupDetailView: View {
     }
 
     private var missionName: String {
-        let name = currentGroup.name.replacingOccurrences(of: "拆彈小隊", with: "")
+        let name = currentGroup.name.replacingOccurrences(of: L10n.text("拆彈小隊"), with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? currentGroup.name : name
     }
@@ -902,10 +902,10 @@ struct GroupDetailView: View {
         let minutes = remaining % 3_600 / 60
 
         if remaining == 0 {
-            return "已截止"
+            return L10n.text("已截止")
         }
 
-        return "\(days) 天 \(hours) 小時 \(minutes) 分鐘"
+        return L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
     }
 
     private func memberProgressItem(for member: Member) -> MemberProgressPreviewItem {
@@ -918,8 +918,8 @@ struct GroupDetailView: View {
             name: member.name,
             role: member.role.title,
             progress: progress,
-            currentTask: currentTask?.title ?? "尚未指派任務",
-            status: currentTask?.status.title ?? "待命",
+            currentTask: currentTask?.title ?? L10n.text("尚未指派任務"),
+            status: currentTask?.status.title ?? L10n.text("待命"),
             showsNudge: member.id != model.currentUserID && progress <= 90
         )
     }
@@ -966,20 +966,20 @@ private struct DeadlineEditorSheet: View {
         NavigationStack {
             Form {
                 DatePicker(
-                    "截止時間",
+                    L10n.text("截止時間"),
                     selection: $deadline,
                     in: Date.now...,
                     displayedComponents: [.date, .hourAndMinute]
                 )
             }
-            .navigationTitle("修改截止時間")
+            .navigationTitle(L10n.text("修改截止時間"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(L10n.text("取消")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { onSave() }
+                    Button(L10n.text("儲存")) { onSave() }
                 }
             }
         }
@@ -995,16 +995,16 @@ private struct GroupNameEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("群組名稱", text: $name)
+                TextField(L10n.text("群組名稱"), text: $name)
             }
-            .navigationTitle("修改群組名稱")
+            .navigationTitle(L10n.text("修改群組名稱"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(L10n.text("取消")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { onSave() }
+                    Button(L10n.text("儲存")) { onSave() }
                 }
             }
         }
@@ -1033,9 +1033,9 @@ private struct ExplosionMemeOverlay: View {
                                 .foregroundStyle(BombTheme.red)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("任務爆炸")
+                                Text(L10n.text("任務爆炸"))
                                     .font(.system(.title, design: .rounded, weight: .black))
-                                Text("截止時間已到")
+                                Text(L10n.text("截止時間已到"))
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(.secondary)
                             }
@@ -1051,7 +1051,7 @@ private struct ExplosionMemeOverlay: View {
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("關閉梗圖")
+                            .accessibilityLabel(L10n.text("關閉梗圖"))
                         }
 
                         FailureMemeImage(
@@ -1068,7 +1068,7 @@ private struct ExplosionMemeOverlay: View {
                                 RoundedRectangle(cornerRadius: 16)
                                     .stroke(BombTheme.ink, lineWidth: 2)
                             )
-                            .accessibilityLabel("爆炸專案梗圖")
+                            .accessibilityLabel(L10n.text("爆炸專案梗圖"))
 
                         VStack(spacing: 9) {
                             Text(groupName)
@@ -1076,10 +1076,10 @@ private struct ExplosionMemeOverlay: View {
                                 .multilineTextAlignment(.center)
 
                             HStack(spacing: 12) {
-                                Text("完成率 \(progress)%")
+                                Text(L10n.format("完成率 {0}%", String(describing: progress)))
                                 Text("｜")
                                     .foregroundStyle(.secondary)
-                                Text("未完成任務 \(incompleteTaskCount) 項")
+                                Text(L10n.format("未完成任務 {0} 項", String(describing: incompleteTaskCount)))
                             }
                             .font(.subheadline.weight(.black))
                             .multilineTextAlignment(.center)
@@ -1090,7 +1090,7 @@ private struct ExplosionMemeOverlay: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
 
-                        Text("本次任務未能如期完成，\n請查看團隊戰報並完成匿名隊員互評。")
+                        Text(L10n.text("本次任務未能如期完成，\n請查看團隊戰報並完成匿名隊員互評。"))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink.opacity(0.76))
                             .multilineTextAlignment(.center)
@@ -1099,9 +1099,9 @@ private struct ExplosionMemeOverlay: View {
                         if let shareImage {
                             ShareLink(
                                 item: shareImage,
-                                preview: SharePreview("\(groupName) 任務結算", image: shareImage)
+                                preview: SharePreview(L10n.format("{0} 任務結算", String(describing: groupName)), image: shareImage)
                             ) {
-                                Label("分享梗圖", systemImage: "square.and.arrow.up")
+                                Label(L10n.text("分享梗圖"), systemImage: "square.and.arrow.up")
                                     .font(.subheadline.weight(.black))
                                     .foregroundStyle(BombTheme.ink)
                                     .frame(maxWidth: .infinity)
@@ -1168,12 +1168,12 @@ private struct FailureMemeImage: View {
                         .offset(x: 30, y: 30)
                     Spacer()
                     MemeCaption(
-                        text: "已讀不回的組員",
+                        text: L10n.text("已讀不回的組員"),
                         fontSize: proxy.size.width * 0.06
                     )
                     .offset(x: 45, y: 15)
                     Spacer()
-                    MemeCaption(text: "我要放暑假了！", fontSize: proxy.size.width * 0.07)
+                    MemeCaption(text: L10n.text("我要放暑假了！"), fontSize: proxy.size.width * 0.07)
                         .offset(x: -60, y: -20)
                 }
                 .padding(.vertical, proxy.size.height * 0.08)
@@ -1182,7 +1182,7 @@ private struct FailureMemeImage: View {
             .clipped()
         }
         .aspectRatio(1, contentMode: .fit)
-        .accessibilityLabel("\(groupName) 的任務爆炸梗圖，完成率 \(progress)%，尚有 \(incompleteTaskCount) 項任務未完成")
+        .accessibilityLabel(L10n.format("{0} 的任務爆炸梗圖，完成率 {1}%，尚有 {2} 項任務未完成", String(describing: groupName), String(describing: progress), String(describing: incompleteTaskCount)))
     }
 }
 
@@ -1205,9 +1205,9 @@ private struct SuccessMemeOverlay: View {
                                 .foregroundStyle(BombTheme.green)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("成功拆彈")
+                                Text(L10n.text("成功拆彈"))
                                     .font(.system(.title, design: .rounded, weight: .black))
-                                Text("任務已全數完成")
+                                Text(L10n.text("任務已全數完成"))
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(.secondary)
                             }
@@ -1223,14 +1223,14 @@ private struct SuccessMemeOverlay: View {
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("關閉梗圖")
+                            .accessibilityLabel(L10n.text("關閉梗圖"))
                         }
 
                         SuccessMemeImage(groupName: groupName)
                             .frame(maxWidth: min(260, proxy.size.width - 64))
-                            .accessibilityLabel("成功拆彈梗圖")
+                            .accessibilityLabel(L10n.text("成功拆彈梗圖"))
 
-                        Text("這次任務如期完成，\n請完成匿名隊員互評。")
+                        Text(L10n.text("這次任務如期完成，\n請完成匿名隊員互評。"))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink.opacity(0.76))
                             .multilineTextAlignment(.center)
@@ -1238,9 +1238,9 @@ private struct SuccessMemeOverlay: View {
                         if let shareImage {
                             ShareLink(
                                 item: shareImage,
-                                preview: SharePreview("\(groupName) 成功拆彈", image: shareImage)
+                                preview: SharePreview(L10n.format("{0} 成功拆彈", String(describing: groupName)), image: shareImage)
                             ) {
-                                Label("分享梗圖", systemImage: "square.and.arrow.up")
+                                Label(L10n.text("分享梗圖"), systemImage: "square.and.arrow.up")
                                     .font(.subheadline.weight(.black))
                                     .foregroundStyle(BombTheme.ink)
                                     .frame(maxWidth: .infinity)
@@ -1297,11 +1297,11 @@ private struct SuccessMemeImage: View {
                     .frame(width: proxy.size.width, height: proxy.size.height)
 
                 VStack(spacing: 0) {
-                    MemeCaption(text: "你有多猛", fontSize: proxy.size.width * 0.09)
+                    MemeCaption(text: L10n.text("你有多猛"), fontSize: proxy.size.width * 0.09)
                         .offset(y: 140)
                     Spacer()
                     MemeCaption(
-                        text: "我完成了\(groupName)",
+                        text: L10n.format("我完成了{0}", String(describing: groupName)),
                         fontSize: proxy.size.width * 0.075
                     )
                     .offset(y: 30)
@@ -1312,7 +1312,7 @@ private struct SuccessMemeImage: View {
             .clipped()
         }
         .aspectRatio(600.0 / 981.0, contentMode: .fit)
-        .accessibilityLabel("\(groupName) 的成功拆彈梗圖")
+        .accessibilityLabel(L10n.format("{0} 的成功拆彈梗圖", String(describing: groupName)))
     }
 }
 

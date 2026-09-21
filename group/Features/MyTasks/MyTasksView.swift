@@ -48,25 +48,25 @@ struct MyTasksView: View {
                         staleTasksBanner
                     }
 
-                    Picker("任務狀態", selection: $showCompleted) {
-                        Text("待完成").tag(false)
-                        Text("已完成").tag(true)
+                    Picker(L10n.text("任務狀態"), selection: $showCompleted) {
+                        Text(L10n.text("待完成")).tag(false)
+                        Text(L10n.text("已完成")).tag(true)
                     }
                     .pickerStyle(.segmented)
                     .tint(.white)
 
                     if model.isLoadingCloudGroups && model.projectTasks.isEmpty {
-                        ProgressView("正在同步任務…")
+                        ProgressView(L10n.text("正在同步任務…"))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 42)
                     } else if let syncError = model.cloudGroupSyncErrorMessage,
                               model.projectTasks.isEmpty {
                         ContentUnavailableView {
-                            Label("無法載入任務", systemImage: "exclamationmark.triangle.fill")
+                            Label(L10n.text("無法載入任務"), systemImage: "exclamationmark.triangle.fill")
                         } description: {
                             Text(syncError)
                         } actions: {
-                            Button("重新整理") {
+                            Button(L10n.text("重新整理")) {
                                 Task { await model.reloadCloudGroups() }
                             }
                             .buttonStyle(.borderedProminent)
@@ -76,7 +76,7 @@ struct MyTasksView: View {
                         .padding(.vertical, 42)
                     } else if visibleTasks.isEmpty {
                         ContentUnavailableView(
-                            showCompleted ? "還沒有完成任務" : "目前沒有待完成任務",
+                            showCompleted ? L10n.text("還沒有完成任務") : L10n.text("目前沒有待完成任務"),
                             systemImage: showCompleted ? "checkmark.seal.fill" : "bolt.fill"
                         )
                         .frame(maxWidth: .infinity)
@@ -98,7 +98,7 @@ struct MyTasksView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "我的任務") {
+            BombHeader(title: L10n.text("我的任務")) {
                 EmptyView()
             } trailing: {
                 EmptyView()
@@ -115,10 +115,10 @@ struct MyTasksView: View {
     private var staleTasksBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text("任務同步失敗，顯示上次同步資料")
+            Text(L10n.text("任務同步失敗，顯示上次同步資料"))
                 .font(.subheadline.weight(.bold))
             Spacer(minLength: 8)
-            Button("重試") {
+            Button(L10n.text("重試")) {
                 Task { await model.reloadCloudGroups() }
             }
             .font(.subheadline.weight(.black))
@@ -151,7 +151,7 @@ private struct TaskProgressDashboard: View {
                     .monospacedDigit()
                     .foregroundStyle(BombTheme.ink)
 
-                Text("整體任務進度")
+                Text(L10n.text("整體任務進度"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(BombTheme.ink)
                     .padding(.horizontal, 14)
@@ -318,7 +318,7 @@ private struct MyTaskCard: View {
                     Label { Text(TaskRemainingTime(deadline: task.deadline).text) } icon: { Image(systemName: "clock.fill") }
                 }
                 Spacer()
-                Label("查看任務", systemImage: "chevron.right")
+                Label(L10n.text("查看任務"), systemImage: "chevron.right")
             }
             .font(.body.weight(.bold))
         }
@@ -332,7 +332,7 @@ private struct TaskRemainingTime {
 
     var text: String {
         let remainingInterval = deadline.timeIntervalSinceNow
-        guard remainingInterval > 0 else { return "已逾期" }
+        guard remainingInterval > 0 else { return L10n.text("已逾期") }
         let seconds = Int(remainingInterval)
         let days = seconds / 86_400
         let hours = seconds % 86_400 / 3_600
@@ -379,7 +379,7 @@ private struct MyTaskDetailView: View {
         .bombTabBarHidden()
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(
-                title: "任務詳情",
+                title: L10n.text("任務詳情"),
                 subtitle: task.flatMap { task in
                     model.groups.first { $0.id == task.groupID }?.name
                 }
@@ -388,7 +388,7 @@ private struct MyTaskDetailView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回我的任務")
+                .accessibilityLabel(L10n.text("返回我的任務"))
             } trailing: {
                 EmptyView()
             }
@@ -450,7 +450,7 @@ private struct MyTaskDetailView: View {
                 .scaleEffect(y: 1.35)
 
             Label(
-                "\(task.subtasks.filter(\.isComplete).count) / \(task.subtasks.count) 項子任務完成",
+                L10n.format("{0} / {1} 項子任務完成", String(describing: task.subtasks.filter(\.isComplete).count), String(describing: task.subtasks.count)),
                 systemImage: "checkmark.circle.fill"
             )
             .font(.caption.weight(.bold))
@@ -461,7 +461,7 @@ private struct MyTaskDetailView: View {
     private func subtaskSection(_ task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Label("子任務", systemImage: "checklist")
+                Label(L10n.text("子任務"), systemImage: "checklist")
                     .font(.headline.weight(.black))
                 Spacer()
                 Text("\(task.subtasks.filter(\.isComplete).count) / \(task.subtasks.count)")
@@ -498,7 +498,7 @@ private struct MyTaskDetailView: View {
 
     private func deliverableSection(_ task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("成果交付", systemImage: "shippingbox.fill")
+            Label(L10n.text("成果交付"), systemImage: "shippingbox.fill")
                 .font(.headline.weight(.black))
 
             if let deliverable = task.deliverable {
@@ -516,13 +516,13 @@ private struct MyTaskDetailView: View {
 
                         Spacer(minLength: 8)
 
-                        Text(deliverable.isApproved ? "已驗收" : "待驗收")
+                        Text(deliverable.isApproved ? L10n.text("已驗收") : L10n.text("待驗收"))
                             .font(.caption.weight(.black))
                             .foregroundStyle(deliverable.isApproved ? BombTheme.green : BombTheme.ink.opacity(0.56))
                     }
                 }
             } else {
-                Text("尚未提交成果")
+                Text(L10n.text("尚未提交成果"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -530,7 +530,7 @@ private struct MyTaskDetailView: View {
             Button {
                 showsSubmissionSheet = true
             } label: {
-                Label(task.deliverable == nil ? "提交成果" : "更新成果", systemImage: "paperclip")
+                Label(task.deliverable == nil ? L10n.text("提交成果") : L10n.text("更新成果"), systemImage: "paperclip")
                     .font(.headline.weight(.bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)

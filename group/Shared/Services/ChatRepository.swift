@@ -77,7 +77,7 @@ final class ChatRepository {
         try await messagesCollection(groupID: groupID).document(id).setData([
             "id": id,
             "senderID": userID,
-            "senderName": "拆彈 AI 通訊官",
+            "senderName": L10n.text("拆彈 AI 通訊官"),
             "text": text,
             "kind": CloudChatItemKind.botReply.rawValue,
             "createdAt": FieldValue.serverTimestamp()
@@ -93,7 +93,7 @@ final class ChatRepository {
         var data: [String: Any] = [
             "id": id,
             "senderID": userID,
-            "senderName": "拆彈 AI 通訊官",
+            "senderName": L10n.text("拆彈 AI 通訊官"),
             "text": analysis.summary,
             "kind": CloudChatItemKind.botAnalysis.rawValue,
             "analysisScore": analysis.score,
@@ -124,7 +124,10 @@ final class ChatRepository {
                   let senderName = data["senderName"] as? String,
                   let text = data["text"] as? String,
                   !text.hasPrefix("@機器人"),
-                  !text.hasPrefix("＠機器人") else { return nil }
+                  !text.hasPrefix("＠機器人"),
+                  !text.hasPrefix("@bot"),
+                  !text.hasPrefix("＠bot"),
+                  !text.hasPrefix("@Bomb AI") else { return nil }
             return "\(senderName)：\(text)"
         }
     }
@@ -280,9 +283,9 @@ enum ChatRepositoryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            "請先登入再使用聊天室。"
+            L10n.text("請先登入再使用聊天室。")
         case .notGroupMember:
-            "目前帳號不是這個雲端群組的成員。"
+            L10n.text("目前帳號不是這個雲端群組的成員。")
         }
     }
 }

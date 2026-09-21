@@ -15,7 +15,7 @@ struct PostGameReviewView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
-                    Text("📋 任務結案報告")
+                    Text(L10n.text("📋 任務結案報告"))
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -34,20 +34,20 @@ struct PostGameReviewView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "賽後回顧", subtitle: groupName) {
+            BombHeader(title: L10n.text("賽後回顧"), subtitle: groupName) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回群組")
+                .accessibilityLabel(L10n.text("返回群組"))
             } trailing: {
                 EmptyView()
             }
         }
-        .bombDialog("功能開發中", isPresented: $showsPlaceholderAlert) {
-            Button("知道了") {}
+        .bombDialog(L10n.text("功能開發中"), isPresented: $showsPlaceholderAlert) {
+            Button(L10n.text("知道了")) {}
         } message: {
-            Text("此功能將於正式版本推出，目前 MVP 僅展示任務結案報告。")
+            Text(L10n.text("此功能將於正式版本推出，目前 MVP 僅展示任務結案報告。"))
         }
     }
 
@@ -61,7 +61,7 @@ struct PostGameReviewView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(groupName)
                         .font(.system(.title2, design: .rounded, weight: .black))
-                    Text("成功拆彈")
+                    Text(L10n.text("成功拆彈"))
                         .font(.headline.weight(.black))
                         .foregroundStyle(BombTheme.green)
                 }
@@ -73,9 +73,9 @@ struct PostGameReviewView: View {
             }
 
             HStack(spacing: 10) {
-                resultMetric(title: "完成率", value: "\(demo.completionRate)%")
-                resultMetric(title: "完成任務", value: "\(demo.completedTasks) / \(demo.totalTasks)")
-                resultMetric(title: "團隊", value: "\(demo.teamSize) 位特工")
+                resultMetric(title: L10n.text("完成率"), value: "\(demo.completionRate)%")
+                resultMetric(title: L10n.text("完成任務"), value: "\(demo.completedTasks) / \(demo.totalTasks)")
+                resultMetric(title: L10n.text("團隊"), value: L10n.format("{0} 位特工", String(describing: demo.teamSize)))
             }
         }
         .postGameCard()
@@ -98,7 +98,7 @@ struct PostGameReviewView: View {
 
     private var contributionCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("👥 小組分工")
+            sectionTitle(L10n.text("👥 小組分工"))
 
             ForEach(Array(demo.contributions.enumerated()), id: \.element.id) { index, member in
                 contributionRow(member)
@@ -141,9 +141,9 @@ struct PostGameReviewView: View {
 
     private var peerReviewCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("⭐ 隊員互評")
+            sectionTitle(L10n.text("⭐ 隊員互評"))
 
-            Text("匿名平均分")
+            Text(L10n.text("匿名平均分"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
 
@@ -167,11 +167,11 @@ struct PostGameReviewView: View {
 
     private var teamRetrospectiveCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionTitle("🤖 Bomb AI 團隊復盤")
+            sectionTitle(L10n.text("🤖 Bomb AI 團隊復盤"))
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .lastTextBaseline) {
-                    Text("合作指數")
+                    Text(L10n.text("合作指數"))
                         .font(.headline.weight(.black))
                     Spacer()
                     Text("\(demo.collaborationIndex) / 100")
@@ -186,11 +186,11 @@ struct PostGameReviewView: View {
             .background(BombTheme.yellow.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: 14))
 
-            retrospectiveList(title: "團隊亮點", items: demo.highlights, marker: "✓")
-            retrospectiveList(title: "改善建議", items: demo.improvements, marker: "•")
+            retrospectiveList(title: L10n.text("團隊亮點"), items: demo.highlights, marker: "✓")
+            retrospectiveList(title: L10n.text("改善建議"), items: demo.improvements, marker: "•")
 
             VStack(alignment: .leading, spacing: 7) {
-                Text("AI 總評").font(.headline.weight(.black))
+                Text(L10n.text("AI 總評")).font(.headline.weight(.black))
                 Text("「\(demo.summary)」")
                     .font(.subheadline.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
@@ -200,7 +200,7 @@ struct PostGameReviewView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
 
-            Text("AI 分析僅供參考。")
+            Text(L10n.text("AI 分析僅供參考。"))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.secondary)
         }
@@ -219,9 +219,9 @@ struct PostGameReviewView: View {
 
     private var exportActions: some View {
         VStack(spacing: 10) {
-            placeholderButton("儲存圖片", systemImage: "photo.fill")
-            placeholderButton("匯出 PDF", systemImage: "doc.fill")
-            placeholderButton("分享", systemImage: "square.and.arrow.up")
+            placeholderButton(L10n.text("儲存圖片"), systemImage: "photo.fill")
+            placeholderButton(L10n.text("匯出 PDF"), systemImage: "doc.fill")
+            placeholderButton(L10n.text("分享"), systemImage: "square.and.arrow.up")
         }
         .padding(.top, 2)
     }

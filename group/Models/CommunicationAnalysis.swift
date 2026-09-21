@@ -58,8 +58,8 @@ enum ProjectAIAnalysisError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .groupNotFound: "找不到這個專案的分析資料。"
-        case .syncFailed: "AI 專案分析已產生，但無法同步給其他成員，請確認網路後重試。"
+        case .groupNotFound: L10n.text("找不到這個專案的分析資料。")
+        case .syncFailed: L10n.text("AI 專案分析已產生，但無法同步給其他成員，請確認網路後重試。")
         }
     }
 }

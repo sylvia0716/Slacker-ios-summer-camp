@@ -26,11 +26,11 @@ struct PeerReviewReportView: View {
 
     private var reportMetrics: [RadarMetric] {
         return [
-            RadarMetric(title: "任務完成", score: normalizedScore(projectAnalysis?.taskCompletionScore)),
-            RadarMetric(title: "討論參與", score: normalizedScore(projectAnalysis?.discussionScore)),
-            RadarMetric(title: "主動協助", score: normalizedScore(projectAnalysis?.collaborationScore)),
-            RadarMetric(title: "解決問題", score: normalizedScore(projectAnalysis?.problemSolvingScore)),
-            RadarMetric(title: "準時可靠", score: normalizedScore(projectAnalysis?.reliabilityScore))
+            RadarMetric(title: L10n.text("任務完成"), score: normalizedScore(projectAnalysis?.taskCompletionScore)),
+            RadarMetric(title: L10n.text("討論參與"), score: normalizedScore(projectAnalysis?.discussionScore)),
+            RadarMetric(title: L10n.text("主動協助"), score: normalizedScore(projectAnalysis?.collaborationScore)),
+            RadarMetric(title: L10n.text("解決問題"), score: normalizedScore(projectAnalysis?.problemSolvingScore)),
+            RadarMetric(title: L10n.text("準時可靠"), score: normalizedScore(projectAnalysis?.reliabilityScore))
         ]
     }
 
@@ -60,11 +60,11 @@ struct PeerReviewReportView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("AI 專案雷達")
+                        Text(L10n.text("AI 專案雷達"))
                             .font(.system(.largeTitle, design: .rounded, weight: .black))
                         Spacer()
                         Button(action: exportReport) {
-                            Label("匯出戰報", systemImage: "square.and.arrow.up")
+                            Label(L10n.text("匯出戰報"), systemImage: "square.and.arrow.up")
                                 .font(.caption.weight(.black))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 8)
@@ -74,7 +74,7 @@ struct PeerReviewReportView: View {
                                 .contentShape(.capsule)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("匯出團隊戰報 PDF")
+                        .accessibilityLabel(L10n.text("匯出團隊戰報 PDF"))
                     }
 
                     RadarReportCard(
@@ -88,7 +88,7 @@ struct PeerReviewReportView: View {
                         onRetry: { Task { await generateAnalysis() } }
                     )
 
-                    Text("專案成果與 AI 復盤")
+                    Text(L10n.text("專案成果與 AI 復盤"))
                         .font(.title2.weight(.black))
                     AIReportCard(
                         progress: model.projectProgress(for: group.id),
@@ -96,11 +96,11 @@ struct PeerReviewReportView: View {
                         analysis: model.communicationAnalyses[group.id]
                     )
 
-                    Text("成員貢獻明細")
+                    Text(L10n.text("成員貢獻明細"))
                         .font(.title2.weight(.black))
 
                     Label(
-                        "依 App 內紀錄整理，不包含口頭討論或線下工作，不應作為評分或考核的唯一依據。",
+                        L10n.text("依 App 內紀錄整理，不包含口頭討論或線下工作，不應作為評分或考核的唯一依據。"),
                         systemImage: "info.circle.fill"
                     )
                     .font(.caption.weight(.bold))
@@ -108,7 +108,7 @@ struct PeerReviewReportView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                     if groupMembers.isEmpty {
-                        Text("目前沒有可顯示的成員紀錄。")
+                        Text(L10n.text("目前沒有可顯示的成員紀錄。"))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
@@ -145,12 +145,12 @@ struct PeerReviewReportView: View {
         .toolbar(.hidden, for: .tabBar)
         .bombTabBarHidden()
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "團隊戰報") {
+            BombHeader(title: L10n.text("團隊戰報")) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回專案結算")
+                .accessibilityLabel(L10n.text("返回專案結算"))
             } trailing: {
                 EmptyView()
             }
@@ -162,11 +162,11 @@ struct PeerReviewReportView: View {
         .sheet(item: $exportedReport) { report in
             TeamReportShareSheet(activityItems: [report.url])
         }
-        .bombDialog("無法匯出戰報", isPresented: Binding(
+        .bombDialog(L10n.text("無法匯出戰報"), isPresented: Binding(
             get: { exportError != nil },
             set: { if !$0 { exportError = nil } }
         )) {
-            Button("知道了") { exportError = nil }
+            Button(L10n.text("知道了")) { exportError = nil }
         } message: {
             Text(exportError ?? "")
         }
@@ -196,7 +196,7 @@ struct PeerReviewReportView: View {
                 analysis: projectAnalysis
             )
             exportedReport = ExportedTeamReport(url: url)
-            model.lastEvent = "團隊戰報 PDF 已產生"
+            model.lastEvent = L10n.text("團隊戰報 PDF 已產生")
         } catch {
             exportError = error.localizedDescription
         }
@@ -217,11 +217,11 @@ private struct RadarReportCard: View {
         VStack(spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("AI 團隊協作指數")
+                    Text(L10n.text("AI 團隊協作指數"))
                         .font(.headline.weight(.black))
                     Text(analysisUpdatedAt.map {
-                        "\(groupName)｜\($0.formatted(date: .abbreviated, time: .shortened))"
-                    } ?? "\(groupName)｜根據任務與討論紀錄")
+                        "\(groupName)｜\($0.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))"
+                    } ?? L10n.format("{0}｜根據任務與討論紀錄", String(describing: groupName)))
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
@@ -240,13 +240,13 @@ private struct RadarReportCard: View {
                             if isGenerating {
                                 ProgressView()
                                     .tint(BombTheme.ink)
-                                Text("AI 正在分析專案紀錄…")
+                                Text(L10n.text("AI 正在分析專案紀錄…"))
                                     .font(.subheadline.weight(.black))
                             } else {
-                                Text(errorMessage ?? "尚未產生 AI 專案分析")
+                                Text(errorMessage ?? L10n.text("尚未產生 AI 專案分析"))
                                     .font(.subheadline.weight(.black))
                                     .multilineTextAlignment(.center)
-                                Button("重新分析", action: onRetry)
+                                Button(L10n.text("重新分析"), action: onRetry)
                                     .font(.caption.weight(.black))
                                     .buttonStyle(.borderedProminent)
                                     .tint(BombTheme.ink)
@@ -280,28 +280,28 @@ private struct AIReportCard: View {
         let totalCount = tasks.count
         let unfinishedCount = max(totalCount - completedTaskCount, 0)
         guard totalCount > 0 else {
-            return "本次專案沒有建立任務紀錄，最終完成度為 \(progress)%。"
+            return L10n.format("本次專案沒有建立任務紀錄，最終完成度為 {0}%。", String(describing: progress))
         }
-        return "最終完成度 \(progress)%，完成 \(completedTaskCount) / \(totalCount) 項任務，未完成 \(unfinishedCount) 項。"
+        return L10n.format("最終完成度 {0}%，完成 {1} / {2} 項任務，未完成 {3} 項。", String(describing: progress), String(describing: completedTaskCount), String(describing: totalCount), String(describing: unfinishedCount))
     }
 
     var body: some View {
         VStack(spacing: 0) {
             AIReportRow(
-                icon: "checkmark.seal.fill", title: "最終任務成果",
+                icon: "checkmark.seal.fill", title: L10n.text("最終任務成果"),
                 detail: finalOutcomeDetail
             )
             Divider()
             CommunicationAnalysisRow(analysis: analysis)
             Divider()
             AIReportRow(
-                icon: "doc.text.magnifyingglass", title: "專案復盤結論",
-                detail: analysis?.strength ?? "AI 分析完成後，將整理本次專案值得延續的合作方式。"
+                icon: "doc.text.magnifyingglass", title: L10n.text("專案復盤結論"),
+                detail: analysis?.strength ?? L10n.text("AI 分析完成後，將整理本次專案值得延續的合作方式。")
             )
             Divider()
             AIReportRow(
-                icon: "arrow.clockwise.circle.fill", title: "下次合作建議",
-                detail: analysis?.suggestion ?? "AI 分析完成後，將提供下一次合作可採取的改善方向。"
+                icon: "arrow.clockwise.circle.fill", title: L10n.text("下次合作建議"),
+                detail: analysis?.suggestion ?? L10n.text("AI 分析完成後，將提供下一次合作可採取的改善方向。")
             )
         }
         .padding(16)
@@ -374,7 +374,7 @@ private struct MemberContributionCard: View {
             }
 
             if tasks.isEmpty {
-                Text("目前沒有指派給此成員的任務紀錄。")
+                Text(L10n.text("目前沒有指派給此成員的任務紀錄。"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.secondary)
             } else {
@@ -384,17 +384,17 @@ private struct MemberContributionCard: View {
 
                 Grid(horizontalSpacing: 16, verticalSpacing: 10) {
                     GridRow {
-                        contributionValue("\(completedTaskCount) / \(tasks.count)", label: "完成任務")
-                        contributionValue("\(completedSubtaskCount) / \(totalSubtaskCount)", label: "完成子任務")
+                        contributionValue("\(completedTaskCount) / \(tasks.count)", label: L10n.text("完成任務"))
+                        contributionValue("\(completedSubtaskCount) / \(totalSubtaskCount)", label: L10n.text("完成子任務"))
                     }
                     GridRow {
-                        contributionValue("\(submittedDeliverableCount)", label: "成果交付")
-                        contributionValue("\(approvedDeliverableCount)", label: "成果驗收")
+                        contributionValue("\(submittedDeliverableCount)", label: L10n.text("成果交付"))
+                        contributionValue("\(approvedDeliverableCount)", label: L10n.text("成果驗收"))
                     }
                 }
 
                 if overdueIncompleteCount > 0 {
-                    Label("期限已過且尚未完成 \(overdueIncompleteCount) 項", systemImage: "exclamationmark.triangle.fill")
+                    Label(L10n.format("期限已過且尚未完成 {0} 項", String(describing: overdueIncompleteCount)), systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.weight(.black))
                         .foregroundStyle(BombTheme.red)
                 }
@@ -442,8 +442,8 @@ private struct MemberContributionCard: View {
     }
 
     private func taskDeadlineText(_ task: ProjectTask) -> String {
-        guard task.deadline != .distantFuture else { return "未設定期限" }
-        return "期限 \(task.deadline.formatted(date: .abbreviated, time: .shortened))"
+        guard task.deadline != .distantFuture else { return L10n.text("未設定期限") }
+        return L10n.format("期限 {0}", String(describing: task.deadline.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale))))
     }
 }
 
@@ -460,10 +460,10 @@ private struct CommunicationAnalysisRow: View {
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
-                    Text("AI 溝通分析").font(.subheadline.weight(.black))
+                    Text(L10n.text("AI 溝通分析")).font(.subheadline.weight(.black))
                     Spacer()
                     if let analysis {
-                        Text("\(analysis.score) 分")
+                        Text(L10n.format("{0} 分", String(describing: analysis.score)))
                             .font(.caption.weight(.black).monospacedDigit())
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -471,7 +471,7 @@ private struct CommunicationAnalysisRow: View {
                             .clipShape(.capsule)
                     }
                 }
-                Text(analysis?.summary ?? "尚未分析聊天室對話；到聊天室點選「AI 分析」即可產生報告。")
+                Text(analysis?.summary ?? L10n.text("尚未分析聊天室對話；到聊天室點選「AI 分析」即可產生報告。"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -596,13 +596,13 @@ private enum TeamReportPDFExporter {
         members: [Member],
         analysis: CommunicationAnalysis?
     ) throws -> URL {
-        let filename = "\(safeFilename(group.name))-團隊戰報-\(timestamp()).pdf"
+        let filename = L10n.format("{0}-團隊戰報-{1}.pdf", String(describing: safeFilename(group.name)), String(describing: timestamp()))
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         try? FileManager.default.removeItem(at: url)
 
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = [
-            kCGPDFContextTitle as String: "\(group.name) 團隊戰報",
+            kCGPDFContextTitle as String: L10n.format("{0} 團隊戰報", String(describing: group.name)),
             kCGPDFContextCreator as String: "Group Bomb"
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: format)
@@ -612,32 +612,32 @@ private enum TeamReportPDFExporter {
             writer.beginPage()
 
             let metricScores: [(String, Int?)] = [
-                ("任務完成", analysis?.taskCompletionScore),
-                ("討論參與", analysis?.discussionScore),
-                ("主動協助", analysis?.collaborationScore),
-                ("解決問題", analysis?.problemSolvingScore),
-                ("準時可靠", analysis?.reliabilityScore)
+                (L10n.text("任務完成"), analysis?.taskCompletionScore),
+                (L10n.text("討論參與"), analysis?.discussionScore),
+                (L10n.text("主動協助"), analysis?.collaborationScore),
+                (L10n.text("解決問題"), analysis?.problemSolvingScore),
+                (L10n.text("準時可靠"), analysis?.reliabilityScore)
             ]
-            writer.drawSectionTitle("AI 團隊協作指數")
+            writer.drawSectionTitle(L10n.text("AI 團隊協作指數"))
             for metric in metricScores {
                 writer.drawMetric(title: metric.0, score: metric.1)
             }
 
             let completedCount = tasks.filter { $0.progress >= 100 }.count
-            writer.drawSectionTitle("最終任務成果")
-            writer.drawBody("最終完成度 \(progress)%，完成 \(completedCount) / \(tasks.count) 項任務，未完成 \(max(tasks.count - completedCount, 0)) 項。")
+            writer.drawSectionTitle(L10n.text("最終任務成果"))
+            writer.drawBody(L10n.format("最終完成度 {0}%，完成 {1} / {2} 項任務，未完成 {3} 項。", String(describing: progress), String(describing: completedCount), String(describing: tasks.count), String(describing: max(tasks.count - completedCount, 0))))
 
             if !tasks.isEmpty {
-                writer.drawSubheading("任務明細")
+                writer.drawSubheading(L10n.text("任務明細"))
                 for task in tasks.sorted(by: { $0.deadline < $1.deadline }) {
                     writer.drawTask(task)
                 }
             }
 
-            writer.drawSectionTitle("成員貢獻明細")
-            writer.drawBody("以下內容依 App 內的任務、子任務、期限與成果紀錄整理，未包含口頭討論或線下工作，不應作為評分或考核的唯一依據。")
+            writer.drawSectionTitle(L10n.text("成員貢獻明細"))
+            writer.drawBody(L10n.text("以下內容依 App 內的任務、子任務、期限與成果紀錄整理，未包含口頭討論或線下工作，不應作為評分或考核的唯一依據。"))
             if members.isEmpty {
-                writer.drawBody("目前沒有可匯出的成員紀錄。")
+                writer.drawBody(L10n.text("目前沒有可匯出的成員紀錄。"))
             } else {
                 for member in members {
                     let memberTasks = tasks.filter { $0.ownerMemberID == member.id }
@@ -649,19 +649,19 @@ private enum TeamReportPDFExporter {
                 }
             }
 
-            writer.drawSectionTitle("AI 溝通分析")
+            writer.drawSectionTitle(L10n.text("AI 溝通分析"))
             if let analysis {
-                writer.drawBody("溝通分數：\(analysis.score) 分")
+                writer.drawBody(L10n.format("溝通分數：{0} 分", String(describing: analysis.score)))
                 writer.drawBody(analysis.summary)
             } else {
-                writer.drawBody("尚未產生 AI 溝通分析。")
+                writer.drawBody(L10n.text("尚未產生 AI 溝通分析。"))
             }
 
-            writer.drawSectionTitle("專案復盤結論")
-            writer.drawBody(analysis?.strength ?? "尚未產生 AI 專案復盤結論。")
+            writer.drawSectionTitle(L10n.text("專案復盤結論"))
+            writer.drawBody(analysis?.strength ?? L10n.text("尚未產生 AI 專案復盤結論。"))
 
-            writer.drawSectionTitle("下次合作建議")
-            writer.drawBody(analysis?.suggestion ?? "尚未產生下一次合作建議。")
+            writer.drawSectionTitle(L10n.text("下次合作建議"))
+            writer.drawBody(analysis?.suggestion ?? L10n.text("尚未產生下一次合作建議。"))
         }
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -689,7 +689,7 @@ private enum TeamReportPDFExportError: LocalizedError {
     case emptyFile
 
     var errorDescription: String? {
-        "PDF 產生失敗，請稍後再試。"
+        L10n.text("PDF 產生失敗，請稍後再試。")
     }
 }
 
@@ -721,12 +721,12 @@ private final class TeamReportPDFWriter {
         context.cgContext.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 118))
         drawRawText("GROUP BOMB", x: margin, y: 24, width: pageBounds.width - margin * 2,
                     height: 20, font: .systemFont(ofSize: 14, weight: .black), color: ink)
-        drawRawText("團隊戰報", x: margin, y: 47, width: pageBounds.width - margin * 2,
+        drawRawText(L10n.text("團隊戰報"), x: margin, y: 47, width: pageBounds.width - margin * 2,
                     height: 40, font: .systemFont(ofSize: 28, weight: .black), color: ink)
         drawRawText(group.name, x: margin, y: 91, width: pageBounds.width - margin * 2,
                     height: 20, font: .systemFont(ofSize: 12, weight: .bold), color: ink)
 
-        let footer = "\(group.name)  ·  匯出於 \(Date.now.formatted(date: .abbreviated, time: .shortened))"
+        let footer = L10n.format("{0}  ·  匯出於 {1}", String(describing: group.name), String(describing: Date.now.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale))))
         drawRawText(footer, x: margin, y: pageBounds.height - 30, width: pageBounds.width - margin * 2,
                     font: .systemFont(ofSize: 9, weight: .medium), color: secondary)
         cursorY = 138
@@ -755,7 +755,7 @@ private final class TeamReportPDFWriter {
         let availableWidth = pageBounds.width - margin * 2
         drawRawText(title, x: margin, y: cursorY, width: 120,
                     font: .systemFont(ofSize: 12, weight: .bold), color: ink)
-        drawRawText(score.map { "\($0)" } ?? "尚未分析", x: pageBounds.width - margin - 80, y: cursorY,
+        drawRawText(score.map { "\($0)" } ?? L10n.text("尚未分析"), x: pageBounds.width - margin - 80, y: cursorY,
                     width: 80, font: .monospacedDigitSystemFont(ofSize: 12, weight: .black), color: ink,
                     alignment: .right)
 
@@ -786,8 +786,8 @@ private final class TeamReportPDFWriter {
 
     func drawTask(_ task: ProjectTask) {
         let deadline = task.deadline == .distantFuture
-            ? "未設定期限"
-            : task.deadline.formatted(date: .abbreviated, time: .shortened)
+            ? L10n.text("未設定期限")
+            : task.deadline.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale))
         let detail = "\(task.status.title) · \(task.progress)% · \(deadline)"
         let titleFont = UIFont.systemFont(ofSize: 12.5, weight: .bold)
         let detailFont = UIFont.systemFont(ofSize: 10.5, weight: .medium)
@@ -832,15 +832,15 @@ private final class TeamReportPDFWriter {
         cursorY = headerRect.maxY + 9
 
         if tasks.isEmpty {
-            drawBody("目前沒有指派給此成員的任務紀錄。")
+            drawBody(L10n.text("目前沒有指派給此成員的任務紀錄。"))
             return
         }
 
         let summary = [
-            "負責任務 \(tasks.count) 項，完成 \(completedTasks) 項，平均進度 \(averageProgress)%",
-            "子任務完成 \(completedSubtasks) / \(totalSubtasks) 項",
-            "成果已交付 \(submittedDeliverables.count) 項，其中驗收 \(approvedDeliverables) 項",
-            "期限已過且尚未完成 \(overdueIncompleteTasks) 項"
+            L10n.format("負責任務 {0} 項，完成 {1} 項，平均進度 {2}%", String(describing: tasks.count), String(describing: completedTasks), String(describing: averageProgress)),
+            L10n.format("子任務完成 {0} / {1} 項", String(describing: completedSubtasks), String(describing: totalSubtasks)),
+            L10n.format("成果已交付 {0} 項，其中驗收 {1} 項", String(describing: submittedDeliverables.count), String(describing: approvedDeliverables)),
+            L10n.format("期限已過且尚未完成 {0} 項", String(describing: overdueIncompleteTasks))
         ].joined(separator: "\n")
         drawBody(summary)
 

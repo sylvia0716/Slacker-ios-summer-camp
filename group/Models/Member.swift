@@ -8,8 +8,8 @@ enum MemberRole: String, Codable, Hashable {
     /// 顯示於成員卡片的繁體中文角色名稱。
     var title: String {
         switch self {
-        case .leader: "組長"
-        case .member: "組員"
+        case .leader: L10n.text("組長")
+        case .member: L10n.text("組員")
         }
     }
 }

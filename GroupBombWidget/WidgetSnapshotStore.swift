@@ -18,3 +18,19 @@ enum WidgetSnapshotStore {
         return try? JSONDecoder().decode(WidgetProgressSnapshot.self, from: data)
     }
 }
+
+/// Uses the app override when selected; otherwise respects device language order.
+enum WidgetLanguage {
+    static var isChinese: Bool {
+        let preference = UserDefaults(suiteName: WidgetSnapshotStore.appGroupIdentifier)?
+            .string(forKey: "appLanguagePreference")
+        if preference == "zh-Hant" { return true }
+        if preference == "en" { return false }
+        return Locale.preferredLanguages.first(where: {
+            $0.lowercased().hasPrefix("zh") || $0.lowercased().hasPrefix("en")
+        })?.lowercased().hasPrefix("zh") ?? false
+    }
+    static func text(_ chinese: String, _ english: String) -> String {
+        isChinese ? chinese : english
+    }
+}

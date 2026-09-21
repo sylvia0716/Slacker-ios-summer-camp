@@ -37,12 +37,13 @@ struct AuthenticationView: View {
 
     private var languageMenu: some View {
         Menu {
-            Picker("Language / 語言", selection: Binding(
-                get: { session.language },
-                set: { session.language = $0 }
+            Picker(L10n.text("介面語言"), selection: Binding(
+                get: { AppLanguageSettings.shared.preference },
+                set: { AppLanguageSettings.shared.preference = $0 }
             )) {
-                Text("中文").tag(AppLanguage.traditionalChinese)
-                Text("English").tag(AppLanguage.english)
+                ForEach(AppLanguagePreference.allCases) { preference in
+                    Text(preference.title).tag(preference)
+                }
             }
         } label: {
             Image(systemName: "globe")
@@ -51,7 +52,7 @@ struct AuthenticationView: View {
                 .contentShape(.circle)
         }
         .foregroundStyle(BombTheme.ink)
-        .accessibilityLabel("Language / 語言")
+        .accessibilityLabel(L10n.text("介面語言"))
         .disabled(session.isWorking)
     }
 

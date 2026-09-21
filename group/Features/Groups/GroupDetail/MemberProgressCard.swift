@@ -45,7 +45,7 @@ struct MemberProgressCard: View {
             Button(action: onToggleExpanded) {
                 VStack(alignment: .leading, spacing: 12) {
                     header
-                    Text(tasks.isEmpty ? "尚未指派任務" : "\(tasks.count) 項任務 · 已完成 \(tasks.filter(\.isCompleted).count) 項")
+                    Text(tasks.isEmpty ? L10n.text("尚未指派任務") : L10n.format("{0} 項任務 · 已完成 {1} 項", String(describing: tasks.count), String(describing: tasks.filter(\.isCompleted).count)))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.secondary)
                     GeometryReader { geometry in
@@ -56,13 +56,13 @@ struct MemberProgressCard: View {
                             }
                     }
                     .frame(height: 3)
-                    .accessibilityLabel("任務進度")
-                    .accessibilityValue(tasks.isEmpty ? "尚未指派任務" : "\(member.progress)%")
+                    .accessibilityLabel(L10n.text("任務進度"))
+                    .accessibilityValue(tasks.isEmpty ? L10n.text("尚未指派任務") : "\(member.progress)%")
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isExpanded ? "收合\(member.name)的任務" : "展開\(member.name)的任務")
+            .accessibilityLabel(isExpanded ? L10n.format("收合{0}的任務", String(describing: member.name)) : L10n.format("展開{0}的任務", String(describing: member.name)))
 
             ForEach(tasks) { task in
                 VStack(alignment: .leading, spacing: 14) {
@@ -136,7 +136,7 @@ struct MemberProgressCard: View {
     private func checklistSection(for task: ProjectTask) -> some View {
         if !task.subtasks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("子任務 \(task.subtasks.filter(\.isComplete).count)/\(task.subtasks.count)")
+                Text(L10n.format("子任務 {0}/{1}", String(describing: task.subtasks.filter(\.isComplete).count), String(describing: task.subtasks.count)))
                     .font(.subheadline.weight(.black))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -151,8 +151,8 @@ struct MemberProgressCard: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(model.pendingTaskUpdates.contains(task.id))
-                        .accessibilityValue(subtask.isComplete ? "已完成" : "未完成")
-                        .accessibilityHint("切換子任務完成狀態")
+                        .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
+                        .accessibilityHint(L10n.text("切換子任務完成狀態"))
                     } else {
                         checklistRow(subtask)
                     }
@@ -172,7 +172,7 @@ struct MemberProgressCard: View {
 
     private func deliverableSection(for task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("成果附件").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+            Text(L10n.text("成果附件")).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
             if let deliverable = task.deliverable {
                 AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
                                        localPreview: { previewDeliverable = deliverable }) {
@@ -184,7 +184,7 @@ struct MemberProgressCard: View {
                             Text(deliverable.originalFilename ?? deliverable.title)
                                 .font(.subheadline.weight(.black))
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(deliverable.submittedAt.formatted(date: .abbreviated, time: .shortened))
+                            Text(deliverable.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
                                 .font(.footnote.weight(.bold)).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,11 +197,11 @@ struct MemberProgressCard: View {
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
-                Text("尚未上傳成果").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                Text(L10n.text("尚未上傳成果")).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
             }
             if isCurrentUser {
                 Button { uploadTask = task } label: {
-                    Text(task.deliverable == nil ? "＋ 上傳成果" : "更換成果")
+                    Text(task.deliverable == nil ? L10n.text("＋ 上傳成果") : L10n.text("更換成果"))
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -220,7 +220,7 @@ struct MemberProgressCard: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text("成員確認").foregroundStyle(BombTheme.ink)
+                Text(L10n.text("成員確認")).foregroundStyle(BombTheme.ink)
                 Text("\(confirmedCount)/\(groupMemberIDs.count)").foregroundStyle(.secondary)
             }
             .font(.subheadline.weight(.black))
@@ -233,7 +233,7 @@ struct MemberProgressCard: View {
             }
             if !hasCurrentUserConfirmed && groupMemberIDs.contains(currentUserID) {
                 Button { onConfirmDeliverable(task.id) } label: {
-                    Text("確認這項成果")
+                    Text(L10n.text("確認這項成果"))
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -250,15 +250,15 @@ struct MemberProgressCard: View {
         HStack(spacing: 7) {
             ForEach(groupMemberIDs, id: \.self) { id in
                 let confirmed = confirmedIDs.contains(id)
-                let name = model.members.first(where: { $0.id == id })?.name ?? "成員"
+                let name = model.members.first(where: { $0.id == id })?.name ?? L10n.text("成員")
                 MemberPhotoAvatar(
                     groupID: tasks.first?.firestoreGroupID,
                     uid: model.members.first(where: { $0.id == id })?.firebaseUID,
                     name: name, confirmed: confirmed
                 )
-                    .accessibilityLabel("\(name)：\(confirmed ? "已確認" : "尚未確認")")
+                    .accessibilityLabel("\(name)：\(confirmed ? L10n.text("已確認") : L10n.text("尚未確認"))")
             }
-            Text(isFullyConfirmed ? "已全部確認" : "待確認")
+            Text(isFullyConfirmed ? L10n.text("已全部確認") : L10n.text("待確認"))
                 .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
                 .fixedSize()
         }
@@ -291,7 +291,7 @@ private struct PokeActionButton: View {
 
     var body: some View {
         ZStack {
-            Label(isCoolingDown ? "讓他喘口氣" : "戳一下", systemImage: "hand.tap.fill")
+            Label(isCoolingDown ? L10n.text("讓他喘口氣") : L10n.text("戳一下"), systemImage: "hand.tap.fill")
                 .font(.subheadline.weight(.black))
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
@@ -334,8 +334,8 @@ private struct PokeActionButton: View {
                     }
                 }
                 .accessibilityAddTraits(.isButton)
-                .accessibilityLabel(isCoolingDown ? "讓他喘口氣" : "戳一下")
-                .accessibilityHint("長按可發送加強提醒")
+                .accessibilityLabel(isCoolingDown ? L10n.text("讓他喘口氣") : L10n.text("戳一下"))
+                .accessibilityHint(L10n.text("長按可發送加強提醒"))
                 .accessibilityAction {
                     guard !isCoolingDown else { return }
                     _ = sendPoke(style: .gentle, isBombPoke: false)
@@ -345,8 +345,8 @@ private struct PokeActionButton: View {
         .frame(height: 38)
         .sensoryFeedback(.impact(weight: .light), trigger: lightFeedbackID)
         .sensoryFeedback(.impact(weight: .heavy), trigger: heavyFeedbackID)
-        .bombDialog("讓他喘口氣>_<", isPresented: $showsLimitAlert) {
-            Button("好") { }
+        .bombDialog(L10n.text("讓他喘口氣>_<"), isPresented: $showsLimitAlert) {
+            Button(L10n.text("好")) { }
         }
     }
 
@@ -389,7 +389,7 @@ private struct DeliverablePhotoPreview: View {
                     VStack(spacing: 12) {
                         Image(systemName: deliverable.url == nil ? "doc.fill" : "link")
                             .font(.system(size: 42, weight: .black))
-                        Text(deliverable.originalFilename ?? "成果附件")
+                        Text(deliverable.originalFilename ?? L10n.text("成果附件"))
                             .font(.headline.weight(.black))
                     }
                     .foregroundStyle(.white)
@@ -399,7 +399,7 @@ private struct DeliverablePhotoPreview: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }.tint(BombTheme.yellow)
+                    Button(L10n.text("完成")) { dismiss() }.tint(BombTheme.yellow)
                 }
             }
         }

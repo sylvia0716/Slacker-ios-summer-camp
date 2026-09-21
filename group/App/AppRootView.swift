@@ -27,6 +27,7 @@ struct AppRootView: View {
                 AuthenticationView(session: authSession)
             }
         }
+        .environment(\.locale, L10n.locale)
         .environment(\.bombSafeAreaInsets, safeAreaInsets)
         .onGeometryChange(for: EdgeInsets.self) { proxy in
             proxy.safeAreaInsets
@@ -34,6 +35,7 @@ struct AppRootView: View {
             safeAreaInsets = insets
         }
         .task {
+            WidgetSnapshotStore.updateLanguage()
             authSession.start { uid in store.changeCloudAccount(to: uid) }
             store.changeCloudAccount(to: authSession.currentUserID)
             if scenePhase == .active { store.resumeCloudSync() }
@@ -48,11 +50,24 @@ struct AppRootView: View {
         .onChange(of: store.isLoadingCloudGroups) { _, _ in openPendingReview() }
         .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.resumeCloudSync() }
+            if phase == .active {
+                AppLanguageSettings.shared.refreshSystemLanguage()
+                store.resumeCloudSync()
+            }
             else if phase == .background {
                 store.suspendCloudSync()
                 if !store.isDemoMode { PokeBackgroundRefresh.shared.schedule() }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+            AppLanguageSettings.shared.refreshSystemLanguage()
+        }
+        .onChange(of: AppLanguageSettings.shared.preference) { _, _ in
+            WidgetSnapshotStore.updateLanguage()
+        }
+        .onChange(of: AppLanguageSettings.shared.language) { _, _ in
+            store.registerPokeDevice()
+            store.refreshDeadlineReminders()
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
@@ -74,12 +89,12 @@ struct AppRootView: View {
                 .id(pokePresentationID)
             }
         }
-        .bombDialog("雲端同步", isPresented: Binding(
+        .bombDialog(L10n.text("雲端同步"), isPresented: Binding(
             get: { store.cloudErrorMessage != nil },
             set: { if !$0 { store.cloudErrorMessage = nil } }
         )) {
-            Button("關閉", role: .cancel) { store.cloudErrorMessage = nil }
-            Button("重試") { Task { await store.reloadCloudGroups() } }
+            Button(L10n.text("關閉"), role: .cancel) { store.cloudErrorMessage = nil }
+            Button(L10n.text("重試")) { Task { await store.reloadCloudGroups() } }
         } message: { Text(store.cloudErrorMessage ?? "") }
     }
 

@@ -9,20 +9,20 @@ struct NotificationSettingsView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Toggle("允許通知", isOn: $model.notificationsEnabled)
+                    Toggle(L10n.text("允許通知"), isOn: $model.notificationsEnabled)
                         .font(.headline)
                         .comicCard()
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("通知分類").font(.title2.weight(.black))
+                        Text(L10n.text("通知分類")).font(.title2.weight(.black))
                         VStack(spacing: 0) {
-                            category("戳戳", icon: "hand.tap.fill", isOn: $model.notificationCategories.pokes)
+                            category(L10n.text("戳戳"), icon: "hand.tap.fill", isOn: $model.notificationCategories.pokes)
                             Divider()
-                            category("我的任務提醒", icon: "checklist", isOn: $model.notificationCategories.tasks)
+                            category(L10n.text("我的任務提醒"), icon: "checklist", isOn: $model.notificationCategories.tasks)
                             Divider()
-                            category("專案倒數", icon: "hourglass", isOn: $model.notificationCategories.projects)
+                            category(L10n.text("專案倒數"), icon: "hourglass", isOn: $model.notificationCategories.projects)
                             Divider()
-                            category("互評提醒", icon: "star.bubble.fill", isOn: $model.notificationCategories.reviews)
+                            category(L10n.text("互評提醒"), icon: "star.bubble.fill", isOn: $model.notificationCategories.reviews)
                         }
                         .comicCard()
                         .disabled(!model.notificationsEnabled)
@@ -32,7 +32,7 @@ struct NotificationSettingsView: View {
                         NotificationTestView(model: model)
                     } label: {
                         HStack(spacing: 12) {
-                            Label("通知測試", systemImage: "bell.badge.fill")
+                            Label(L10n.text("通知測試"), systemImage: "bell.badge.fill")
                                 .font(.headline)
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption.bold())
@@ -50,12 +50,12 @@ struct NotificationSettingsView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "通知設定") {
+            BombHeader(title: L10n.text("通知設定")) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
+                .accessibilityLabel(L10n.text("返回設定"))
             } trailing: {
                 EmptyView()
             }

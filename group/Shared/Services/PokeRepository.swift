@@ -14,11 +14,11 @@ enum PokeRepositoryError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated: "請先登入再戳隊友。"
-        case .notGroupMember: "你必須先加入此群組才能戳隊友。"
-        case .invalidRecipient: "只能戳同一群組的其他成員。"
-        case .network: "網路連線異常，請確認網路後重試。"
-        case .unavailable: "目前無法送出戳戳，請稍後再試。"
+        case .notAuthenticated: L10n.text("請先登入再戳隊友。")
+        case .notGroupMember: L10n.text("你必須先加入此群組才能戳隊友。")
+        case .invalidRecipient: L10n.text("只能戳同一群組的其他成員。")
+        case .network: L10n.text("網路連線異常，請確認網路後重試。")
+        case .unavailable: L10n.text("目前無法送出戳戳，請稍後再試。")
         }
     }
 }
@@ -57,9 +57,17 @@ final class PokeRepository {
             _ = try await functions.httpsCallable("registerPokeDevice").call([
                 "deviceID": deviceID,
                 "token": token,
+                "languageCode": AppLanguageSettings.shared.language.rawValue,
             ])
         } catch {
-            throw Self.map(error)
+            if (error as NSError).domain == FunctionsErrorDomain,
+               (error as NSError).code == FunctionsErrorCode.invalidArgument.rawValue {
+                _ = try await functions.httpsCallable("registerPokeDevice").call([
+                    "deviceID": deviceID, "token": token,
+                ])
+            } else {
+                throw Self.map(error)
+            }
         }
     }
 

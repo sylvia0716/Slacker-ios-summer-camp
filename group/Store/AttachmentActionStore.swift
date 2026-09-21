@@ -51,7 +51,7 @@ final class AttachmentActionStore {
                     previewURL = file
                 }
                 guard generation == version, !Task.isCancelled else { return }
-                successMessage = delete ? "附件已刪除" : nil
+                successMessage = delete ? L10n.text("附件已刪除") : nil
             } catch {
                 guard generation == version, !Task.isCancelled else { return }
                 errorMessage = (error as? AttachmentOperationError)?.localizedDescription

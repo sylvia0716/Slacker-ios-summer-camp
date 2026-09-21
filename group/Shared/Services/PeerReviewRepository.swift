@@ -257,11 +257,11 @@ enum PeerReviewCloudError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .signedOut:
-            "請先登入再送出互評。"
+            L10n.text("請先登入再送出互評。")
         case .memberNotFound:
-            "找不到這位群組成員，請重新載入後再試。"
+            L10n.text("找不到這位群組成員，請重新載入後再試。")
         case .syncFailed:
-            "互評同步失敗，請確認網路後再試。"
+            L10n.text("互評同步失敗，請確認網路後再試。")
         }
     }
 }

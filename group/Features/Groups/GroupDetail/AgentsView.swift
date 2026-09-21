@@ -12,8 +12,8 @@ struct AgentsView: View {
                     BombTheme.yellow.ignoresSafeArea()
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("特工狀態").font(.system(.largeTitle, design: .rounded, weight: .black))
-                            Text("全員一起戳，催進度不尷尬。").font(.subheadline.bold())
+                            Text(L10n.text("特工狀態")).font(.system(.largeTitle, design: .rounded, weight: .black))
+                            Text(L10n.text("全員一起戳，催進度不尷尬。")).font(.subheadline.bold())
                             ForEach(model.agents) { agent in
                                 Button {
                                     withAnimation(.snappy) { selectedAgent = agent }
@@ -41,7 +41,7 @@ struct AgentsView: View {
                 }
             }
         }
-        .navigationTitle("特工")
+        .navigationTitle(L10n.text("特工"))
     }
 
     private func closeSheet() {
@@ -67,7 +67,7 @@ private struct AgentCard: View {
                 }
                 ProgressView(value: Double(agent.progress), total: 100)
                     .tint(agent.isShielded ? BombTheme.green : BombTheme.red)
-                Text(agent.isShielded ? "護盾已啟動" : agent.status)
+                Text(agent.isShielded ? L10n.text("護盾已啟動") : agent.status)
                     .font(.caption.bold())
                     .foregroundStyle(agent.isShielded ? BombTheme.green : .secondary)
             }
@@ -118,9 +118,9 @@ private struct PokeSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("戳一下 \(agent.name)")
+                        Text(L10n.format("戳一下 {0}", String(describing: agent.name)))
                             .font(.system(.title2, design: .rounded, weight: .black))
-                        Text("選擇一種提醒方式")
+                        Text(L10n.text("選擇一種提醒方式"))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(BombTheme.ink.opacity(0.65))
                     }
@@ -155,7 +155,7 @@ private struct PokeSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(agent.name)
                     .font(.headline.weight(.black))
-                Text("角色：\(displayRole) · 目前進度：\(displayProgress)%")
+                Text(L10n.format("角色：{0} · 目前進度：{1}%", String(describing: displayRole), String(describing: displayProgress)))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -218,7 +218,7 @@ private struct PokeSheet: View {
             Button {
                 withAnimation(.snappy) { isSent = true }
             } label: {
-                Label("發送提醒", systemImage: "paperplane.fill")
+                Label(L10n.text("發送提醒"), systemImage: "paperplane.fill")
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -228,7 +228,7 @@ private struct PokeSheet: View {
             }
             .buttonStyle(.plain)
 
-            Button("取消", action: onCancel)
+            Button(L10n.text("取消"), action: onCancel)
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.ink)
                 .buttonStyle(.plain)
@@ -253,20 +253,20 @@ private struct PokeSheet: View {
             .frame(width: 82, height: 82)
             .symbolEffect(.bounce, value: isSent)
 
-            Text("提醒已送出")
+            Text(L10n.text("提醒已送出"))
                 .font(.system(.title2, design: .rounded, weight: .black))
 
-            Text("已用「\(optionTitle(for: selectedStyle))」提醒 \(agent.name)")
+            Text(L10n.format("已用「{0}」提醒 {1}", String(describing: optionTitle(for: selectedStyle)), String(describing: agent.name)))
                 .font(.subheadline.weight(.bold))
                 .multilineTextAlignment(.center)
 
-            Text("這則提醒只會顯示給對方")
+            Text(L10n.text("這則提醒只會顯示給對方"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.6))
 
             Spacer()
 
-            Button("回到成員進度", action: onCancel)
+            Button(L10n.text("回到成員進度"), action: onCancel)
                 .font(.headline.weight(.black))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -282,24 +282,24 @@ private struct PokeSheet: View {
 
     private func optionTitle(for style: PokeStyle) -> String {
         switch style {
-        case .gentle: "輕敲提醒"
-        case .meme: "迷因轟炸"
-        case .alarm: "警報催命"
+        case .gentle: L10n.text("輕敲提醒")
+        case .meme: L10n.text("迷因轟炸")
+        case .alarm: L10n.text("警報催命")
         }
     }
 
     private func optionDescription(for style: PokeStyle) -> String {
         switch style {
-        case .gentle: "溫和提醒對方更新進度"
-        case .meme: "用輕鬆方式提醒對方"
-        case .alarm: "高強度提醒，請謹慎使用"
+        case .gentle: L10n.text("溫和提醒對方更新進度")
+        case .meme: L10n.text("用輕鬆方式提醒對方")
+        case .alarm: L10n.text("高強度提醒，請謹慎使用")
         }
     }
 
     /// The current legacy Agent data differs from the approved sheet mock for 米米.
     /// Keep the requested presentation values local so the shared model remains untouched.
     private var displayRole: String {
-        agent.name == "米米" ? "簡報設計" : agent.role
+        agent.name == "米米" ? L10n.text("簡報設計") : agent.role
     }
 
     private var displayProgress: Int {
@@ -307,6 +307,6 @@ private struct PokeSheet: View {
     }
 
     private var displayStatus: String {
-        agent.name == "米米" ? "進度落後" : agent.status
+        agent.name == "米米" ? L10n.text("進度落後") : agent.status
     }
 }

@@ -33,7 +33,7 @@ struct Agent: Identifiable {
     /// 是否啟動「我在做了」護盾。
     var isShielded = false
     /// 顯示在特工卡上的目前狀態。
-    var status = "待命"
+    var status = L10n.text("待命")
 }
 
 /// 互評雷達圖中的單一評分指標。
@@ -67,9 +67,9 @@ enum PokeStyle: String, CaseIterable, Identifiable {
     /// 顯示在催進度 sheet 的趣味文案。
     var message: String {
         switch self {
-        case .gentle: "特工，進度還活著嗎？"
-        case .meme: "你的進度比校車還難等。"
-        case .alarm: "紅色警戒！死線正在接近！"
+        case .gentle: L10n.text("特工，進度還活著嗎？")
+        case .meme: L10n.text("你的進度比校車還難等。")
+        case .alarm: L10n.text("紅色警戒！死線正在接近！")
         }
     }
 }
@@ -85,12 +85,12 @@ enum PublishTaskError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .groupNotFound: "找不到目前群組"
-        case .emptyTitle: "請輸入任務名稱"
-        case .invalidSubtasks: "請填寫 1 到 10 項子任務"
-        case .assigneeNotInGroup: "負責人必須是目前群組成員"
-        case .deadlineNotInFuture: "截止時間必須晚於目前時間"
-        case .deadlineAfterGroupDeadline: "截止時間不可晚於群組總截止時間"
+        case .groupNotFound: L10n.text("找不到目前群組")
+        case .emptyTitle: L10n.text("請輸入任務名稱")
+        case .invalidSubtasks: L10n.text("請填寫 1 到 10 項子任務")
+        case .assigneeNotInGroup: L10n.text("負責人必須是目前群組成員")
+        case .deadlineNotInFuture: L10n.text("截止時間必須晚於目前時間")
+        case .deadlineAfterGroupDeadline: L10n.text("截止時間不可晚於群組總截止時間")
         }
     }
 }
@@ -103,9 +103,9 @@ enum GroupDeadlineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .deadlineNotInFuture:
-            "群組期限必須晚於目前時間"
+            L10n.text("群組期限必須晚於目前時間")
         case .beforeTaskDeadline:
-            "群組期限不可早於既有任務的截止時間"
+            L10n.text("群組期限不可早於既有任務的截止時間")
         }
     }
 }
@@ -118,9 +118,9 @@ enum GroupNameError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .emptyName:
-            "群組名稱不可為空白"
+            L10n.text("群組名稱不可為空白")
         case .groupNotFound:
-            "找不到目前群組"
+            L10n.text("找不到目前群組")
         }
     }
 }
@@ -314,7 +314,7 @@ final class AppStore {
 
     init(dataMode: AppDataMode = .live) {
         currentUserID = UUID()
-        userName = "我"
+        userName = L10n.text("我")
         profileName = ""
         profileRole = ""
         profileBio = ""
@@ -369,7 +369,7 @@ final class AppStore {
             radar = demo.radar
             communicationAnalyses = demo.communicationAnalyses
             cloudGroupSyncErrorMessage = nil
-            lastEvent = "測試資料已載入"
+            lastEvent = L10n.text("測試資料已載入")
             dataMode = .demo
 
             let savedChatItems = Self.loadSavedChatItems()
@@ -468,7 +468,7 @@ final class AppStore {
             return
         }
         guard FirebaseApp.app() != nil else {
-            let message = "Firebase 尚未設定完成。"
+            let message = L10n.text("Firebase 尚未設定完成。")
             chatMessageSyncErrorsByGroupID[groupID] = message
             chatPresenceSyncErrorsByGroupID[groupID] = message
             return
@@ -556,7 +556,7 @@ final class AppStore {
     func sendChatBotReply(id: String, text: String, groupID: UUID) async -> Bool {
         if isDemoMode { return true }
         guard let repository = chatRepository else {
-            chatMessageSyncErrorsByGroupID[groupID] = "聊天室尚未連線，AI 回覆尚未同步。"
+            chatMessageSyncErrorsByGroupID[groupID] = L10n.text("聊天室尚未連線，AI 回覆尚未同步。")
             return false
         }
 
@@ -671,7 +671,7 @@ final class AppStore {
                         id: message.id,
                         sender: message.senderName,
                         text: message.text,
-                        time: message.createdAt.formatted(date: .omitted, time: .shortened),
+                        time: message.createdAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(L10n.locale)),
                         isCurrentUser: message.senderID == currentFirebaseUserID,
                         createdAt: message.createdAt,
                         deliveryState: .sent
@@ -781,7 +781,7 @@ final class AppStore {
     private func normalizedChatDisplayName(_ displayName: String) -> String {
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !name.isEmpty { return name }
-        return Auth.auth().currentUser?.email?.split(separator: "@").first.map(String.init) ?? "群組成員"
+        return Auth.auth().currentUser?.email?.split(separator: "@").first.map(String.init) ?? L10n.text("群組成員")
     }
 
     private func cloudGroupDocumentID(for groupID: UUID) -> String {
@@ -818,7 +818,7 @@ final class AppStore {
             reliabilityScore: generated.reliabilityScore
         )
         communicationAnalyses[groupID] = analysis
-        lastEvent = "AI 已完成專案協作分析：\(overallScore) 分"
+        lastEvent = L10n.format("AI 已完成專案協作分析：{0} 分", String(describing: overallScore))
         return analysis
     }
 
@@ -1013,7 +1013,7 @@ final class AppStore {
         )
         peerReviews.append(review)
         recordReviewReminderCompletionIfNeeded(groupID: groupID, reviewerID: reviewerID)
-        lastEvent = "已送出匿名隊員互評"
+        lastEvent = L10n.text("已送出匿名隊員互評")
         return review
     }
 
@@ -1090,7 +1090,7 @@ final class AppStore {
             peerReviews.append(review)
         }
         recordReviewReminderCompletionIfNeeded(groupID: groupID, reviewerID: reviewerID)
-        lastEvent = "已同步匿名隊員互評"
+        lastEvent = L10n.text("已同步匿名隊員互評")
         return review
     }
 
@@ -1258,7 +1258,7 @@ final class AppStore {
 
         projectTasks.append(task)
         groups[groupIndex].taskIDs.append(task.id)
-        lastEvent = "已發布新任務「\(trimmedTitle)」"
+        lastEvent = L10n.format("已發布新任務「{0}」", String(describing: trimmedTitle))
         return task
     }
 
@@ -1272,12 +1272,12 @@ final class AppStore {
             .systemEvent(
                 id: UUID().uuidString,
                 icon: "person.2.fill",
-                text: "群組聊天室已建立",
+                text: L10n.text("群組聊天室已建立"),
                 createdAt: .now
             )
         ]
         saveChatItems()
-        lastEvent = "已建立「\(name)」"
+        lastEvent = L10n.format("已建立「{0}」", String(describing: name))
     }
 
     /// 正式模式透過受信任的 Callable Function 建立群組、群主會員與邀請碼。
@@ -1301,7 +1301,7 @@ final class AppStore {
               let group = groups.first(where: { $0.id == result.group.id }) else {
             throw GroupJoinError.invalidGroupData
         }
-        lastEvent = "已建立「\(group.name)」"
+        lastEvent = L10n.format("已建立「{0}」", String(describing: group.name))
         return group
     }
 
@@ -1320,7 +1320,7 @@ final class AppStore {
         }
 
         groups[index].deadline = deadline
-        lastEvent = "已更新「\(groups[index].name)」期限"
+        lastEvent = L10n.format("已更新「{0}」期限", String(describing: groups[index].name))
         return groups[index]
     }
 
@@ -1334,7 +1334,7 @@ final class AppStore {
         }
 
         groups[index].name = trimmedName
-        lastEvent = "已更新群組名稱"
+        lastEvent = L10n.text("已更新群組名稱")
         return groups[index]
     }
 
@@ -1560,8 +1560,8 @@ final class AppStore {
         cloudErrorMessage = nil
         mergeAccessibleCloudGroups([result.group])
         lastEvent = result.wasAlreadyMember
-            ? "你已經是「\(result.group.name)」的成員"
-            : "已加入「\(result.group.name)」"
+            ? L10n.format("你已經是「{0}」的成員", String(describing: result.group.name))
+            : L10n.format("已加入「{0}」", String(describing: result.group.name))
         return true
     }
 
@@ -1573,7 +1573,7 @@ final class AppStore {
             return GroupLoadError.permissionDenied.localizedDescription
         }
         if error is DecodingError { return GroupLoadError.invalidData.localizedDescription }
-        return "雲端資料同步失敗，請確認網路後重新整理。"
+        return L10n.text("雲端資料同步失敗，請確認網路後重新整理。")
     }
 
 #if DEBUG
@@ -1586,7 +1586,7 @@ final class AppStore {
         if !groups[index].memberIDs.contains(currentUserID) {
             groups[index].memberIDs.append(currentUserID)
         }
-        lastEvent = "已加入「\(groups[index].name)」"
+        lastEvent = L10n.format("已加入「{0}」", String(describing: groups[index].name))
         return true
     }
 #endif
@@ -1622,7 +1622,7 @@ final class AppStore {
         chatItemsByGroupID[groupID] = nil
         saveChatItems()
         publishWidgetSnapshot()
-        lastEvent = "已退出「\(group.name)」"
+        lastEvent = L10n.format("已退出「{0}」", String(describing: group.name))
         if !isDemoMode { resumeCloudSync() }
     }
 
@@ -1681,11 +1681,11 @@ final class AppStore {
                     subtaskID: subtaskID, isComplete: isComplete, attachmentID: attachmentID)
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
                 self.pendingTaskUpdates.remove(taskID)
-                self.lastEvent = action == "confirm" ? "已送出成果確認" : "已更新子任務"
+                self.lastEvent = action == "confirm" ? L10n.text("已送出成果確認") : L10n.text("已更新子任務")
             } catch {
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
                 self.pendingTaskUpdates.remove(taskID)
-                self.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "任務更新失敗，請重試。"
+                self.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? L10n.text("任務更新失敗，請重試。")
             }
         }
     }
@@ -1759,7 +1759,7 @@ final class AppStore {
                         }
                     }
                 case .failure:
-                    self.cloudErrorMessage = "即時通知同步失敗，請確認網路後重試。"
+                    self.cloudErrorMessage = L10n.text("即時通知同步失敗，請確認網路後重試。")
                 }
             }
         }
@@ -1903,14 +1903,14 @@ final class AppStore {
             return
         }
         projectTasks[taskIndex].subtasks[subtaskIndex].isComplete.toggle()
-        lastEvent = "已更新「\(projectTasks[taskIndex].title)」進度"
+        lastEvent = L10n.format("已更新「{0}」進度", String(describing: projectTasks[taskIndex].title))
     }
 
     /// 為任務送出成果；畫面傳入的 Deliverable 可來自 mock 檔案或連結。
     func submitDeliverable(taskID: UUID, deliverable: Deliverable) {
         guard let index = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
         projectTasks[index].deliverable = deliverable
-        lastEvent = "已送出「\(projectTasks[index].title)」成果"
+        lastEvent = L10n.format("已送出「{0}」成果", String(describing: projectTasks[index].title))
     }
 
     /// 啟動指定任務的附件監聽；重複進入畫面不會重複註冊 listener。
@@ -1980,7 +1980,7 @@ final class AppStore {
         }
         // Only remove locally after BOTH remote operations succeed. Listener remains authoritative.
         applyCloudAttachments((attachmentsByTaskID[taskID] ?? []).filter { $0.id != attachment.id }, to: taskID)
-        lastEvent = "附件已刪除"
+        lastEvent = L10n.text("附件已刪除")
     }
 
     private func applyCloudAttachments(_ attachments: [TaskAttachment], to taskID: UUID) {
@@ -2016,7 +2016,7 @@ final class AppStore {
 
         deliverable.confirmedMemberIDs.append(memberID)
         projectTasks[taskIndex].deliverable = deliverable
-        lastEvent = "已確認「\(projectTasks[taskIndex].title)」成果進度"
+        lastEvent = L10n.format("已確認「{0}」成果進度", String(describing: projectTasks[taskIndex].title))
     }
 
     /// 將已送出的成果標記為驗收通過。
@@ -2029,7 +2029,7 @@ final class AppStore {
               var deliverable = projectTasks[index].deliverable else { return }
         deliverable.isApproved = true
         projectTasks[index].deliverable = deliverable
-        lastEvent = "已驗收「\(projectTasks[index].title)」成果"
+        lastEvent = L10n.format("已驗收「{0}」成果", String(describing: projectTasks[index].title))
     }
 
     /// 在群組內提醒進度較慢的成員；接收端通知應只在被戳者的裝置上送達。
@@ -2039,7 +2039,7 @@ final class AppStore {
               groups.contains(where: { $0.id == groupID && $0.memberIDs.contains(memberID) }),
               let member = members.first(where: { $0.id == memberID }),
               memberProgress(for: memberID, in: groupID) <= 90 else { return nil }
-        lastEvent = "用「\(style.rawValue)」戳了 \(member.name)"
+        lastEvent = L10n.format("用「{0}」戳了 {1}", L10n.text(style.rawValue), String(describing: member.name))
 
         let key = PokeCountKey(groupID: groupID, memberID: memberID)
         let pokeCount = (pokeCounts[key] ?? 0) + 1
@@ -2053,7 +2053,7 @@ final class AppStore {
                     self?.pokeRepository = repository
                     try await repository.send(groupID: firestoreGroupID, recipientUID: recipientUID, style: style)
                 } catch {
-                    self?.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "戳戳送出失敗，請重試。"
+                    self?.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? L10n.text("戳戳送出失敗，請重試。")
                 }
             }
         }
@@ -2077,22 +2077,22 @@ final class AppStore {
     func claim(_ id: UUID) {
         guard let index = tasks.firstIndex(where: { $0.id == id }), tasks[index].owner == nil else { return }
         tasks[index].owner = userName
-        lastEvent = "已認領「\(tasks[index].title)」"
+        lastEvent = L10n.format("已認領「{0}」", String(describing: tasks[index].title))
     }
 
     /// 舊版催進度行為；新版群組詳細頁請改呼叫 poke(memberID:in:style:)。
     func poke(agentID: UUID, style: PokeStyle) {
         guard let index = agents.firstIndex(where: { $0.id == agentID }) else { return }
-        lastEvent = "用「\(style.rawValue)」戳了 \(agents[index].name)"
+        lastEvent = L10n.format("用「{0}」戳了 {1}", L10n.text(style.rawValue), String(describing: agents[index].name))
     }
 
     /// 舊版「我在做了」護盾行為；新版可改成綁定個別 ProjectTask。
     func shield(minutes: Int, note: String) {
         guard let index = agents.firstIndex(where: { $0.name == userName }) else { return }
         agents[index].isShielded = true
-        agents[index].status = "護盾 \(minutes) 分鐘｜\(note)"
+        agents[index].status = L10n.format("護盾 {0} 分鐘｜{1}", String(describing: minutes), String(describing: note))
         agents[index].progress = min(100, agents[index].progress + 5)
-        lastEvent = "護盾啟動，隊友看得到你在做了"
+        lastEvent = L10n.text("護盾啟動，隊友看得到你在做了")
     }
 }
 

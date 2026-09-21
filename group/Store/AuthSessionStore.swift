@@ -10,7 +10,10 @@ final class AuthSessionStore {
     private(set) var currentUserEmail: String?
     private(set) var isCheckingSession = true
     private(set) var isWorking = false
-    var language = AppLanguage.systemDefault
+    var language: AppLanguage {
+        get { AppLanguageSettings.shared.language }
+        set { AppLanguageSettings.shared.preference = AppLanguagePreference(rawValue: newValue.rawValue)! }
+    }
     private var errorKey: String?
     var errorMessage: String? { errorKey.map { text($0) } }
 

@@ -31,7 +31,7 @@ struct AttachmentPhotoThumbnail: View {
                     .font(.title2.weight(.bold)).foregroundStyle(.secondary)
             }
         }
-        .accessibilityLabel(failed ? "縮圖載入失敗，點擊下載預覽" : "成果照片預覽")
+        .accessibilityLabel(failed ? L10n.text("縮圖載入失敗，點擊下載預覽") : L10n.text("成果照片預覽"))
         .task(id: requestKey) {
             image = nil
             loading = false

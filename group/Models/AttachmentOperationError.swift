@@ -5,14 +5,14 @@ enum AttachmentOperationError: LocalizedError, Equatable {
     case metadataPending(String)
     var errorDescription: String? {
         switch self {
-        case .signedOut: "請先登入再操作附件。"
-        case .accountChanged: "帳號已變更，請重新操作。"
-        case .permissionDenied: "目前帳號沒有操作此附件的權限。"
-        case .notFound: "雲端檔案已不存在。"
-        case .invalidFile: "附件格式或路徑不正確，或檔案超過 20 MB。"
-        case .network: "連線失敗，請確認網路後重試。"
-        case .localFile: "無法儲存本機預覽檔案，請確認可用空間後重試。"
-        case .metadataPending(let reason): "雲端檔案已刪除，但附件資料尚未刪除。\(reason) 請重試完成清理。"
+        case .signedOut: L10n.text("請先登入再操作附件。")
+        case .accountChanged: L10n.text("帳號已變更，請重新操作。")
+        case .permissionDenied: L10n.text("目前帳號沒有操作此附件的權限。")
+        case .notFound: L10n.text("雲端檔案已不存在。")
+        case .invalidFile: L10n.text("附件格式或路徑不正確，或檔案超過 20 MB。")
+        case .network: L10n.text("連線失敗，請確認網路後重試。")
+        case .localFile: L10n.text("無法儲存本機預覽檔案，請確認可用空間後重試。")
+        case .metadataPending(let reason): L10n.format("雲端檔案已刪除，但附件資料尚未刪除。{0} 請重試完成清理。", String(describing: reason))
         }
     }
 }

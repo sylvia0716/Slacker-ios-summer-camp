@@ -72,12 +72,12 @@ enum PeerReviewSubmissionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .groupNotFound: "找不到目前群組"
-        case .groupStillActive: "群組截止後才能送出互評"
-        case .memberNotInGroup: "互評雙方都必須是目前群組成員"
-        case .cannotReviewSelf: "不可評價自己"
-        case .invalidScore: "五個評分項目都必須填寫 1～5 分"
-        case .duplicateReview: "你已送出對這位成員的評價"
+        case .groupNotFound: L10n.text("找不到目前群組")
+        case .groupStillActive: L10n.text("群組截止後才能送出互評")
+        case .memberNotInGroup: L10n.text("互評雙方都必須是目前群組成員")
+        case .cannotReviewSelf: L10n.text("不可評價自己")
+        case .invalidScore: L10n.text("五個評分項目都必須填寫 1～5 分")
+        case .duplicateReview: L10n.text("你已送出對這位成員的評價")
         }
     }
 }

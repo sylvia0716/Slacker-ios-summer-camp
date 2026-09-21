@@ -9,10 +9,10 @@ enum ProjectTaskStatus: String, Codable, Hashable, CaseIterable {
 
     var title: String {
         switch self {
-        case .pending: "待開始"
-        case .inProgress: "已開始"
-        case .submitted: "待驗收"
-        case .completed: "已完成"
+        case .pending: L10n.text("待開始")
+        case .inProgress: L10n.text("已開始")
+        case .submitted: L10n.text("待驗收")
+        case .completed: L10n.text("已完成")
         }
     }
 }

@@ -27,11 +27,11 @@ struct PersonalBattleReportView: View {
 
     private var metrics: [RadarMetric] {
         [
-            RadarMetric(title: "任務完成", score: normalized(projectAverage(\.taskCompletionScore))),
-            RadarMetric(title: "討論參與", score: normalized(projectAverage(\.discussionScore))),
-            RadarMetric(title: "主動協助", score: normalized(projectAverage(\.collaborationScore))),
-            RadarMetric(title: "解決問題", score: normalized(projectAverage(\.ideaScore))),
-            RadarMetric(title: "準時可靠", score: normalized(projectAverage(\.reliabilityScore)))
+            RadarMetric(title: L10n.text("任務完成"), score: normalized(projectAverage(\.taskCompletionScore))),
+            RadarMetric(title: L10n.text("討論參與"), score: normalized(projectAverage(\.discussionScore))),
+            RadarMetric(title: L10n.text("主動協助"), score: normalized(projectAverage(\.collaborationScore))),
+            RadarMetric(title: L10n.text("解決問題"), score: normalized(projectAverage(\.ideaScore))),
+            RadarMetric(title: L10n.text("準時可靠"), score: normalized(projectAverage(\.reliabilityScore)))
         ]
     }
 
@@ -58,10 +58,10 @@ struct PersonalBattleReportView: View {
                         }
 
                         HStack {
-                            Text("專案紀錄")
+                            Text(L10n.text("專案紀錄"))
                                 .font(.title2.weight(.black))
                             Spacer()
-                            Text("\(projects.count) 個專案")
+                            Text(L10n.format("{0} 個專案", String(describing: projects.count)))
                                 .font(.caption.weight(.black))
                         }
 
@@ -70,7 +70,7 @@ struct PersonalBattleReportView: View {
                         }
 
                         Button(action: exportReport) {
-                            Label("匯出個人戰力 PDF", systemImage: "square.and.arrow.up")
+                            Label(L10n.text("匯出個人戰力 PDF"), systemImage: "square.and.arrow.up")
                                 .font(.headline.weight(.black))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 15)
@@ -96,12 +96,12 @@ struct PersonalBattleReportView: View {
         .toolbar(.hidden, for: .tabBar)
         .bombTabBarHidden()
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "個人戰力檔案") {
+            BombHeader(title: L10n.text("個人戰力檔案")) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
+                .accessibilityLabel(L10n.text("返回設定"))
             } trailing: {
                 EmptyView()
             }
@@ -109,18 +109,18 @@ struct PersonalBattleReportView: View {
         .sheet(item: $exportedReport) { report in
             PersonalReportShareSheet(activityItems: [report.url])
         }
-        .bombDialog("無法匯出戰力檔案", isPresented: Binding(
+        .bombDialog(L10n.text("無法匯出戰力檔案"), isPresented: Binding(
             get: { exportError != nil },
             set: { if !$0 { exportError = nil } }
         )) {
-            Button("知道了") { exportError = nil }
+            Button(L10n.text("知道了")) { exportError = nil }
         } message: {
             Text(exportError ?? "")
         }
     }
 
     private var privacyBanner: some View {
-        Label("只有你看得到；匯出時包含分數與專案摘要", systemImage: "lock.fill")
+        Label(L10n.text("只有你看得到；匯出時包含分數與專案摘要"), systemImage: "lock.fill")
             .font(.caption.weight(.bold))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -131,9 +131,9 @@ struct PersonalBattleReportView: View {
         VStack(spacing: 12) {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 42, weight: .black))
-            Text("還沒有個人戰力紀錄")
+            Text(L10n.text("還沒有個人戰力紀錄"))
                 .font(.title3.weight(.black))
-            Text("專案結束且全員完成互評後，分數會自動累積在這裡。")
+            Text(L10n.text("專案結束且全員完成互評後，分數會自動累積在這裡。"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -148,9 +148,9 @@ struct PersonalBattleReportView: View {
         VStack(spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.profileName.isEmpty ? "我的累積戰力" : "\(model.profileName)的累積戰力")
+                    Text(model.profileName.isEmpty ? L10n.text("我的累積戰力") : L10n.format("{0}的累積戰力", String(describing: model.profileName)))
                         .font(.headline.weight(.black))
-                    Text("\(projects.count) 個專案 · \(totalReviewCount) 份互評")
+                    Text(L10n.format("{0} 個專案 · {1} 份互評", String(describing: projects.count), String(describing: totalReviewCount)))
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
@@ -177,9 +177,9 @@ struct PersonalBattleReportView: View {
         VStack(spacing: 14) {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 34, weight: .black))
-            Text("資料累積中")
+            Text(L10n.text("資料累積中"))
                 .font(.title2.weight(.black))
-            Text("目前只有 \(projects.count) 個專案，仍可匯出分享，但會標示為初步資料。累積 3 個專案後，結果會更具參考性。")
+            Text(L10n.format("目前只有 {0} 個專案，仍可匯出分享，但會標示為初步資料。累積 3 個專案後，結果會更具參考性。", String(describing: projects.count)))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -209,7 +209,7 @@ struct PersonalBattleReportView: View {
                 isPreliminary: !hasEnoughEvidence
             )
             exportedReport = ExportedPersonalReport(url: url)
-            model.lastEvent = "個人戰力 PDF 已產生"
+            model.lastEvent = L10n.text("個人戰力 PDF 已產生")
         } catch {
             exportError = error.localizedDescription
         }
@@ -230,7 +230,7 @@ private struct ProjectRecordCard: View {
                 Text(project.groupName)
                     .font(.headline.weight(.black))
                     .lineLimit(1)
-                Text(project.completedAt.formatted(date: .abbreviated, time: .omitted))
+                Text(project.completedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(L10n.locale)))
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
             }
@@ -238,11 +238,11 @@ private struct ProjectRecordCard: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(project.overallAverage.formatted(.number.precision(.fractionLength(1)))) / 5")
                     .font(.title3.weight(.black).monospacedDigit())
-                Text("專案平均")
+                Text(L10n.text("專案平均"))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
                 if project.excludedReviewCount > 0 {
-                    Text("已排除 \(project.excludedReviewCount) 份異常評分")
+                    Text(L10n.format("已排除 {0} 份異常評分", String(describing: project.excludedReviewCount)))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.orange)
                 }
@@ -279,15 +279,15 @@ private enum PersonalReportPDFExporter {
         isPreliminary: Bool
     ) throws -> URL {
         let displayName = profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "我的"
+            ? L10n.text("我的")
             : profileName
-        let filename = "\(safeFilename(displayName))-個人戰力檔案-\(timestamp()).pdf"
+        let filename = L10n.format("{0}-個人戰力檔案-{1}.pdf", String(describing: safeFilename(displayName)), String(describing: timestamp()))
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         try? FileManager.default.removeItem(at: url)
 
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = [
-            kCGPDFContextTitle as String: "\(displayName) 個人戰力檔案",
+            kCGPDFContextTitle as String: L10n.format("{0} 個人戰力檔案", String(describing: displayName)),
             kCGPDFContextCreator as String: "Group Bomb"
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: format)
@@ -306,18 +306,18 @@ private enum PersonalReportPDFExporter {
                 isPreliminary: isPreliminary
             )
 
-            writer.drawSectionTitle("五項能力平均")
+            writer.drawSectionTitle(L10n.text("五項能力平均"))
             for metric in metrics {
                 writer.drawMetric(title: metric.title, score: metric.score * 5)
             }
 
-            writer.drawSectionTitle("專案紀錄")
+            writer.drawSectionTitle(L10n.text("專案紀錄"))
             for project in projects {
                 writer.drawProject(project)
             }
 
-            writer.drawSectionTitle("資料說明")
-            writer.drawBody("本檔案依不同專案中收到的匿名互評彙整；已排除的異常評分不列入計算。互評可能受合作情境與主觀感受影響，不應作為分組、評分或考核的唯一依據。")
+            writer.drawSectionTitle(L10n.text("資料說明"))
+            writer.drawBody(L10n.text("本檔案依不同專案中收到的匿名互評彙整；已排除的異常評分不列入計算。互評可能受合作情境與主觀感受影響，不應作為分組、評分或考核的唯一依據。"))
         }
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -345,7 +345,7 @@ private enum PersonalReportPDFExportError: LocalizedError {
     case emptyFile
 
     var errorDescription: String? {
-        "PDF 產生失敗，請稍後再試。"
+        L10n.text("PDF 產生失敗，請稍後再試。")
     }
 }
 
@@ -385,7 +385,7 @@ private final class PersonalReportPDFWriter {
             color: ink
         )
         drawRawText(
-            "個人戰力檔案",
+            L10n.text("個人戰力檔案"),
             x: margin,
             y: 47,
             width: pageBounds.width - margin * 2,
@@ -403,7 +403,7 @@ private final class PersonalReportPDFWriter {
             color: ink
         )
 
-        let footer = "\(displayName)  ·  匯出於 \(Date.now.formatted(date: .abbreviated, time: .shortened))"
+        let footer = L10n.format("{0}  ·  匯出於 {1}", String(describing: displayName), String(describing: Date.now.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale))))
         drawRawText(
             footer,
             x: margin,
@@ -432,7 +432,7 @@ private final class PersonalReportPDFWriter {
         path.stroke()
 
         drawRawText(
-            "累積 \(projectCount) 個專案 · \(reviewCount) 份匿名互評",
+            L10n.format("累積 {0} 個專案 · {1} 份匿名互評", String(describing: projectCount), String(describing: reviewCount)),
             x: rect.minX + 16,
             y: rect.minY + 15,
             width: rect.width - 145,
@@ -441,7 +441,7 @@ private final class PersonalReportPDFWriter {
             color: ink
         )
         drawRawText(
-            isPreliminary ? "整體平均 · 初步資料" : "整體平均 · 已累積足夠專案",
+            isPreliminary ? L10n.text("整體平均 · 初步資料") : L10n.text("整體平均 · 已累積足夠專案"),
             x: rect.minX + 16,
             y: rect.minY + 43,
             width: rect.width - 145,
@@ -461,7 +461,7 @@ private final class PersonalReportPDFWriter {
         )
         if isPreliminary {
             drawRawText(
-                "專案數較少，分數可能隨後續合作明顯變動。",
+                L10n.text("專案數較少，分數可能隨後續合作明顯變動。"),
                 x: rect.minX + 16,
                 y: rect.minY + 66,
                 width: rect.width - 32,
@@ -552,7 +552,7 @@ private final class PersonalReportPDFWriter {
             color: ink
         )
         drawRawText(
-            project.completedAt.formatted(date: .abbreviated, time: .omitted),
+            project.completedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(L10n.locale)),
             x: rect.minX + 14,
             y: rect.minY + 36,
             width: rect.width - 150,
@@ -561,7 +561,7 @@ private final class PersonalReportPDFWriter {
             color: secondary
         )
         drawRawText(
-            "\(project.acceptedReviewCount) 份採計" + (project.excludedReviewCount > 0 ? " · 排除 \(project.excludedReviewCount) 份" : ""),
+            L10n.format("{0} 份採計", String(describing: project.acceptedReviewCount)) + (project.excludedReviewCount > 0 ? L10n.format(" · 排除 {0} 份", String(describing: project.excludedReviewCount)) : ""),
             x: rect.minX + 14,
             y: rect.minY + 58,
             width: rect.width - 150,

@@ -43,15 +43,15 @@ enum AppleIntelligenceServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .deviceNotEligible:
-            "這台裝置不支援 Apple Intelligence，請改用支援的 iPhone 實機。"
+            L10n.text("這台裝置不支援 Apple Intelligence，請改用支援的 iPhone 實機。")
         case .appleIntelligenceNotEnabled:
-            "請先到系統設定開啟 Apple Intelligence，再回來使用 AI 功能。"
+            L10n.text("請先到系統設定開啟 Apple Intelligence，再回來使用 AI 功能。")
         case .modelNotReady:
-            "Apple Intelligence 模型尚未準備完成，可能仍在下載，請稍後再試。"
+            L10n.text("Apple Intelligence 模型尚未準備完成，可能仍在下載，請稍後再試。")
         case .traditionalChineseUnsupported:
-            "目前裝置上的 Apple Intelligence 模型尚未支援繁體中文。"
+            L10n.text("目前裝置上的 Apple Intelligence 模型尚未支援繁體中文。")
         case .unknownAvailability:
-            "Apple Intelligence 目前無法使用，請稍後再試。"
+            L10n.text("Apple Intelligence 目前無法使用，請稍後再試。")
         }
     }
 }

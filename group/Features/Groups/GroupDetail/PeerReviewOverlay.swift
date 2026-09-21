@@ -91,12 +91,12 @@ struct PeerReviewOverlay: View {
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden(true)
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "匿名互評", subtitle: group.name) {
+            BombHeader(title: L10n.text("匿名互評"), subtitle: group.name) {
                 Button(action: handleHeaderBack) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel(selectedMember == nil ? "返回群組" : "返回隊員列表")
+                .accessibilityLabel(selectedMember == nil ? L10n.text("返回群組") : L10n.text("返回隊員列表"))
             } trailing: {
                 EmptyView()
             }
@@ -126,7 +126,7 @@ struct PeerReviewOverlay: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("返回梗圖")
+            .accessibilityLabel(L10n.text("返回梗圖"))
 
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: theme.iconName)
@@ -148,7 +148,7 @@ struct PeerReviewOverlay: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                summaryRow(label: "群組名稱", value: group.name, font: .subheadline)
+                summaryRow(label: L10n.text("群組名稱"), value: group.name, font: .subheadline)
                 summaryRow(label: theme.progressLabel, value: "\(clampedProjectProgress)%", font: .subheadline)
                 summaryRow(
                     label: theme.completedTaskLabel,
@@ -157,10 +157,10 @@ struct PeerReviewOverlay: View {
                 )
 
                 if theme.isIncident {
-                    summaryRow(label: "未完成任務數", value: "\(incompleteTaskCount)", font: .subheadline)
+                    summaryRow(label: L10n.text("未完成任務數"), value: "\(incompleteTaskCount)", font: .subheadline)
                 }
 
-                summaryRow(label: "截止時間", value: formattedDeadline, font: .subheadline)
+                summaryRow(label: L10n.text("截止時間"), value: formattedDeadline, font: .subheadline)
             }
             .padding(14)
             .background(theme.summaryBackground)
@@ -169,7 +169,7 @@ struct PeerReviewOverlay: View {
 
             if theme.isIncident && !unfinishedTasks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("未完成工作")
+                    Text(L10n.text("未完成工作"))
                         .font(.headline.weight(.black))
 
                     ForEach(unfinishedTasks) { task in
@@ -206,7 +206,7 @@ struct PeerReviewOverlay: View {
                     .foregroundStyle(BombTheme.red)
             }
 
-            Text("已完成 \(completedReviewCount) / \(otherMembers.count)")
+            Text(L10n.format("已完成 {0} / {1}", String(describing: completedReviewCount), String(describing: otherMembers.count)))
                 .font(.subheadline.weight(.black))
 
             ForEach(otherMembers) { member in
@@ -216,7 +216,7 @@ struct PeerReviewOverlay: View {
             anonymityNotice
 
             Button(action: onLater) {
-                Text("稍後再評")
+                Text(L10n.text("稍後再評"))
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -231,9 +231,9 @@ struct PeerReviewOverlay: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("雷包點點名")
+            Text(L10n.text("雷包點點名"))
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
-            Text("匿名隊員互評")
+            Text(L10n.text("匿名隊員互評"))
                 .font(.headline.weight(.black))
             Text(theme.instruction)
                 .font(.caption.weight(.bold))
@@ -251,14 +251,14 @@ struct PeerReviewOverlay: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(member.name).font(.headline.weight(.black))
                 Text(member.role.title).font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                Text(isSubmitted ? "已評分" : "尚未評分")
+                Text(isSubmitted ? L10n.text("已評分") : L10n.text("尚未評分"))
                     .font(.caption2.weight(.black))
                     .foregroundStyle(isSubmitted ? BombTheme.green : BombTheme.red)
             }
 
             Spacer(minLength: 8)
 
-            Button(isSubmitted ? "已評分" : "開始評分") {
+            Button(isSubmitted ? L10n.text("已評分") : L10n.text("開始評分")) {
                 beginReview(member)
             }
             .font(.caption.weight(.black))
@@ -350,15 +350,15 @@ struct PeerReviewOverlay: View {
         let hasDeliverable = memberTasks.contains { $0.deliverable != nil }
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("客觀紀錄摘要").font(.subheadline.weight(.black))
+            Text(L10n.text("客觀紀錄摘要")).font(.subheadline.weight(.black))
 
             if memberTasks.isEmpty {
-                Text("尚無指派任務")
+                Text(L10n.text("尚無指派任務"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             } else {
-                summaryRow(label: "完成子任務", value: "\(completedSubtasks) / \(subtasks.count)")
-                summaryRow(label: "成果證明", value: hasDeliverable ? "已上傳" : "尚未上傳")
+                summaryRow(label: L10n.text("完成子任務"), value: "\(completedSubtasks) / \(subtasks.count)")
+                summaryRow(label: L10n.text("成果證明"), value: hasDeliverable ? L10n.text("已上傳") : L10n.text("尚未上傳"))
             }
         }
         .padding(12)
@@ -382,7 +382,7 @@ struct PeerReviewOverlay: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(criterion.title).font(.subheadline.weight(.black))
                 Spacer()
-                Text(score == 0 ? "尚未評分" : "\(score) / 5")
+                Text(score == 0 ? L10n.text("尚未評分") : "\(score) / 5")
                     .font(.caption.weight(.black))
                     .foregroundStyle(score == 0 ? Color.secondary : theme.accentColor)
             }
@@ -414,7 +414,7 @@ struct PeerReviewOverlay: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(criterion.title) \(value) 分")
+                    .accessibilityLabel(L10n.format("{0} {1} 分", String(describing: criterion.title), String(describing: value)))
                     .accessibilityAddTraits(value == score ? .isSelected : [])
                 }
             }
@@ -431,7 +431,7 @@ struct PeerReviewOverlay: View {
                 isCommentFocused = false
                 showsConfirmation = true
             } label: {
-                Text(allScoresComplete ? "送出匿名評價" : "尚有 \(ReviewCriterion.allCases.count - completedScoreCount) 項未評分")
+                Text(allScoresComplete ? L10n.text("送出匿名評價") : L10n.format("尚有 {0} 項未評分", String(describing: ReviewCriterion.allCases.count - completedScoreCount)))
                     .font(.headline.weight(.black))
                     .foregroundStyle(allScoresComplete ? Color.white : BombTheme.ink.opacity(0.65))
                     .frame(maxWidth: .infinity)
@@ -506,7 +506,7 @@ struct PeerReviewOverlay: View {
                     .font(.subheadline.weight(.bold))
 
                 HStack(spacing: 10) {
-                    Button("返回修改") { showsConfirmation = false }
+                    Button(L10n.text("返回修改")) { showsConfirmation = false }
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(BombTheme.ink)
                         .frame(maxWidth: .infinity)
@@ -522,7 +522,7 @@ struct PeerReviewOverlay: View {
                             if isSubmitting {
                                 ProgressView().tint(.white)
                             } else {
-                                Text("確認送出")
+                                Text(L10n.text("確認送出"))
                             }
                         }
                         .font(.subheadline.weight(.black))
@@ -551,17 +551,17 @@ struct PeerReviewOverlay: View {
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 16) {
-                Label("尚未送出評價", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.text("尚未送出評價"), systemImage: "exclamationmark.triangle.fill")
                     .font(.title2.weight(.black))
                     .foregroundStyle(BombTheme.red)
 
-                Text("目前填寫的評分與評語尚未送出，確定要離開嗎？")
+                Text(L10n.text("目前填寫的評分與評語尚未送出，確定要離開嗎？"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(BombTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
-                    Button("繼續填寫") {
+                    Button(L10n.text("繼續填寫")) {
                         withAnimation(.snappy) {
                             showsExitReviewConfirmation = false
                         }
@@ -574,7 +574,7 @@ struct PeerReviewOverlay: View {
                     .clipShape(.capsule)
                     .buttonStyle(.plain)
 
-                    Button("確定離開") {
+                    Button(L10n.text("確定離開")) {
                         withAnimation(.snappy) {
                             showsExitReviewConfirmation = false
                         }
@@ -609,15 +609,15 @@ struct PeerReviewOverlay: View {
                 .font(.title3.weight(.black))
                 .foregroundStyle(theme.accentColor)
 
-            Text("剩餘 \(remainingCount) 位隊員尚未評價")
+            Text(L10n.format("剩餘 {0} 位隊員尚未評價", String(describing: remainingCount)))
                 .font(.subheadline.weight(.bold))
 
             if let nextMember = pendingMembers.first {
-                Button("評下一位") { beginReview(nextMember) }
+                Button(L10n.text("評下一位")) { beginReview(nextMember) }
                     .primaryReviewButton()
             }
 
-            Button(remainingCount == 0 ? "查看完成狀態" : "返回隊員列表") {
+            Button(remainingCount == 0 ? L10n.text("查看完成狀態") : L10n.text("返回隊員列表")) {
                 submittedMemberID = nil
             }
             .secondaryReviewButton()
@@ -636,8 +636,8 @@ struct PeerReviewOverlay: View {
                 .font(.subheadline.weight(.bold))
 
             VStack(alignment: .leading, spacing: 8) {
-                summaryRow(label: "你已評完的隊友", value: "\(completedReviewCount) / \(otherMembers.count) 位")
-                summaryRow(label: "完成全部互評的成員", value: "\(completedReviewerCount) / \(peerReviewParticipantCount) 位")
+                summaryRow(label: L10n.text("你已評完的隊友"), value: L10n.format("{0} / {1} 位", String(describing: completedReviewCount), String(describing: otherMembers.count)))
+                summaryRow(label: L10n.text("完成全部互評的成員"), value: L10n.format("{0} / {1} 位", String(describing: completedReviewerCount), String(describing: peerReviewParticipantCount)))
             }
 
             Text(completedReviewerCount >= peerReviewParticipantCount ? theme.everyoneCompletedMessage : theme.waitingMessage)
@@ -652,7 +652,7 @@ struct PeerReviewOverlay: View {
                     .foregroundStyle(BombTheme.red)
             }
 
-            Button("返回群組", action: onLater)
+            Button(L10n.text("返回群組"), action: onLater)
                 .primaryReviewButton()
 
             Button(theme.resultsButtonTitle) {
@@ -663,7 +663,7 @@ struct PeerReviewOverlay: View {
     }
 
     private var anonymityNotice: some View {
-        Label("所有評價皆為匿名，請依實際合作表現客觀填寫。", systemImage: "lock.fill")
+        Label(L10n.text("所有評價皆為匿名，請依實際合作表現客觀填寫。"), systemImage: "lock.fill")
             .font(.caption.weight(.bold))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -707,7 +707,7 @@ struct PeerReviewOverlay: View {
     }
 
     private var formattedDeadline: String {
-        group.deadline.formatted(date: .abbreviated, time: .shortened)
+        group.deadline.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale))
     }
 
     private var selectedMember: Member? {
@@ -782,7 +782,7 @@ struct PeerReviewOverlay: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(theme.isIncident ? "返回戰損摘要" : "返回結算摘要")
+        .accessibilityLabel(theme.isIncident ? L10n.text("返回戰損摘要") : L10n.text("返回結算摘要"))
     }
 
     private func returnToOutcomeSummary() {
@@ -829,19 +829,19 @@ private struct PeerReviewTheme {
     var isIncident: Bool { outcome == .incomplete }
 
     var outcomeTitle: String {
-        isIncident ? "任務爆炸" : "成功拆彈！"
+        isIncident ? L10n.text("任務爆炸") : L10n.text("成功拆彈！")
     }
 
     var outcomeSubtitle: String {
         isIncident
-            ? "截止時間已到，先查看戰損，再完成匿名隊員互評。"
-            : "任務已完成，請進行匿名隊員互評。"
+            ? L10n.text("截止時間已到，先查看戰損，再完成匿名隊員互評。")
+            : L10n.text("任務已完成，請進行匿名隊員互評。")
     }
 
     var instruction: String {
         isIncident
-            ? "請根據本次任務中的實際合作表現完成匿名互評，找出這次任務卡住的原因。"
-            : "請根據隊友在本次任務中的實際表現完成匿名互評。"
+            ? L10n.text("請根據本次任務中的實際合作表現完成匿名互評，找出這次任務卡住的原因。")
+            : L10n.text("請根據隊友在本次任務中的實際表現完成匿名互評。")
     }
 
     var iconName: String {
@@ -853,67 +853,67 @@ private struct PeerReviewTheme {
     }
 
     var startButtonTitle: String {
-        isIncident ? "開始戰損復盤" : "開始雷包點點名"
+        isIncident ? L10n.text("開始戰損復盤") : L10n.text("開始雷包點點名")
     }
 
     var progressLabel: String {
-        isIncident ? "截止時完成率" : "最終進度"
+        isIncident ? L10n.text("截止時完成率") : L10n.text("最終進度")
     }
 
     var completedTaskLabel: String {
-        isIncident ? "已完成任務數" : "完成任務數"
+        isIncident ? L10n.text("已完成任務數") : L10n.text("完成任務數")
     }
 
     var commentSectionTitle: String {
-        isIncident ? "事故報告" : "匿名評語"
+        isIncident ? L10n.text("事故報告") : L10n.text("匿名評語")
     }
 
     var commentPlaceholder: String {
         isIncident
-            ? "請寫下這次合作中做得好的地方，或造成任務卡住、延誤的原因。"
-            : "寫下這位隊員做得好的地方，或可以改進的地方。"
+            ? L10n.text("請寫下這次合作中做得好的地方，或造成任務卡住、延誤的原因。")
+            : L10n.text("寫下這位隊員做得好的地方，或可以改進的地方。")
     }
 
     var commentGuidance: String? {
-        isIncident ? "請針對行為與合作狀況，不要進行人身攻擊。" : nil
+        isIncident ? L10n.text("請針對行為與合作狀況，不要進行人身攻擊。") : nil
     }
 
     var confirmationTitle: String {
-        isIncident ? "確認提交事故報告？" : "確認送出？"
+        isIncident ? L10n.text("確認提交事故報告？") : L10n.text("確認送出？")
     }
 
     var confirmationMessage: String {
-        isIncident ? "送出後，本次匿名評價將無法修改。" : "送出後本次匿名評價將無法修改。"
+        isIncident ? L10n.text("送出後，本次匿名評價將無法修改。") : L10n.text("送出後本次匿名評價將無法修改。")
     }
 
     func submissionSuccessMessage(for memberName: String) -> String {
         isIncident
-            ? "已完成對「\(memberName)」的匿名復盤"
-            : "已完成對「\(memberName)」的匿名評價"
+            ? L10n.format("已完成對「{0}」的匿名復盤", String(describing: memberName))
+            : L10n.format("已完成對「{0}」的匿名評價", String(describing: memberName))
     }
 
     var completionTitle: String {
-        isIncident ? "戰損分析完成" : "互評完成"
+        isIncident ? L10n.text("戰損分析完成") : L10n.text("互評完成")
     }
 
     var completionMessage: String {
-        "你已完成所有隊員的匿名互評。"
+        L10n.text("你已完成所有隊員的匿名互評。")
     }
 
     var everyoneCompletedMessage: String {
-        isIncident ? "所有隊員皆已完成復盤" : "所有匿名互評已完成"
+        isIncident ? L10n.text("所有隊員皆已完成復盤") : L10n.text("所有匿名互評已完成")
     }
 
     var waitingMessage: String {
-        isIncident ? "等待其他隊員完成復盤" : "等待其他隊員完成互評"
+        isIncident ? L10n.text("等待其他隊員完成復盤") : L10n.text("等待其他隊員完成互評")
     }
 
     var resultsButtonTitle: String {
-        isIncident ? "查看戰損報告" : "查看互評結果"
+        isIncident ? L10n.text("查看戰損報告") : L10n.text("查看互評結果")
     }
 
     var resultsPlaceholder: String {
-        isIncident ? "戰損報告將於下一階段開放" : "互評結果將於下一階段開放"
+        isIncident ? L10n.text("戰損報告將於下一階段開放") : L10n.text("互評結果將於下一階段開放")
     }
 
     var accentColor: Color {
@@ -944,21 +944,21 @@ private enum ReviewCriterion: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .taskCompletion: "任務完成度"
-        case .discussion: "討論參與度"
-        case .collaboration: "主動協助程度"
-        case .idea: "點子與問題解決"
-        case .reliability: "準時與可靠度"
+        case .taskCompletion: L10n.text("任務完成度")
+        case .discussion: L10n.text("討論參與度")
+        case .collaboration: L10n.text("主動協助程度")
+        case .idea: L10n.text("點子與問題解決")
+        case .reliability: L10n.text("準時與可靠度")
         }
     }
 
     var detail: String {
         switch self {
-        case .taskCompletion: "是否完成被分配的工作與子任務。"
-        case .discussion: "是否有參與團隊討論並提供回應。"
-        case .collaboration: "是否主動協助其他組員完成工作。"
-        case .idea: "是否提出有用的想法，或協助解決問題。"
-        case .reliability: "是否準時完成、交付並更新進度。"
+        case .taskCompletion: L10n.text("是否完成被分配的工作與子任務。")
+        case .discussion: L10n.text("是否有參與團隊討論並提供回應。")
+        case .collaboration: L10n.text("是否主動協助其他組員完成工作。")
+        case .idea: L10n.text("是否提出有用的想法，或協助解決問題。")
+        case .reliability: L10n.text("是否準時完成、交付並更新進度。")
         }
     }
 }

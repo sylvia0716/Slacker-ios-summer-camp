@@ -50,7 +50,7 @@ final class GroupRepository {
             let data = document.value
             guard !data.userID.isEmpty, document.id == data.userID else { throw GroupLoadError.invalidData }
             return Member(id: FirebaseMemberIdentity.uiID(for: data.userID),
-                          name: data.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? data.displayName! : "成員 \(data.userID.prefix(8))",
+                          name: data.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? data.displayName! : L10n.format("成員 {0}", String(describing: data.userID.prefix(8))),
                           role: data.role, avatarSymbol: data.avatarSymbol ?? "person.fill", firebaseUID: data.userID)
         }
         let tasks = try mapTasks(

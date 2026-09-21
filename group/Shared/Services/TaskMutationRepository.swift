@@ -10,10 +10,10 @@ enum TaskMutationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated: "請先登入再更新任務。"
-        case .invalidData: "任務資料格式不正確，請重新載入後再試。"
-        case .permissionDenied: "目前帳號沒有修改這項任務的權限。"
-        case .unavailable: "任務同步失敗，請確認網路後再試。"
+        case .notAuthenticated: L10n.text("請先登入再更新任務。")
+        case .invalidData: L10n.text("任務資料格式不正確，請重新載入後再試。")
+        case .permissionDenied: L10n.text("目前帳號沒有修改這項任務的權限。")
+        case .unavailable: L10n.text("任務同步失敗，請確認網路後再試。")
         }
     }
 }

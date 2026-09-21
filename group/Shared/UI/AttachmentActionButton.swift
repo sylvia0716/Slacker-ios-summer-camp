@@ -28,21 +28,21 @@ struct AttachmentActionButton<Label: View>: View {
         .disabled(action.isWorking)
         .contextMenu {
             if attachment != nil {
-                Button("刪除附件", role: .destructive) { confirmsDelete = true }
+                Button(L10n.text("刪除附件"), role: .destructive) { confirmsDelete = true }
                     .disabled(action.isWorking)
             }
         }
-        .bombDialog("確定刪除此附件？", isPresented: $confirmsDelete, titleVisibility: .visible) {
-            Button("取消", role: .cancel) {}
-            Button("刪除", role: .destructive) { perform(delete: true) }
+        .bombDialog(L10n.text("確定刪除此附件？"), isPresented: $confirmsDelete, titleVisibility: .visible) {
+            Button(L10n.text("取消"), role: .cancel) {}
+            Button(L10n.text("刪除"), role: .destructive) { perform(delete: true) }
         } message: {
-            Text("刪除後無法復原。")
+            Text(L10n.text("刪除後無法復原。"))
         }
         .overlay {
             if action.isWorking {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text(action.isDeleting ? "正在刪除" : "下載中 \(Int(action.progress * 100))%")
+                    Text(action.isDeleting ? L10n.text("正在刪除") : L10n.format("下載中 {0}%", String(describing: Int(action.progress * 100))))
                         .font(.caption.bold())
                 }
                 .padding(8)
@@ -58,14 +58,14 @@ struct AttachmentActionButton<Label: View>: View {
         .onChange(of: action.externalURL) { _, url in
             if let url {
                 openURL(url) { accepted in
-                    if !accepted { action.errorMessage = "無法開啟此網址，請稍後重試。" }
+                    if !accepted { action.errorMessage = L10n.text("無法開啟此網址，請稍後重試。") }
                 }
                 action.externalURL = nil
             }
         }
-        .bombDialog("附件操作失敗", isPresented: Binding(get: { action.errorMessage != nil }, set: { if !$0 { action.errorMessage = nil } })) {
-            Button("取消", role: .cancel) { action.errorMessage = nil }
-            Button("重新嘗試") { perform(delete: action.isDeleting) }
+        .bombDialog(L10n.text("附件操作失敗"), isPresented: Binding(get: { action.errorMessage != nil }, set: { if !$0 { action.errorMessage = nil } })) {
+            Button(L10n.text("取消"), role: .cancel) { action.errorMessage = nil }
+            Button(L10n.text("重新嘗試")) { perform(delete: action.isDeleting) }
         } message: { Text(action.errorMessage ?? "") }
         .onChange(of: model.firebaseUID) { _, _ in action.cancel() }
         .onChange(of: scenePhase) { _, phase in if phase == .background { action.cancel() } }
@@ -78,7 +78,7 @@ struct AttachmentActionButton<Label: View>: View {
             return
         }
         guard let attachment else {
-            action.errorMessage = "附件資料尚未載入或已移除，請重新整理後再試。"
+            action.errorMessage = L10n.text("附件資料尚未載入或已移除，請重新整理後再試。")
             return
         }
         action.run(delete: delete, attachment: attachment,
