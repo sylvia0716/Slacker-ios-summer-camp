@@ -24,6 +24,7 @@ struct MemberProgressPreviewItem: Identifiable {
 
 struct MemberProgressCard: View {
     let model: GroupBombModel
+    let firestoreGroupID: String?
     let member: MemberProgressPreviewItem
     let tasks: [ProjectTask]
     let groupMemberIDs: [UUID]
@@ -36,16 +37,51 @@ struct MemberProgressCard: View {
     let onConfirmDeliverable: (UUID) -> Void
     let onPoke: (PokeStyle) -> Int?
     let onPokeEmoji: (String, String?) -> Void
+    var onChangeLeader: (() -> Void)? = nil
 
     @State private var uploadTask: ProjectTask?
+    @State private var managedTask: ProjectTask?
+    @State private var managesDeletion = false
     @State private var previewDeliverable: Deliverable?
     @State private var expandedTaskID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let onChangeLeader {
+                HStack(spacing: 10) {
+                    Button(action: onToggleExpanded) { avatar }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Button(action: onToggleExpanded) {
+                            Text(member.name).font(.system(.title2, design: .rounded, weight: .black))
+                                .multilineTextAlignment(.leading)
+                        }
+                        Button(action: onChangeLeader) {
+                            Label {
+                                Text(L10n.text("更換組長")).underline()
+                            } icon: {
+                                Image(systemName: "crown.fill")
+                            }
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: onToggleExpanded) {
+                        HStack(spacing: 10) {
+                            Text(tasks.isEmpty ? "—" : "\(member.progress)%")
+                                .font(.system(.title2, design: .rounded, weight: .black)).monospacedDigit()
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.subheadline.weight(.black))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
             Button(action: onToggleExpanded) {
                 VStack(alignment: .leading, spacing: 12) {
-                    header
+                    if onChangeLeader == nil { header }
                     Text(tasks.isEmpty ? L10n.text("尚未指派任務") : L10n.format("{0} 項任務 · 已完成 {1} 項", String(describing: tasks.count), String(describing: tasks.filter(\.isCompleted).count)))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.secondary)
@@ -96,6 +132,9 @@ struct MemberProgressCard: View {
             if !expanded {
                 expandedTaskID = nil
             }
+        }
+        .sheet(item: $managedTask) { task in
+            AttachmentManagementSheet(model: model, task: task, deletionMode: managesDeletion, onSubmit: { onSubmitDeliverable(task.id, $0) })
         }
         .sheet(item: $uploadTask) { task in
             DeliverableSubmissionSheet(task: task) { deliverable in
@@ -237,10 +276,10 @@ struct MemberProgressCard: View {
                     ForEach(task.subtasks) { subtask in
                         if isCurrentUser {
                             Button { onToggleSubtask(task.id, subtask.id) } label: {
-                                checklistRow(subtask)
+                                checklistRow(subtask, isUpdating: model.pendingSubtaskUpdates[task.id] == subtask.id)
                             }
                             .buttonStyle(.plain)
-                            .disabled(model.pendingTaskUpdates.contains(task.id))
+                            .allowsHitTesting(!model.pendingTaskUpdates.contains(task.id))
                             .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
                             .accessibilityHint(L10n.text("切換子任務完成狀態"))
                         } else {
@@ -258,7 +297,7 @@ struct MemberProgressCard: View {
         }
     }
 
-    private func checklistRow(_ subtask: Subtask) -> some View {
+    private func checklistRow(_ subtask: Subtask, isUpdating: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
                 .font(.body.weight(.bold))
@@ -270,11 +309,19 @@ struct MemberProgressCard: View {
                 .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
                 .strikethrough(subtask.isComplete)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if isUpdating {
+                ProgressView().controlSize(.small)
+            }
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
         .background(BombTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
         .contentShape(Rectangle())
+    }
+
+    private func visibleDeliverables(for task: ProjectTask) -> [Deliverable] {
+        let items = (model.attachmentsByTaskID[task.id] ?? []).filter { $0.status == .ready }
+        return items.isEmpty ? task.deliverable.map { [$0] } ?? [] : items.map { Deliverable(attachment: $0) }
     }
 
     private func deliverableSection(for task: ProjectTask) -> some View {
@@ -286,24 +333,42 @@ struct MemberProgressCard: View {
                 Spacer()
 
                 if isCurrentUser, task.deliverable != nil {
-                    Button(L10n.text("更換")) { uploadTask = task }
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(BombTheme.ink)
-                        .buttonStyle(.plain)
+                    HStack(spacing: 4) {
+                        Button { managesDeletion = false; managedTask = task } label: {
+                            Image(systemName: "pencil").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("編輯附件"))
+                        Button {
+                            managesDeletion = true
+                            managedTask = task
+                        } label: {
+                            Image(systemName: "trash").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("刪除附件"))
+                        .disabled(task.deliverable?.attachmentID == nil)
+                        Button { uploadTask = task } label: {
+                            Image(systemName: "plus").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("新增附件"))
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .buttonStyle(.plain)
                 }
             }
             if let deliverable = task.deliverable {
-                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
-                                       localPreview: { previewDeliverable = deliverable }) {
+                ForEach(visibleDeliverables(for: task)) { item in
+                    AttachmentActionButton(model: model, taskID: task.id, deliverable: item,
+                                       localPreview: { previewDeliverable = item }) {
                     HStack(spacing: 12) {
-                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: deliverable)
+                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: item)
                             .frame(width: 64, height: 64)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(deliverable.originalFilename ?? deliverable.title)
+                            Text(item.title)
                                 .font(.subheadline.weight(.black))
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(deliverable.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
+                            Text(item.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
                                 .font(.footnote.weight(.bold)).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -313,6 +378,7 @@ struct MemberProgressCard: View {
                     .padding(10)
                     .background(BombTheme.paper.mix(with: .white, by: 0.25), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(BombTheme.ink.opacity(0.12), lineWidth: 1))
+                }
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
@@ -334,24 +400,25 @@ struct MemberProgressCard: View {
 
     private func confirmationSection(for task: ProjectTask, deliverable: Deliverable) -> some View {
         let confirmedIDs = Set(deliverable.confirmedMemberIDs)
-        let confirmedCount = groupMemberIDs.filter { confirmedIDs.contains($0) }.count
-        let isFullyConfirmed = !groupMemberIDs.isEmpty && confirmedCount == groupMemberIDs.count
+        let reviewers = groupMemberIDs.filter { $0 != task.ownerMemberID }
+        let confirmedCount = reviewers.filter { confirmedIDs.contains($0) }.count
+        let isFullyConfirmed = confirmedCount == reviewers.count
         let hasCurrentUserConfirmed = confirmedIDs.contains(currentUserID)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text(L10n.text("成員確認")).foregroundStyle(BombTheme.ink)
-                Text("\(confirmedCount)/\(groupMemberIDs.count)").foregroundStyle(.secondary)
+                Text("\(confirmedCount)/\(reviewers.count)").foregroundStyle(.secondary)
             }
             .font(.subheadline.weight(.black))
             ViewThatFits(in: .horizontal) {
-                confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
+                confirmationAvatars(reviewers: reviewers, confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
                 ScrollView(.horizontal) {
-                    confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
+                    confirmationAvatars(reviewers: reviewers, confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
                 }
                 .scrollIndicators(.hidden)
             }
-            if !hasCurrentUserConfirmed && groupMemberIDs.contains(currentUserID) {
+            if !hasCurrentUserConfirmed && reviewers.contains(currentUserID) {
                 Button { onConfirmDeliverable(task.id) } label: {
                     Text(L10n.text("確認這項成果"))
                         .font(.subheadline.weight(.black))
@@ -366,32 +433,33 @@ struct MemberProgressCard: View {
         }
     }
 
-    private func confirmationAvatars(confirmedIDs: Set<UUID>, isFullyConfirmed: Bool) -> some View {
+    private func confirmationAvatars(reviewers: [UUID], confirmedIDs: Set<UUID>, isFullyConfirmed: Bool) -> some View {
         HStack(spacing: 7) {
-            ForEach(groupMemberIDs, id: \.self) { id in
+            ForEach(reviewers, id: \.self) { id in
                 let confirmed = confirmedIDs.contains(id)
                 let name = model.members.first(where: { $0.id == id })?.name ?? L10n.text("成員")
                 MemberPhotoAvatar(
-                    groupID: tasks.first?.firestoreGroupID,
+                    groupID: firestoreGroupID,
                     uid: model.members.first(where: { $0.id == id })?.firebaseUID,
                     name: name, confirmed: confirmed
                 )
                     .accessibilityLabel("\(name)：\(confirmed ? L10n.text("已確認") : L10n.text("尚未確認"))")
             }
-            Text(isFullyConfirmed ? L10n.text("已全部確認") : L10n.text("待確認"))
-                .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
-                .fixedSize()
+            if isFullyConfirmed && !reviewers.isEmpty {
+                Text(L10n.text("已全部確認"))
+                    .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                    .fixedSize()
+            }
         }
         .fixedSize(horizontal: true, vertical: false)
     }
 
     private var avatar: some View {
-        Circle().fill(BombTheme.ink)
-            .frame(width: 50, height: 50)
-            .overlay {
-                Text(String(member.name.prefix(1)).uppercased())
-                    .font(.title2.weight(.black)).foregroundStyle(BombTheme.yellow)
-            }
+        MemberPhotoAvatar(
+            groupID: firestoreGroupID,
+            uid: model.members.first(where: { $0.id.uuidString == member.id })?.firebaseUID,
+            name: member.name, size: 50
+        )
             .accessibilityHidden(true)
     }
 }

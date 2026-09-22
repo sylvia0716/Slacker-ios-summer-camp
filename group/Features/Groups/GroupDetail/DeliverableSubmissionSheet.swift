@@ -166,6 +166,13 @@ struct DeliverableSubmissionSheet: View {
     @State private var detail = ""
     @State private var link = ""
 
+    init(task: ProjectTask, initialTitle: String = "", initialDetail: String = "", onSubmit: @escaping (Deliverable) -> Void) {
+        self.task = task
+        self.onSubmit = onSubmit
+        _title = State(initialValue: initialTitle)
+        _detail = State(initialValue: initialDetail)
+    }
+
     private static let allowedDocumentTypes: [UTType] = ["png", "jpg", "jpeg", "pdf", "pptx", "docx", "xlsx", "zip"]
         .compactMap { UTType(filenameExtension: $0) }
 

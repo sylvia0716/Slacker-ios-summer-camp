@@ -16,5 +16,7 @@ struct Group: Identifiable, Hashable {
     var inviteCode: String
     var firestoreDocumentID: String? = nil
     /// 同一位使用者在不同群組可以有不同角色。
+    var leaderElectionID: String? = nil
+    var leaderVotes: [UUID: UUID] = [:]
     var memberRoles: [UUID: MemberRole] = [:]
 }

@@ -119,6 +119,7 @@ struct PeerReviewReportView: View {
                     } else {
                         ForEach(groupMembers) { member in
                             MemberContributionCard(
+                                firestoreGroupID: group.firestoreDocumentID,
                                 member: member,
                                 role: group.memberRoles[member.id] ?? member.role,
                                 tasks: groupTasks.filter { $0.ownerMemberID == member.id }
@@ -312,6 +313,7 @@ private struct AIReportCard: View {
 }
 
 private struct MemberContributionCard: View {
+    let firestoreGroupID: String?
     let member: Member
     let role: MemberRole
     let tasks: [ProjectTask]
@@ -352,12 +354,7 @@ private struct MemberContributionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Image(systemName: member.avatarSymbol)
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(BombTheme.yellow)
-                    .frame(width: 44, height: 44)
-                    .background(BombTheme.ink)
-                    .clipShape(.circle)
+                MemberPhotoAvatar(groupID: firestoreGroupID, uid: member.firebaseUID, name: member.name, size: 44)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(member.name)

@@ -10,8 +10,15 @@ struct GroupDetailView: View {
     private let tutorialStep: Binding<TutorialStep?>?
 
     @State private var showsCopiedFeedback = false
+    @State private var showsLeaderPicker = false
+    @State private var selectedLeader: Member?
+    @State private var selectedElectionID: String?
+    @State private var isChoosingLeader = false
+    @State private var leaderError: String?
     @State private var showsLeaveConfirmation = false
     @State private var isLeaving = false
+    @State private var pendingDepartureID: String?
+    @State private var departureError: String?
     @State private var leaveError: String?
     @State private var showsPublishTaskSheet = false
     @State private var expandedMemberID: UUID?
@@ -73,6 +80,8 @@ struct GroupDetailView: View {
                                 if deadlineOutcome(now: context.date) == .active {
                                     memberSection
                                 }
+                                if currentGroup.leaderElectionID != nil { leadershipSection }
+                                departedTasksSection
                                 Button(role: .destructive) {
                                     showsLeaveConfirmation = true
                                 } label: {
@@ -217,6 +226,22 @@ struct GroupDetailView: View {
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
+        }
+        .sheet(isPresented: $showsLeaderPicker) {
+            NavigationStack {
+                ScrollView { leadershipSection.padding(16) }
+                    .background(BombTheme.yellow)
+                    .navigationTitle(L10n.text("更換組長"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L10n.text("完成")) { showsLeaderPicker = false }
+                                .disabled(isChoosingLeader)
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .interactiveDismissDisabled(isChoosingLeader)
         }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
@@ -378,6 +403,7 @@ struct GroupDetailView: View {
             .background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+            .compositingGroup()
             .shadow(color: BombTheme.ink, radius: 0, x: 6, y: 6)
             .padding(18)
         }
@@ -826,6 +852,7 @@ struct GroupDetailView: View {
             ForEach(groupMembers) { member in
                 MemberProgressCard(
                     model: model,
+                    firestoreGroupID: currentGroup.firestoreDocumentID,
                     member: memberProgressItem(for: member),
                     tasks: model.tasks(for: member.id, in: group.id),
                     groupMemberIDs: currentGroup.memberIDs,
@@ -849,13 +876,168 @@ struct GroupDetailView: View {
                     onPoke: { style in
                         model.poke(memberID: member.id, in: group.id, style: style)
                     },
-                    onPokeEmoji: showPokeButtonEmoji
+                    onPokeEmoji: showPokeButtonEmoji,
+                    onChangeLeader: member.id == model.currentUserID && member.role == .leader
+                        ? { selectedLeader = nil; selectedElectionID = nil; leaderError = nil; showsLeaderPicker = true } : nil
                 )
                 .tutorialTarget(
                     .memberProgress,
                     enabled: tutorialStep?.wrappedValue == .memberProgress
                         && member.id == groupMembers.first?.id
                 )
+            }
+        }
+    }
+
+    private var leadershipSection: some View {
+        let leader = groupMembers.first { $0.role == .leader }
+        let electionID = currentGroup.leaderElectionID
+        let canChoose = leader?.id == model.currentUserID || electionID != nil
+        let validSelection = selectedLeader.map { candidate in
+            groupMembers.contains { $0.id == candidate.id } && candidate.id != leader?.id
+                && selectedElectionID == electionID
+        } ?? false
+        return VStack(alignment: .leading, spacing: 20) {
+            if showsLeaderPicker || electionID != nil {
+                if electionID != nil {
+                    Text(L10n.text("投票選組長")).font(.headline)
+                    Text(L10n.format("需 {0} 票當選，可更改投票", String(groupMembers.count / 2 + 1)))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 16, alignment: .top), count: 3), spacing: 20) {
+                    ForEach(groupMembers) { member in
+                        Button {
+                            selectedElectionID = electionID
+                            selectedLeader = member
+                            leaderError = nil
+                        } label: {
+                            VStack(spacing: 10) {
+                                MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
+                                    uid: member.firebaseUID, name: member.name, size: 64)
+                                    .overlay {
+                                        Circle().strokeBorder(selectedLeader?.id == member.id ? BombTheme.yellow : .clear, lineWidth: 3)
+                                    }
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if member.role == .leader {
+                                            Image(systemName: "checkmark")
+                                                .font(.caption.weight(.black))
+                                                .foregroundStyle(BombTheme.paper)
+                                                .frame(width: 24, height: 24)
+                                                .background(BombTheme.green, in: Circle())
+                                                .overlay(Circle().stroke(BombTheme.paper, lineWidth: 2))
+                                        }
+                                    }
+                                Text(member.name)
+                                    .font(.subheadline.weight(.bold))
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(3, reservesSpace: true)
+                                    .minimumScaleFactor(0.8)
+                                    .frame(maxWidth: .infinity)
+                                    .accessibilityLabel(member.name)
+                                if electionID != nil {
+                                    Text(L10n.format("{0} 票", String(currentGroup.leaderVotes.values.filter { $0 == member.id }.count)))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .allowsHitTesting(canChoose && !isChoosingLeader)
+                        .accessibilityValue(member.role == .leader ? MemberRole.leader.title : member.role.title)
+                        .accessibilityAddTraits(selectedLeader?.id == member.id ? .isSelected : [])
+                    }
+                }
+                if groupMembers.count == 1 {
+                    Text(L10n.text("其他成員加入後即可更換組長")).font(.caption)
+                }
+                if let leaderError { Text(leaderError).font(.caption).foregroundStyle(BombTheme.red) }
+                Button {
+                    if let selectedLeader { chooseLeader(selectedLeader, electionID: selectedElectionID) }
+                } label: {
+                    HStack {
+                        if isChoosingLeader { ProgressView().tint(BombTheme.paper) }
+                        Text(L10n.text("確認")).font(.headline.weight(.bold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(BombTheme.paper)
+                    .background(BombTheme.ink, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canChoose || !validSelection || isChoosingLeader)
+                .opacity(canChoose && validSelection && !isChoosingLeader ? 1 : 0.45)
+            }
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(.vertical, 12)
+    }
+
+    private func chooseLeader(_ member: Member, electionID: String?) {
+        isChoosingLeader = true
+        leaderError = nil
+        Task {
+            defer { isChoosingLeader = false }
+            do {
+                try await model.chooseGroupLeader(groupID: group.id, candidateID: member.id, electionID: electionID)
+                selectedLeader = nil
+                showsLeaderPicker = false
+            } catch {
+                leaderError = L10n.text("無法儲存，請稍後再試。")
+            }
+        }
+    }
+
+    private var departedTasksSection: some View {
+        let tasks = model.projectTasks.filter { $0.groupID == group.id && $0.departureID != nil }
+        let departures = Dictionary(grouping: tasks, by: { $0.departureID! })
+        let isLeader = groupMembers.contains { $0.id == model.currentUserID && $0.role == .leader }
+        return VStack(alignment: .leading, spacing: 12) {
+            ForEach(departures.keys.sorted(), id: \.self) { departureID in
+                if let items = departures[departureID], let first = items.first {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(L10n.format("{0} 的離開前任務", first.departedMemberName ?? ""))
+                            .font(.headline)
+                        ForEach(items) { task in
+                            HStack {
+                                Text(task.title)
+                                Spacer()
+                                Text("\(task.progress)%").monospacedDigit()
+                            }
+                            .font(.subheadline)
+                        }
+                        Text(L10n.text(first.departureReviewed
+                            ? (first.includedInProgress ? "已計入專案進度" : "已排除專案進度")
+                            : "目前計入專案進度，等待組長決定"))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if isLeader {
+                            HStack {
+                                Button(L10n.text("保留計入")) { decideDeparture(departureID, included: true) }
+                                Button(L10n.text("排除計算")) { decideDeparture(departureID, included: false) }
+                                if pendingDepartureID == departureID { ProgressView() }
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(BombTheme.ink)
+                            .disabled(pendingDepartureID != nil)
+                        }
+                    }
+                    .comicCard()
+                }
+            }
+            if let departureError {
+                Text(departureError).font(.caption).foregroundStyle(BombTheme.red)
+            }
+        }
+    }
+
+    private func decideDeparture(_ departureID: String, included: Bool) {
+        pendingDepartureID = departureID
+        departureError = nil
+        Task {
+            defer { pendingDepartureID = nil }
+            do {
+                try await model.setDepartedTasksInclusion(groupID: group.id, departureID: departureID, included: included)
+            } catch {
+                departureError = L10n.text("無法儲存，請稍後再試。")
             }
         }
     }

@@ -483,6 +483,9 @@ private struct MyTaskDetailView: View {
                             .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
                             .strikethrough(subtask.isComplete)
                         Spacer(minLength: 0)
+                        if model.pendingSubtaskUpdates[task.id] == subtask.id {
+                            ProgressView().controlSize(.small)
+                        }
                     }
                     .contentShape(.rect)
                     .padding(.vertical, 11)

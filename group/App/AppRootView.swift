@@ -99,6 +99,28 @@ struct AppRootView: View {
                     .zIndex(200)
             }
         }
+        .overlay(alignment: .top) {
+            if let message = store.groupLeaveMessage {
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(BombTheme.paper)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .task(id: store.groupLeaveMessage) {
+            guard store.groupLeaveMessage != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+                store.groupLeaveMessage = nil
+            } catch { }
+        }
+        .animation(.snappy, value: store.groupLeaveMessage)
         .animation(.snappy, value: store.cloudErrorMessage != nil)
     }
 
