@@ -3,6 +3,7 @@ import SwiftUI
 /// Oops Bomb 的 Email/Password 登入與註冊入口。
 struct AuthenticationView: View {
     let session: AuthSessionStore
+    let onCompletion: (() -> Void)?
 
     @State private var mode = AuthenticationMode.signIn
     @State private var email = ""
@@ -10,6 +11,16 @@ struct AuthenticationView: View {
     @State private var isPasswordVisible = false
     @State private var isPasswordResetPresented = false
     @FocusState private var focusedField: Field?
+
+    init(
+        session: AuthSessionStore,
+        startsInRegistrationMode: Bool = false,
+        onCompletion: (() -> Void)? = nil
+    ) {
+        self.session = session
+        self.onCompletion = onCompletion
+        _mode = State(initialValue: startsInRegistrationMode ? .register : .signIn)
+    }
 
     var body: some View {
         ZStack {
@@ -29,6 +40,9 @@ struct AuthenticationView: View {
         .onChange(of: mode) { _, _ in
             isPasswordVisible = false
             session.clearError()
+        }
+        .onChange(of: session.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated { onCompletion?() }
         }
         .sheet(isPresented: $isPasswordResetPresented) {
             PasswordResetView(session: session, initialEmail: email)
@@ -127,6 +141,14 @@ struct AuthenticationView: View {
             }
             .padding(.horizontal, 16)
 
+            if session.isAnonymous {
+                Text(session.text("建立新帳號會保留目前資料；登入既有帳號會切換到該帳號的資料。"))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(BombTheme.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+
             HStack(spacing: 4) {
                 Spacer(minLength: 0)
                 languageMenu
@@ -171,15 +193,16 @@ struct AuthenticationView: View {
             .clipShape(.capsule)
             .disabled(session.isWorking)
 
-#if DEBUG
-            Button(session.text("不登入，直接預覽 App")) {
-                focusedField = nil
-                session.enterPreviewSession()
+            if !session.canEnterApp {
+                Button(session.text("使用臨時帳號")) {
+                    focusedField = nil
+                    Task { await session.startAnonymousSession() }
+                }
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(BombTheme.ink)
+                .buttonStyle(.plain)
+                .disabled(session.isWorking)
             }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(BombTheme.ink)
-            .buttonStyle(.plain)
-#endif
         }
         .comicCard()
     }
