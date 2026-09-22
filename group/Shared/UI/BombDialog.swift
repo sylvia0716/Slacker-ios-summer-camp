@@ -61,8 +61,9 @@ private struct BombDialogButtonStyle: PrimitiveButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         Button {
-            dismiss()
+            // Run while the selected item still exists; dismissal bindings may clear it.
             configuration.trigger()
+            dismiss()
         } label: {
             configuration.label
                 .font(.headline.weight(.black))
