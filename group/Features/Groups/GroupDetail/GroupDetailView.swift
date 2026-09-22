@@ -1167,16 +1167,23 @@ private struct FailureMemeImage: View {
 
                 VStack(spacing: 0) {
                     MemeCaption(text: groupName, fontSize: proxy.size.width * 0.08)
-                        .offset(x: 30, y: 30)
+                        .frame(width: proxy.size.width * 0.70)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .offset(y: 30)
                     Spacer()
                     MemeCaption(
                         text: L10n.text("已讀不回的組員"),
-                        fontSize: proxy.size.width * 0.06
+                        fontSize: proxy.size.width * 0.05
                     )
-                    .offset(x: 45, y: 15)
+                    // Keep this caption to the right of the person's face.
+                    .frame(width: proxy.size.width * 0.50)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .offset(y: 15)
                     Spacer()
                     MemeCaption(text: L10n.text("我要放暑假了！"), fontSize: proxy.size.width * 0.07)
-                        .offset(x: -60, y: -20)
+                        .frame(width: proxy.size.width * 0.64)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offset(y: -20)
                 }
                 .padding(.vertical, proxy.size.height * 0.08)
                 .padding(.horizontal, proxy.size.width * 0.06)
