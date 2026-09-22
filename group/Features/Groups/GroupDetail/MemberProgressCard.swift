@@ -39,6 +39,7 @@ struct MemberProgressCard: View {
 
     @State private var uploadTask: ProjectTask?
     @State private var previewDeliverable: Deliverable?
+    @State private var expandedTaskID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -64,38 +65,38 @@ struct MemberProgressCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isExpanded ? L10n.format("收合{0}的任務", String(describing: member.name)) : L10n.format("展開{0}的任務", String(describing: member.name)))
 
-            ForEach(tasks) { task in
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(task.title)
-                        .font(.headline.weight(.black))
-                        .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
-                        .strikethrough(task.isCompleted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if isExpanded {
-                        checklistSection(for: task)
-                        deliverableSection(for: task)
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                        taskCard(task, number: index + 1)
+                    }
+
+                    if tasks.isEmpty {
+                        emptyTaskState
                     }
                 }
-                if task.id != tasks.last?.id {
-                    Divider().overlay(BombTheme.ink.opacity(0.2))
-                }
-            }
 
-            if member.showsNudge && !isCurrentUser {
-                HStack {
-                    Spacer()
-                    PokeActionButton(onPoke: onPoke, onPokeEmoji: { onPokeEmoji(member.id, $0) })
-                        .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
-                            [member.id: $0]
-                        }
+                if member.showsNudge && !isCurrentUser {
+                    HStack {
+                        Spacer()
+                        PokeActionButton(onPoke: onPoke, onPokeEmoji: { onPokeEmoji(member.id, $0) })
+                            .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
+                                [member.id: $0]
+                            }
+                    }
                 }
             }
         }
         .foregroundStyle(BombTheme.ink)
         .padding(16)
         .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 2))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
         .animation(.snappy, value: isExpanded)
+        .onChange(of: isExpanded) { _, expanded in
+            if !expanded {
+                expandedTaskID = nil
+            }
+        }
         .sheet(item: $uploadTask) { task in
             DeliverableSubmissionSheet(task: task) { deliverable in
                 onSubmitDeliverable(task.id, deliverable)
@@ -105,6 +106,89 @@ struct MemberProgressCard: View {
             DeliverablePhotoPreview(deliverable: deliverable)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func taskCard(_ task: ProjectTask, number: Int) -> some View {
+        let isTaskExpanded = expandedTaskID == task.id
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy) {
+                    expandedTaskID = isTaskExpanded ? nil : task.id
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        Text(L10n.format("任務 {0}", String(describing: number)))
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(BombTheme.ink)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(BombTheme.yellow, in: Capsule())
+
+                        Text(task.title)
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
+                            .strikethrough(task.isCompleted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text("\(task.progress)%")
+                            .font(.subheadline.weight(.black))
+                            .monospacedDigit()
+
+                        Image(systemName: isTaskExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.black))
+                    }
+
+                    HStack(spacing: 8) {
+                        ProgressView(value: Double(task.progress), total: 100)
+                            .tint(BombTheme.ink)
+
+                        Text(L10n.format(
+                            "{0}/{1} 子任務",
+                            String(describing: task.subtasks.filter(\.isComplete).count),
+                            String(describing: task.subtasks.count)
+                        ))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                    }
+                }
+                .contentShape(Rectangle())
+                .padding(14)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isTaskExpanded
+                ? L10n.format("收合任務 {0}", String(describing: task.title))
+                : L10n.format("展開任務 {0}", String(describing: task.title)))
+
+            if isTaskExpanded {
+                Divider()
+                    .overlay(BombTheme.ink.opacity(0.16))
+
+                VStack(alignment: .leading, spacing: 18) {
+                    checklistSection(for: task)
+                    deliverableSection(for: task)
+                }
+                .padding(14)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(BombTheme.paper.mix(with: .white, by: 0.22), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink.opacity(0.7), lineWidth: 1.5))
+    }
+
+    private var emptyTaskState: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "tray")
+                .font(.headline.weight(.bold))
+            Text(L10n.text("目前沒有指派任務"))
+                .font(.subheadline.weight(.bold))
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(BombTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var header: some View {
@@ -135,44 +219,79 @@ struct MemberProgressCard: View {
     @ViewBuilder
     private func checklistSection(for task: ProjectTask) -> some View {
         if !task.subtasks.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.format("子任務 {0}/{1}", String(describing: task.subtasks.filter(\.isComplete).count), String(describing: task.subtasks.count)))
-                    .font(.subheadline.weight(.black))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(BombTheme.yellow, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(BombTheme.ink).frame(height: 2)
-                    }
-                ForEach(task.subtasks) { subtask in
-                    if isCurrentUser {
-                        Button { onToggleSubtask(task.id, subtask.id) } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label(L10n.text("子任務"), systemImage: "arrow.turn.down.right")
+                        .font(.subheadline.weight(.black))
+                    Spacer()
+                    Text(L10n.format(
+                        "已完成 {0}/{1}",
+                        String(describing: task.subtasks.filter(\.isComplete).count),
+                        String(describing: task.subtasks.count)
+                    ))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(task.subtasks) { subtask in
+                        if isCurrentUser {
+                            Button { onToggleSubtask(task.id, subtask.id) } label: {
+                                checklistRow(subtask)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(model.pendingTaskUpdates.contains(task.id))
+                            .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
+                            .accessibilityHint(L10n.text("切換子任務完成狀態"))
+                        } else {
                             checklistRow(subtask)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(model.pendingTaskUpdates.contains(task.id))
-                        .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
-                        .accessibilityHint(L10n.text("切換子任務完成狀態"))
-                    } else {
-                        checklistRow(subtask)
                     }
+                }
+                .padding(.leading, 13)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(BombTheme.yellow)
+                        .frame(width: 4)
                 }
             }
         }
     }
 
     private func checklistRow(_ subtask: Subtask) -> some View {
-        Text(subtask.title)
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
-            .strikethrough(subtask.isComplete)
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-            .contentShape(Rectangle())
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
+                .font(.body.weight(.bold))
+                .foregroundStyle(subtask.isComplete ? BombTheme.ink : BombTheme.ink.opacity(0.55))
+                .padding(.top, 1)
+
+            Text(subtask.title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
+                .strikethrough(subtask.isComplete)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .background(BombTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+        .contentShape(Rectangle())
     }
 
     private func deliverableSection(for task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("成果附件")).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+            HStack {
+                Label(L10n.text("成果交付"), systemImage: "paperclip")
+                    .font(.subheadline.weight(.black))
+
+                Spacer()
+
+                if isCurrentUser, task.deliverable != nil {
+                    Button(L10n.text("更換")) { uploadTask = task }
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(BombTheme.ink)
+                        .buttonStyle(.plain)
+                }
+            }
             if let deliverable = task.deliverable {
                 AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
                                        localPreview: { previewDeliverable = deliverable }) {
@@ -199,13 +318,14 @@ struct MemberProgressCard: View {
             } else {
                 Text(L10n.text("尚未上傳成果")).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
             }
-            if isCurrentUser {
+            if isCurrentUser, task.deliverable == nil {
                 Button { uploadTask = task } label: {
-                    Text(task.deliverable == nil ? L10n.text("＋ 上傳成果") : L10n.text("更換成果"))
+                    Text(L10n.text("＋ 上傳成果"))
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(BombTheme.ink).clipShape(.capsule)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
             }

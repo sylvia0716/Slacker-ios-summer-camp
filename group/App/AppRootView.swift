@@ -89,13 +89,66 @@ struct AppRootView: View {
                 .id(pokePresentationID)
             }
         }
-        .bombDialog(L10n.text("雲端同步"), isPresented: Binding(
-            get: { store.cloudErrorMessage != nil },
-            set: { if !$0 { store.cloudErrorMessage = nil } }
-        )) {
-            Button(L10n.text("關閉"), role: .cancel) { store.cloudErrorMessage = nil }
-            Button(L10n.text("重試")) { Task { await store.reloadCloudGroups() } }
-        } message: { Text(store.cloudErrorMessage ?? "") }
+        .overlay {
+            if let message = store.cloudErrorMessage {
+                cloudSyncErrorOverlay(message: message)
+                    .transition(.opacity)
+                    .zIndex(200)
+            }
+        }
+        .animation(.snappy, value: store.cloudErrorMessage != nil)
+    }
+
+    private func cloudSyncErrorOverlay(message: String) -> some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(L10n.text("雲端同步"), systemImage: "icloud.slash.fill")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+
+                Text(message)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button(L10n.text("關閉")) {
+                        withAnimation(.snappy) {
+                            store.cloudErrorMessage = nil
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                    .buttonStyle(.plain)
+
+                    Button(L10n.text("重試")) {
+                        withAnimation(.snappy) {
+                            store.cloudErrorMessage = nil
+                        }
+                        Task { await store.reloadCloudGroups() }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
     }
 
     private var authenticatedContent: some View {
