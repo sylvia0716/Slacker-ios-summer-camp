@@ -27,19 +27,6 @@ struct NotificationSettingsView: View {
                         .comicCard()
                         .disabled(!model.notificationsEnabled)
                     }
-
-                    NavigationLink {
-                        NotificationTestView(model: model)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Label(L10n.text("通知測試"), systemImage: "bell.badge.fill")
-                                .font(.headline)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption.bold())
-                        }
-                        .comicCard()
-                    }
-                    .buttonStyle(.plain)
                 }
                 .foregroundStyle(BombTheme.ink)
                 .tint(BombTheme.green)
@@ -55,7 +42,7 @@ struct NotificationSettingsView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel(L10n.text("返回設定"))
+                .accessibilityLabel(L10n.text("返回一般設定"))
             } trailing: {
                 EmptyView()
             }

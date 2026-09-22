@@ -6,8 +6,6 @@ struct SettingsView: View {
     let model: GroupBombModel
     let authSession: AuthSessionStore
     let onReplayTutorial: () -> Void
-    @State private var showsSignOutConfirmation = false
-    @State private var showsPasswordReset = false
 
     var body: some View {
         ZStack {
@@ -37,82 +35,39 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    SettingsSection(title: L10n.text("工作空間")) {
+                    VStack(spacing: 0) {
                         NavigationLink {
-                            PersonalBattleReportView(model: model)
+                            GeneralSettingsView(model: model)
                         } label: {
-                            SettingsRow(
-                                icon: "chart.line.uptrend.xyaxis",
-                                title: L10n.text("個人戰力檔案"),
-                                subtitle: L10n.text("累積每個專案收到的匿名互評")
-                            )
+                            SettingsRow(icon: "gearshape.fill", title: L10n.text("一般"),
+                                        subtitle: L10n.text("語言與通知"))
                         }
-                        .buttonStyle(.plain)
-
                         Divider()
-
                         NavigationLink {
-                            NotificationSettingsView(model: model)
+                            AccountSettingsView(model: model, authSession: authSession)
                         } label: {
-                            SettingsRow(icon: "bell.fill", title: L10n.text("通知設定"),
-                                        subtitle: L10n.text("通知分類與測試"))
+                            SettingsRow(icon: "person.crop.circle.fill", title: L10n.text("帳號"),
+                                        subtitle: L10n.text("個人戰力檔案與帳號管理"))
                         }
-                        .buttonStyle(.plain)
-                    }
-
-                    SettingsSection(title: L10n.text("語言")) {
-                        Picker(L10n.text("介面語言"), selection: Binding(
-                            get: { AppLanguageSettings.shared.preference },
-                            set: { AppLanguageSettings.shared.preference = $0 }
-                        )) {
-                            ForEach(AppLanguagePreference.allCases) { preference in
-                                Text(preference.title).tag(preference)
-                            }
-                        }
-                        .tint(BombTheme.ink)
-                        .padding(.vertical, 8)
-                    }
-
-                    SettingsSection(title: L10n.text("支援")) {
+                        Divider()
                         Button(action: onReplayTutorial) {
-                            SettingsRow(
-                                icon: "book.pages.fill",
-                                title: L10n.text("新手入門"),
-                                subtitle: L10n.text("建立專案、分配任務與查看進度")
-                            )
+                            SettingsRow(icon: "book.pages.fill", title: L10n.text("新手教學"),
+                                        subtitle: L10n.text("建立專案、分配任務與查看進度"))
                         }
-                        .buttonStyle(.plain)
                     }
+                    .buttonStyle(.plain)
+                    .comicCard()
 
 #if DEBUG
-                    SettingsSection(title: L10n.text("開發工具")) {
-                        TestModeSettingsRow(model: model)
+                    NavigationLink {
+                        DeveloperSettingsView(model: model)
+                    } label: {
+                        SettingsRow(icon: "wrench.and.screwdriver.fill", title: L10n.text("開發工具"),
+                                    subtitle: L10n.text("測試模式與通知測試"))
+                            .comicCard()
                     }
+                    .buttonStyle(.plain)
 #endif
-
-                    SettingsSection(title: L10n.text("帳號")) {
-                        if authSession.isAuthenticated {
-                            Button { showsPasswordReset = true } label: {
-                                SettingsRow(icon: "lock.rotation", title: L10n.text("重設密碼"), subtitle: L10n.text("透過電子郵件重設密碼"))
-                            }
-                            .buttonStyle(.plain)
-                            Divider()
-                        }
-                        Button {
-                            if authSession.isAuthenticated {
-                                showsSignOutConfirmation = true
-                            } else {
-                                authSession.signOut()
-                            }
-                        } label: {
-                            SettingsRow(
-                                icon: "rectangle.portrait.and.arrow.right",
-                                title: authSession.isAuthenticated ? L10n.text("登出") : L10n.text("登入"),
-                                subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? L10n.text("目前帳號")) : L10n.text("目前未登入")
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(16)
                 .padding(.bottom, 132)
@@ -126,6 +81,79 @@ struct SettingsView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+private struct GeneralSettingsView: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        SettingsPage(title: L10n.text("一般")) {
+            SettingsSection(title: L10n.text("語言")) {
+                Picker(L10n.text("介面語言"), selection: Binding(
+                    get: { AppLanguageSettings.shared.preference },
+                    set: { AppLanguageSettings.shared.preference = $0 }
+                )) {
+                    ForEach(AppLanguagePreference.allCases) { preference in
+                        Text(preference.title).tag(preference)
+                    }
+                }
+                .tint(BombTheme.ink)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            NavigationLink {
+                NotificationSettingsView(model: model)
+            } label: {
+                SettingsRow(icon: "bell.fill", title: L10n.text("通知設定"),
+                            subtitle: L10n.text("允許通知與通知分類"))
+                    .comicCard()
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+private struct AccountSettingsView: View {
+    let model: GroupBombModel
+    let authSession: AuthSessionStore
+    @State private var showsSignOutConfirmation = false
+    @State private var showsPasswordReset = false
+
+    var body: some View {
+        SettingsPage(title: L10n.text("帳號")) {
+            NavigationLink {
+                PersonalBattleReportView(model: model)
+            } label: {
+                SettingsRow(icon: "chart.line.uptrend.xyaxis", title: L10n.text("個人戰力檔案"),
+                            subtitle: L10n.text("累積每個專案收到的匿名互評"))
+                    .comicCard()
+            }
+            .buttonStyle(.plain)
+            SettingsSection(title: L10n.text("帳號")) {
+                if authSession.isAuthenticated {
+                    Button { showsPasswordReset = true } label: {
+                        SettingsRow(icon: "lock.rotation", title: L10n.text("重設密碼"), subtitle: L10n.text("透過電子郵件重設密碼"))
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                }
+                Button {
+                    if authSession.isAuthenticated {
+                        showsSignOutConfirmation = true
+                    } else {
+                        authSession.signOut()
+                    }
+                } label: {
+                    SettingsRow(
+                        icon: "rectangle.portrait.and.arrow.right",
+                        title: authSession.isAuthenticated ? L10n.text("登出") : L10n.text("登入"),
+                        subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? L10n.text("目前帳號")) : L10n.text("目前未登入")
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .sheet(isPresented: $showsPasswordReset) {
             PasswordResetView(
                 session: authSession,
@@ -137,6 +165,59 @@ struct SettingsView: View {
             Button(L10n.text("取消"), role: .cancel) { }
             Button(L10n.text("登出"), role: .destructive) {
                 authSession.signOut()
+            }
+        }
+    }
+}
+
+#if DEBUG
+private struct DeveloperSettingsView: View {
+    let model: GroupBombModel
+
+    var body: some View {
+        SettingsPage(title: L10n.text("開發工具")) {
+            VStack(spacing: 0) {
+                TestModeSettingsRow(model: model)
+                Divider()
+                NavigationLink {
+                    NotificationTestView(model: model)
+                } label: {
+                    SettingsRow(icon: "bell.badge.fill", title: L10n.text("通知測試"),
+                                subtitle: L10n.text("戳自己一下"))
+                }
+                .buttonStyle(.plain)
+            }
+            .comicCard()
+        }
+    }
+}
+#endif
+
+private struct SettingsPage<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            BombTheme.yellow.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) { content }
+                    .padding(16)
+                    .padding(.bottom, 132)
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BombHeader(title: title) {
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(BombHeaderButtonStyle())
+                .accessibilityLabel(L10n.text("返回設定"))
+            } trailing: {
+                EmptyView()
             }
         }
     }

@@ -13,6 +13,7 @@
 "通知設定" = "Notifications";
 "通知分類與測試" = "Categories and test notifications";
 "支援" = "Support";
+"新手教學" = "Tutorial";
 "新手入門" = "Getting started";
 "建立專案、分配任務與查看進度" = "Create projects, assign tasks and track progress";
 "開發工具" = "Developer tools";
@@ -724,3 +725,11 @@
 "LIVE" = "LIVE";
 "已確認" = "Confirmed";
 "尚未確認" = "Not confirmed";
+
+"一般" = "General";
+"語言與通知" = "Language and notifications";
+"個人戰力檔案與帳號管理" = "Personal performance and account management";
+"測試模式與通知測試" = "Demo mode and notification testing";
+"允許通知與通知分類" = "Notification preferences and categories";
+"返回一般設定" = "Back to general settings";
+"返回開發工具" = "Back to developer tools";

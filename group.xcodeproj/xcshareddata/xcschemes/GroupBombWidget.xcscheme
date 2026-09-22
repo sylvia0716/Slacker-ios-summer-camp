@@ -18,6 +18,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "F0A100060000000000000006"
                BuildableName = "GroupBombWidget.appex"
+               BlueprintName = "GroupBombWidget"
                ReferencedContainer = "container:group.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -31,6 +32,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E5A7EFFB300755BD007F8C90"
                BuildableName = "group.app"
+               BlueprintName = "group"
                ReferencedContainer = "container:group.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -62,6 +64,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E5A7EFFB300755BD007F8C90"
             BuildableName = "group.app"
+            BlueprintName = "group"
             ReferencedContainer = "container:group.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -97,6 +100,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E5A7EFFB300755BD007F8C90"
             BuildableName = "group.app"
+            BlueprintName = "group"
             ReferencedContainer = "container:group.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
