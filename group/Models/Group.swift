@@ -8,6 +8,8 @@ struct Group: Identifiable, Hashable {
     var name: String
     /// 報告最終交件時間，用來計算倒數。
     var deadline: Date
+    /// 組長提前結算的時間；nil 代表仍依原定截止時間運作。
+    var settledAt: Date? = nil
     /// 目前加入此群組的成員 ID。
     var memberIDs: [UUID]
     /// 屬於此群組的任務 ID。

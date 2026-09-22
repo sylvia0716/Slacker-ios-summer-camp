@@ -6,7 +6,13 @@ enum GroupDeadlineOutcome: Equatable {
     case completed
     case incomplete
 
-    static func resolve(deadline: Date, progress: Int, now: Date = .now) -> Self {
+    static func resolve(
+        deadline: Date,
+        settledAt: Date? = nil,
+        progress: Int,
+        now: Date = .now
+    ) -> Self {
+        if settledAt != nil { return .completed }
         guard now >= deadline else { return .active }
         return progress >= 100 ? .completed : .incomplete
     }

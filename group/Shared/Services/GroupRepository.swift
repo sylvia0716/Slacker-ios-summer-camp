@@ -60,6 +60,7 @@ final class GroupRepository {
             members: members
         )
         let group = Group(id: summary.id, name: summary.name, deadline: summary.deadline,
+                          settledAt: summary.settledAt,
                           memberIDs: members.map(\.id), taskIDs: tasks.map(\.id), inviteCode: summary.inviteCode,
                           firestoreDocumentID: summary.pathID,
                           memberRoles: Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0.role) }))

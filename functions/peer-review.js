@@ -84,8 +84,10 @@ function personalProjectData(groupID, groupData, summary) {
   return {
     groupID,
     groupName: typeof groupData?.name === "string" ? groupData.name : "已完成專案",
-    completedAt: groupData?.deadline instanceof Timestamp
-      ? groupData.deadline
+    completedAt: groupData?.settledAt instanceof Timestamp
+      ? groupData.settledAt
+      : groupData?.deadline instanceof Timestamp
+        ? groupData.deadline
       : FieldValue.serverTimestamp(),
     ...summary,
     updatedAt: FieldValue.serverTimestamp(),
@@ -135,8 +137,10 @@ exports.submitPeerReview = onCall({ region }, async (request) => {
     if (!reviewerSnapshot.exists || !revieweeSnapshot.exists) {
       fail("permission-denied", "Group membership required.");
     }
-    const deadline = groupSnapshot.data().deadline;
-    if (!(deadline instanceof Timestamp) || deadline.toMillis() > Date.now()) {
+    const groupData = groupSnapshot.data();
+    const deadline = groupData.deadline;
+    if (!(groupData.settledAt instanceof Timestamp)
+        && (!(deadline instanceof Timestamp) || deadline.toMillis() > Date.now())) {
       fail("failed-precondition", "Peer review opens after the deadline.");
     }
     if (submissionSnapshot.exists) {

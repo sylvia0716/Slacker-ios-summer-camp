@@ -192,7 +192,7 @@ struct GroupListView: View {
     }
 
     private func listStatus(for group: Group, now: Date) -> GroupListStatus {
-        guard now >= group.deadline else { return .active }
+        guard group.settledAt != nil || now >= group.deadline else { return .active }
 
         let completedReviewerCount = model.completedPeerReviewerCount(in: group.id)
         let participantCount = model.peerReviewParticipantCount(in: group.id)
@@ -200,7 +200,7 @@ struct GroupListView: View {
             return .closed
         }
 
-        return model.projectProgress(for: group.id) >= 100
+        return group.settledAt != nil || model.projectProgress(for: group.id) >= 100
             ? .awaitingReviewCompleted
             : .awaitingReviewExploded
     }

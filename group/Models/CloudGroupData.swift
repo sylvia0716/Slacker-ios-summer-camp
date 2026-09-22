@@ -5,6 +5,7 @@ struct CloudGroupSummary: Codable, Hashable, Sendable {
     let id: UUID
     let name: String
     let deadline: Date
+    var settledAt: Date? = nil
     let inviteCode: String
     var documentID: String? = nil
     var pathID: String { documentID ?? id.uuidString.lowercased() }

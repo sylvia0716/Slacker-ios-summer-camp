@@ -33,6 +33,9 @@ struct GroupDetailView: View {
     @State private var pokeButtonEmoji: String?
     @State private var pokeButtonEmojiMemberID: String?
     @State private var isPokeButtonEmojiShaking = false
+    @State private var showsSettlementConfirmation = false
+    @State private var isSettling = false
+    @State private var settlementError: String?
 
     init(
         group: Group,
@@ -66,6 +69,9 @@ struct GroupDetailView: View {
                                     groupIdentity
                                     if deadlineOutcome(now: context.date) == .active {
                                         countdownCard(now: context.date)
+                                        if canManuallySettle {
+                                            manualSettlementButton
+                                        }
                                     } else {
                                         settlementSection(outcome: deadlineOutcome(now: context.date))
                                     }
@@ -157,6 +163,31 @@ struct GroupDetailView: View {
         )) {
             Button(L10n.text("知道了")) { }
         } message: { Text(leaveError ?? "") }
+        .bombDialog(L10n.text("確定提前結算專案？"), isPresented: $showsSettlementConfirmation) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("提前結算")) {
+                isSettling = true
+                Task {
+                    defer { isSettling = false }
+                    do {
+                        try await model.settleGroup(groupID: group.id)
+                    } catch {
+                        settlementError = (error as? LocalizedError)?.errorDescription
+                            ?? L10n.text("結算失敗，請確認網路後重試。")
+                    }
+                }
+            }
+        } message: {
+            Text(L10n.text("結算後將無法再新增或修改任務，所有成員會立即進入匿名互評。"))
+        }
+        .bombDialog(L10n.text("無法提前結算"), isPresented: Binding(
+            get: { settlementError != nil },
+            set: { if !$0 { settlementError = nil } }
+        )) {
+            Button(L10n.text("知道了")) { }
+        } message: {
+            Text(settlementError ?? "")
+        }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showsPeerReviewPage) {
@@ -483,6 +514,7 @@ struct GroupDetailView: View {
 #endif
         return GroupDeadlineOutcome.resolve(
             deadline: currentGroup.deadline,
+            settledAt: currentGroup.settledAt,
             progress: model.projectProgress(for: group.id),
             now: now
         )
@@ -871,6 +903,30 @@ struct GroupDetailView: View {
         }
     }
 
+    private var manualSettlementButton: some View {
+        Button {
+            showsSettlementConfirmation = true
+        } label: {
+            Label(
+                isSettling
+                    ? L10n.text("結算中…")
+                    : isManualSettlementReady
+                        ? L10n.text("提前結算專案")
+                        : L10n.text("完成所有任務後可結算"),
+                systemImage: "checkmark.seal.fill"
+            )
+            .font(.headline.weight(.black))
+            .foregroundStyle(BombTheme.ink)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 3))
+        }
+        .buttonStyle(.plain)
+        .disabled(isSettling || !isManualSettlementReady)
+        .opacity(isManualSettlementReady ? 1 : 0.55)
+    }
+
     private var memberSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(L10n.text("我的進度"))
@@ -1024,8 +1080,17 @@ struct GroupDetailView: View {
         model.projectProgress(for: group.id)
     }
 
+    private var canManuallySettle: Bool {
+        currentGroup.memberRoles[model.currentUserID] == .leader
+    }
+
+    private var isManualSettlementReady: Bool {
+        let tasks = model.projectTasks.filter { $0.groupID == group.id }
+        return !tasks.isEmpty && tasks.allSatisfy(\.isCompleted)
+    }
+
     private var isGroupDeadlinePassed: Bool {
-        currentGroup.deadline <= .now
+        currentGroup.settledAt != nil || currentGroup.deadline <= .now
     }
 
     private func remainingTime(now: Date) -> String {

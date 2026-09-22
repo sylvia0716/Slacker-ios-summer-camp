@@ -29,6 +29,23 @@ struct GroupRepositoryTests {
         #expect(result.tasks[0].firestoreDocumentID == taskID)
         #expect(result.tasks[0].subtasks.isEmpty)
     }
+    @Test func mapsManualSettlementTime() throws {
+        let settledAt = Date(timeIntervalSince1970: 4_321)
+        let settledSummary = CloudGroupSummary(
+            id: groupID,
+            name: "Team",
+            deadline: .distantFuture,
+            settledAt: settledAt,
+            inviteCode: "TEST"
+        )
+        let result = try GroupRepository.map(
+            settledSummary,
+            members: [member("firebase-A", role: .leader)],
+            tasks: [],
+            currentUID: "firebase-A"
+        )
+        #expect(result.group.settledAt == settledAt)
+    }
     @Test func departedOwnerDoesNotBreakRemainingMembersTasks() throws {
         let result = try GroupRepository.map(summary, members: [member("firebase-A")],
             tasks: [task(owner: "departed-member")], currentUID: "firebase-A")

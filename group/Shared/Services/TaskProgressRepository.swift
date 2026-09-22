@@ -57,10 +57,19 @@ final class GroupProgressSubscription {
 
     init(summary: CloudGroupSummary, uid: String, receive: @escaping (Result<LoadedCloudGroup, Error>) -> Void) {
         let ref = Firestore.firestore().collection("groups").document(summary.pathID)
+        var currentSummary = summary
         func emit() {
             guard let members, let tasks else { return }
-            receive(Result { try GroupRepository.map(summary, members: members, tasks: tasks, currentUID: uid) })
+            receive(Result { try GroupRepository.map(currentSummary, members: members, tasks: tasks, currentUID: uid) })
         }
+        registrations.append(ref.addSnapshotListener(includeMetadataChanges: true) { snap, error in
+            Task { @MainActor in
+                if let error { receive(.failure(error)); return }
+                guard let snap, snap.exists, !snap.metadata.isFromCache else { return }
+                currentSummary.settledAt = (snap.data()?["settledAt"] as? Timestamp)?.dateValue()
+                emit()
+            }
+        })
         registrations.append(ref.collection("members").addSnapshotListener(includeMetadataChanges: true) { [weak self] snap, error in
             Task { @MainActor in
                 guard let self else { return }

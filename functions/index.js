@@ -212,6 +212,7 @@ function groupPayload(groupID, data, inviteCode = "") {
     groupID,
     name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : "未命名群組",
     deadlineMillis: millis(data.deadline),
+    settledAtMillis: millis(data.settledAt),
     inviteCode: inviteCode || (typeof data.inviteCode === "string" ? data.inviteCode : ""),
   };
 }
@@ -300,7 +301,7 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
 
     if (!memberSnapshot.exists) {
       const groupDeadline = millis(groupSnapshot.data().deadline);
-      if (groupDeadline === null || groupDeadline <= Date.now()) {
+      if (groupSnapshot.data().settledAt != null || groupDeadline === null || groupDeadline <= Date.now()) {
         throw callableError("failed-precondition", "This group is already closed.", "group-closed");
       }
       transaction.create(memberRef, {
@@ -384,6 +385,9 @@ exports.createTask = onCall({ region }, async (request) => {
     if (!groupSnapshot.exists) {
       throw callableError("not-found", "Group not found.", "group-not-found");
     }
+    if (groupSnapshot.data().settledAt != null) {
+      throw callableError("failed-precondition", "Group is already settled.", "group-settled");
+    }
     if (!callerSnapshot.exists || callerSnapshot.data()?.userID !== userID) {
       throw callableError("permission-denied", "Group membership required.", "permission-denied");
     }
@@ -423,10 +427,17 @@ exports.updateSubtask = onCall({ region }, async (request) => {
   const taskRef = groupRef.collection("tasks").doc(data.taskID);
 
   const status = await db.runTransaction(async (transaction) => {
-    const [callerSnapshot, taskSnapshot] = await Promise.all([
+    const [groupSnapshot, callerSnapshot, taskSnapshot] = await Promise.all([
+      transaction.get(groupRef),
       transaction.get(callerRef),
       transaction.get(taskRef),
     ]);
+    if (!groupSnapshot.exists) {
+      throw callableError("not-found", "Group not found.", "group-not-found");
+    }
+    if (groupSnapshot.data().settledAt != null) {
+      throw callableError("failed-precondition", "Group is already settled.", "group-settled");
+    }
     if (!callerSnapshot.exists || callerSnapshot.data()?.userID !== userID) {
       throw callableError("permission-denied", "Group membership required.", "permission-denied");
     }
@@ -457,6 +468,48 @@ exports.updateSubtask = onCall({ region }, async (request) => {
   });
 
   return { taskID: data.taskID, subtaskID: data.subtaskID, isComplete: data.isComplete, status };
+});
+
+exports.settleGroup = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  requireExactKeys(request.data, ["groupID"]);
+  const groupID = normalizedUUID(request.data.groupID, "invalid-group-id", true);
+  const groupRef = db.collection("groups").doc(groupID);
+  const callerRef = groupRef.collection("members").doc(userID);
+  const tasksQuery = groupRef.collection("tasks");
+
+  const settledAt = await db.runTransaction(async (transaction) => {
+    const [groupSnapshot, callerSnapshot, tasksSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(callerRef),
+      transaction.get(tasksQuery),
+    ]);
+    if (!groupSnapshot.exists) {
+      throw callableError("not-found", "Group not found.", "group-not-found");
+    }
+    if (!callerSnapshot.exists || callerSnapshot.data()?.userID !== userID
+        || callerSnapshot.data()?.role !== "leader") {
+      throw callableError("permission-denied", "Only the group leader may settle.", "not-group-leader");
+    }
+    const existing = groupSnapshot.data().settledAt;
+    if (existing instanceof Timestamp) return existing;
+    if (tasksSnapshot.empty) {
+      throw callableError("failed-precondition", "At least one task is required.", "no-tasks");
+    }
+    const allTasksComplete = tasksSnapshot.docs.every((document) => {
+      const subtasks = document.data().subtasks;
+      return Array.isArray(subtasks) && subtasks.length > 0
+        && subtasks.every((subtask) => subtask?.isComplete === true);
+    });
+    if (!allTasksComplete) {
+      throw callableError("failed-precondition", "Every task must be complete.", "tasks-incomplete");
+    }
+    const timestamp = Timestamp.now();
+    transaction.update(groupRef, { settledAt: timestamp, settledByUserID: userID });
+    return timestamp;
+  });
+
+  return { settledAtMillis: settledAt.toMillis() };
 });
 
 exports.registerPokeDevice = onCall({ region }, async (request) => {
@@ -546,10 +599,13 @@ exports.confirmTaskAttachment = onCall({ region }, async request => {
   const group = db.collection('groups').doc(groupID);
   const task = group.collection('tasks').doc(taskID);
   await db.runTransaction(async tx => {
-    const [member, snapshot, attachments] = await Promise.all([
-      tx.get(group.collection('members').doc(uid)), tx.get(task),
+    const [groupSnapshot, member, snapshot, attachments] = await Promise.all([
+      tx.get(group), tx.get(group.collection('members').doc(uid)), tx.get(task),
       tx.get(task.collection('attachments').where('status', '==', 'ready'))
     ]);
+    if (groupSnapshot.data()?.settledAt != null) {
+      throw new HttpsError('failed-precondition', 'Group is already settled');
+    }
     if (!member.exists) throw new HttpsError('permission-denied', 'Membership required');
     if (!snapshot.exists) throw new HttpsError('not-found', 'Task missing');
     const latest = attachments.docs.sort((a,b) => (b.data().createdAt?.toMillis() || 0) - (a.data().createdAt?.toMillis() || 0) || a.id.localeCompare(b.id))[0];

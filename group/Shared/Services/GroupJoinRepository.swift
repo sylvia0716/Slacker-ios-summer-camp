@@ -157,10 +157,14 @@ final class GroupJoinRepository {
         let deadlineMilliseconds = (data["deadlineMillis"] as? NSNumber)?.doubleValue
         let deadline = deadlineMilliseconds.map { Date(timeIntervalSince1970: $0 / 1_000) }
             ?? .distantFuture
+        let settledAt = (data["settledAtMillis"] as? NSNumber).map {
+            Date(timeIntervalSince1970: $0.doubleValue / 1_000)
+        }
         return CloudGroupSummary(
             id: id,
             name: name,
             deadline: deadline,
+            settledAt: settledAt,
             inviteCode: (data["inviteCode"] as? String) ?? "",
             documentID: groupID
         )

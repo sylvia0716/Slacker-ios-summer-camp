@@ -755,3 +755,16 @@
 "綁定 Email 以跨裝置同步" = "Link an email to sync across devices";
 "綁定 Email" = "Link email";
 "保留目前資料並開啟跨裝置登入" = "Keep your data and enable cross-device sign-in";
+"請先登入再結算專案。" = "Sign in before settling the project.";
+"只有組長可以提前結算專案。" = "Only the group leader can settle the project early.";
+"所有任務完成後才能提前結算。" = "Complete every task before settling the project early.";
+"找不到目前群組。" = "The current group could not be found.";
+"結算失敗，請確認網路後重試。" = "Settlement failed. Check your connection and try again.";
+"專案已提前結算" = "Project settled early";
+"確定提前結算專案？" = "Settle this project early?";
+"提前結算" = "Settle early";
+"結算後將無法再新增或修改任務，所有成員會立即進入匿名互評。" = "After settlement, tasks can no longer be added or changed, and every member will enter anonymous peer review immediately.";
+"無法提前結算" = "Unable to settle early";
+"結算中…" = "Settling…";
+"提前結算專案" = "Settle project early";
+"完成所有任務後可結算" = "Complete all tasks to settle";

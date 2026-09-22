@@ -12,10 +12,13 @@ function latestReady(docs) {
 async function reconcile(groupID, taskID, actor = null) {
   const db = getFirestore(), group = db.collection('groups').doc(groupID), ref = group.collection('tasks').doc(taskID);
   return db.runTransaction(async tx => {
-    const [task, members, attachments] = await Promise.all([
-      tx.get(ref), tx.get(group.collection('members')), tx.get(ref.collection('attachments')),
+    const [groupSnapshot, task, members, attachments] = await Promise.all([
+      tx.get(group), tx.get(ref), tx.get(group.collection('members')), tx.get(ref.collection('attachments')),
     ]);
     if (!task.exists) { if (actor) throw new HttpsError('not-found', 'Task missing'); return; }
+    if (actor && groupSnapshot.data()?.settledAt != null) {
+      throw new HttpsError('failed-precondition', 'Group is already settled');
+    }
     const data = task.data();
     const uids = members.docs.filter(d => d.data().userID === d.id).map(d => d.id);
     if (actor && !uids.includes(actor.uid)) throw new HttpsError('permission-denied', 'Membership required');

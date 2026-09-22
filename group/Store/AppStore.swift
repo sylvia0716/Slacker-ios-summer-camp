@@ -1117,7 +1117,7 @@ final class AppStore {
         guard let group = groups.first(where: { $0.id == groupID }) else {
             throw PeerReviewSubmissionError.groupNotFound
         }
-        guard now >= group.deadline else {
+        guard group.settledAt != nil || now >= group.deadline else {
             throw PeerReviewSubmissionError.groupStillActive
         }
         guard group.memberIDs.contains(reviewerID), group.memberIDs.contains(revieweeID) else {
@@ -1351,6 +1351,7 @@ final class AppStore {
             if let index = groups.firstIndex(where: { $0.id == cloudGroup.id }) {
                 groups[index].name = cloudGroup.name
                 groups[index].deadline = cloudGroup.deadline
+                groups[index].settledAt = cloudGroup.settledAt
                 if !cloudGroup.inviteCode.isEmpty {
                     groups[index].inviteCode = cloudGroup.inviteCode
                 }
@@ -1359,6 +1360,7 @@ final class AppStore {
                     id: cloudGroup.id,
                     name: cloudGroup.name,
                     deadline: cloudGroup.deadline,
+                    settledAt: cloudGroup.settledAt,
                     memberIDs: [],
                     taskIDs: [],
                     inviteCode: cloudGroup.inviteCode,
@@ -1366,6 +1368,36 @@ final class AppStore {
                 ))
             }
         }
+    }
+
+    /// 組長在所有任務完成後提前鎖定專案，讓全組立即進入匿名互評。
+    func settleGroup(groupID: UUID, now: Date = .now) async throws {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw GroupSettlementError.groupNotFound
+        }
+        guard groups[index].memberRoles[currentUserID] == .leader else {
+            throw GroupSettlementError.notLeader
+        }
+        let tasks = projectTasks.filter { $0.groupID == groupID }
+        guard !tasks.isEmpty, tasks.allSatisfy(\.isCompleted) else {
+            throw GroupSettlementError.tasksIncomplete
+        }
+
+        let settledAt: Date
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let documentID = groups[index].firestoreDocumentID else {
+                throw GroupSettlementError.notAuthenticated
+            }
+            settledAt = try await GroupSettlementRepository().settle(groupID: documentID)
+            guard firebaseUID == uid else { throw GroupSettlementError.notAuthenticated }
+        } else {
+            settledAt = now
+        }
+
+        groups[index].settledAt = settledAt
+        lastEvent = L10n.text("專案已提前結算")
+        refreshDeadlineReminders()
     }
 
     /// Called synchronously before AuthSession publishes a different UID.
@@ -1701,7 +1733,8 @@ final class AppStore {
     private func startProgressSync(group: Group, uid: String, generation: UUID) {
         guard let path = group.firestoreDocumentID else { return }
         let summary = CloudGroupSummary(id: group.id, name: group.name, deadline: group.deadline,
-                                       inviteCode: group.inviteCode, documentID: path)
+                                       settledAt: group.settledAt, inviteCode: group.inviteCode,
+                                       documentID: path)
         progressSubscriptions[group.id] = GroupProgressSubscription(summary: summary, uid: uid) { [weak self] result in
             guard let self, self.firebaseUID == uid, self.cloudGeneration == generation, self.syncIsActive else { return }
             switch result {
@@ -1719,6 +1752,7 @@ final class AppStore {
                 self.groups[index].memberIDs = loaded.group.memberIDs
                 self.groups[index].memberRoles = loaded.group.memberRoles
                 self.groups[index].taskIDs = loaded.group.taskIDs
+                self.groups[index].settledAt = loaded.group.settledAt
                 for member in loaded.members {
                     if let i = self.members.firstIndex(where: { $0.id == member.id }) { self.members[i] = member }
                     else { self.members.append(member) }
