@@ -34,6 +34,8 @@ struct MemberProgressCard: View {
     let onSubmitDeliverable: (UUID, Deliverable) -> Void
     let onToggleSubtask: (UUID, UUID) -> Void
     let onConfirmDeliverable: (UUID) -> Void
+    let onEditTask: (ProjectTask) -> Void
+    let onDeleteTask: (ProjectTask) -> Void
     let onPoke: (PokeStyle) -> Int?
     let onPokeEmoji: (String, String?) -> Void
 
@@ -112,13 +114,12 @@ struct MemberProgressCard: View {
         let isTaskExpanded = expandedTaskID == task.id
 
         return VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.snappy) {
-                    expandedTaskID = isTaskExpanded ? nil : task.id
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Button {
+                        toggleTaskExpansion(task.id, isExpanded: isTaskExpanded)
+                    } label: {
+                        HStack(alignment: .center, spacing: 12) {
                         Text(L10n.format("任務 {0}", String(describing: number)))
                             .font(.caption.weight(.black))
                             .foregroundStyle(BombTheme.ink)
@@ -135,29 +136,66 @@ struct MemberProgressCard: View {
                         Text("\(task.progress)%")
                             .font(.subheadline.weight(.black))
                             .monospacedDigit()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
+                    if isCurrentUser {
+                        Menu {
+                            Button {
+                                onEditTask(task)
+                            } label: {
+                                Label(L10n.text("修改任務"), systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                onDeleteTask(task)
+                            } label: {
+                                Label(L10n.text("刪除任務"), systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.subheadline.weight(.black))
+                                .foregroundStyle(BombTheme.ink)
+                                .frame(width: 32, height: 32)
+                                .background(BombTheme.ink.opacity(0.07), in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .accessibilityLabel(L10n.format("管理任務「{0}」", String(describing: task.title)))
+                    }
+
+                    Button {
+                        toggleTaskExpansion(task.id, isExpanded: isTaskExpanded)
+                    } label: {
                         Image(systemName: isTaskExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.black))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isTaskExpanded ? L10n.text("收合任務") : L10n.text("展開任務"))
+                }
 
+                Button {
+                    toggleTaskExpansion(task.id, isExpanded: isTaskExpanded)
+                } label: {
                     HStack(spacing: 8) {
-                        ProgressView(value: Double(task.progress), total: 100)
-                            .tint(BombTheme.ink)
+                    ProgressView(value: Double(task.progress), total: 100)
+                        .tint(BombTheme.ink)
 
-                        Text(L10n.format(
-                            "{0}/{1} 子任務",
-                            String(describing: task.subtasks.filter(\.isComplete).count),
-                            String(describing: task.subtasks.count)
-                        ))
+                    Text(L10n.format(
+                        "{0}/{1} 子任務",
+                        String(describing: task.subtasks.filter(\.isComplete).count),
+                        String(describing: task.subtasks.count)
+                    ))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .fixedSize()
                     }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
-                .padding(14)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(14)
             .accessibilityLabel(isTaskExpanded
                 ? L10n.format("收合任務 {0}", String(describing: task.title))
                 : L10n.format("展開任務 {0}", String(describing: task.title)))
@@ -176,6 +214,12 @@ struct MemberProgressCard: View {
         }
         .background(BombTheme.paper.mix(with: .white, by: 0.22), in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink.opacity(0.7), lineWidth: 1.5))
+    }
+
+    private func toggleTaskExpansion(_ taskID: UUID, isExpanded: Bool) {
+        withAnimation(.snappy) {
+            expandedTaskID = isExpanded ? nil : taskID
+        }
     }
 
     private var emptyTaskState: some View {

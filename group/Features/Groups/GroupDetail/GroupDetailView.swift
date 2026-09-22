@@ -14,6 +14,10 @@ struct GroupDetailView: View {
     @State private var isLeaving = false
     @State private var leaveError: String?
     @State private var showsPublishTaskSheet = false
+    @State private var editingTask: ProjectTask?
+    @State private var taskPendingDeletion: ProjectTask?
+    @State private var taskMutationError: String?
+    @State private var isDeletingTask = false
     @State private var expandedMemberID: UUID?
     @State private var reviewDeferred = true
     @State private var peerReviewStartsAtOutcomeSummary = false
@@ -122,6 +126,32 @@ struct GroupDetailView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
+                    if let editingTask {
+                        BombTheme.ink.opacity(0.16)
+                            .ignoresSafeArea(edges: .top)
+                            .onTapGesture { closeTaskEditor() }
+                            .transition(.opacity)
+
+                        TaskEditorSheet(
+                            group: currentGroup,
+                            task: editingTask,
+                            onSave: { title, detail, subtasks, deadline in
+                                try await model.updateOwnedTask(
+                                    taskID: editingTask.id,
+                                    title: title,
+                                    detail: detail,
+                                    subtasks: subtasks,
+                                    deadline: deadline
+                                )
+                            },
+                            onCancel: closeTaskEditor
+                        )
+                        .frame(height: proxy.size.height * 0.82)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8 - safeAreaInsets.bottom)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
 #if DEBUG
                     if showsDebugPanel {
                         debugPanel
@@ -136,21 +166,6 @@ struct GroupDetailView: View {
                     }
                 }
             }
-        }
-        .bombDialog(L10n.format("確定退出「{0}」？", String(describing: currentGroup.name)), isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
-            Button(L10n.text("取消"), role: .cancel) { }
-            Button(L10n.text("退出群組"), role: .destructive) {
-                isLeaving = true
-                Task {
-                    defer { isLeaving = false }
-                    do {
-                        try await model.leaveGroup(groupID: group.id)
-                        dismiss()
-                    } catch { leaveError = L10n.text("退出失敗，請確認網路後重試。") }
-                }
-            }
-        } message: {
-            Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
         }
         .bombDialog(L10n.text("無法退出群組"), isPresented: Binding(
             get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
@@ -168,6 +183,9 @@ struct GroupDetailView: View {
         .bombTabBarHidden(
             showsPublishTaskSheet
                 || showsEditOptions
+                || showsLeaveConfirmation
+                || editingTask != nil
+                || taskPendingDeletion != nil
                 || shouldShowExplosionMeme(now: .now)
                 || shouldShowSuccessMeme(now: .now)
         )
@@ -249,6 +267,102 @@ struct GroupDetailView: View {
             Button(L10n.text("知道了")) { }
         } message: {
             Text(nameError ?? "")
+        }
+        .bombDialog(L10n.text("任務操作失敗"), isPresented: Binding(
+            get: { taskMutationError != nil },
+            set: { if !$0 { taskMutationError = nil } }
+        )) {
+            Button(L10n.text("知道了")) { }
+        } message: {
+            Text(taskMutationError ?? "")
+        }
+        .overlay {
+            if let taskPendingDeletion {
+                deleteTaskConfirmationOverlay(task: taskPendingDeletion)
+                    .transition(.opacity)
+                    .zIndex(390)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: taskPendingDeletion?.id)
+        .overlay {
+            if showsLeaveConfirmation {
+                leaveGroupConfirmationOverlay
+                    .transition(.opacity)
+                    .zIndex(400)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsLeaveConfirmation)
+    }
+
+    private var leaveGroupConfirmationOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(
+                    L10n.format("確定退出「{0}」？", String(describing: currentGroup.name)),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.title2.weight(.black))
+                .foregroundStyle(BombTheme.red)
+
+                Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button(L10n.text("取消")) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showsLeaveConfirmation = false
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .contentShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button(L10n.text("退出群組"), role: .destructive) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showsLeaveConfirmation = false
+                        }
+                        leaveGroup()
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .contentShape(.capsule)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+    }
+
+    private func leaveGroup() {
+        guard !isLeaving else { return }
+        isLeaving = true
+        Task {
+            defer { isLeaving = false }
+            do {
+                try await model.leaveGroup(groupID: group.id)
+                dismiss()
+            } catch {
+                leaveError = L10n.text("退出失敗，請確認網路後重試。")
+            }
         }
     }
 
@@ -936,6 +1050,16 @@ struct GroupDetailView: View {
             onConfirmDeliverable: { taskID in
                 model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
             },
+            onEditTask: { task in
+                withAnimation(.snappy) {
+                    editingTask = task
+                }
+            },
+            onDeleteTask: { task in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    taskPendingDeletion = task
+                }
+            },
             onPoke: { style in
                 model.poke(memberID: member.id, in: group.id, style: style)
             },
@@ -946,6 +1070,83 @@ struct GroupDetailView: View {
             enabled: tutorialStep?.wrappedValue == .memberProgress
                 && member.id == (currentUserMember?.id ?? otherGroupMembers.first?.id)
         )
+    }
+
+    private func closeTaskEditor() {
+        withAnimation(.snappy) {
+            editingTask = nil
+        }
+    }
+
+    private func deleteTaskConfirmationOverlay(task: ProjectTask) -> some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(
+                    L10n.format("確定刪除「{0}」？", String(describing: task.title)),
+                    systemImage: "trash.fill"
+                )
+                .font(.title2.weight(.black))
+                .foregroundStyle(BombTheme.red)
+
+                Text(L10n.text("刪除後，這項任務的子任務、進度與成果附件都無法復原。"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button(L10n.text("取消")) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            taskPendingDeletion = nil
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button(L10n.text("刪除任務"), role: .destructive) {
+                        deleteTask(task)
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+                    .disabled(isDeletingTask)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+    }
+
+    private func deleteTask(_ task: ProjectTask) {
+        guard !isDeletingTask else { return }
+        isDeletingTask = true
+        Task {
+            defer { isDeletingTask = false }
+            do {
+                try await model.deleteOwnedTask(taskID: task.id)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    taskPendingDeletion = nil
+                }
+            } catch {
+                taskPendingDeletion = nil
+                taskMutationError = error.localizedDescription
+            }
+        }
     }
 
     private var groupMembers: [Member] {

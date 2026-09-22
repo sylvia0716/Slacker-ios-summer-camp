@@ -742,3 +742,16 @@
 "複製群組代碼 {0}" = "Copy group code {0}";
 "已複製：{0}" = "Copied: {0}";
 "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}" = "Join “{0}” in Group Bomb!\nEnter invite code: {1}";
+"修改任務" = "Edit Task";
+"刪除任務" = "Delete Task";
+"管理任務「{0}」" = "Manage task “{0}”";
+"收合任務" = "Collapse task";
+"展開任務" = "Expand task";
+"保留的子任務會維持目前完成狀態" = "Retained subtasks keep their current completion status";
+"儲存中…" = "Saving…";
+"儲存修改" = "Save Changes";
+"任務操作失敗" = "Task Action Failed";
+"確定刪除「{0}」？" = "Delete “{0}”?";
+"刪除後，這項任務的子任務、進度與成果附件都無法復原。" = "This task, its subtasks, progress, and deliverable attachments cannot be recovered.";
+"已修改任務「{0}」" = "Updated task “{0}”";
+"已刪除任務「{0}」" = "Deleted task “{0}”";
