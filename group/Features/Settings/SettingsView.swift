@@ -26,9 +26,15 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                    } else {
-                        Button { authSession.signOut() } label: {
-                            SettingsRow(icon: "person.crop.circle", title: L10n.text("尚未登入"), subtitle: L10n.text("登入以編輯個人資料"))
+                    } else if authSession.isAnonymous {
+                        NavigationLink {
+                            AccountSettingsView(model: model, authSession: authSession)
+                        } label: {
+                            SettingsRow(
+                                icon: "person.crop.circle.badge.clock",
+                                title: L10n.text("臨時帳號"),
+                                subtitle: L10n.text("綁定 Email 以跨裝置同步")
+                            )
                                 .comicCard()
                         }
                         .buttonStyle(.plain)
@@ -118,6 +124,7 @@ private struct AccountSettingsView: View {
     let authSession: AuthSessionStore
     @State private var showsSignOutConfirmation = false
     @State private var showsPasswordReset = false
+    @State private var showsAccountAccess = false
 
     var body: some View {
         SettingsPage(title: L10n.text("帳號")) {
@@ -130,28 +137,42 @@ private struct AccountSettingsView: View {
             }
             .buttonStyle(.plain)
             SettingsSection(title: L10n.text("帳號")) {
-                if authSession.isAuthenticated {
+                if authSession.isAnonymous {
+                    Button { showsAccountAccess = true } label: {
+                        SettingsRow(
+                            icon: "person.crop.circle.badge.plus",
+                            title: L10n.text("綁定 Email"),
+                            subtitle: L10n.text("保留目前資料並開啟跨裝置登入")
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } else if authSession.isAuthenticated {
                     Button { showsPasswordReset = true } label: {
                         SettingsRow(icon: "lock.rotation", title: L10n.text("重設密碼"), subtitle: L10n.text("透過電子郵件重設密碼"))
                     }
                     .buttonStyle(.plain)
                     Divider()
                 }
-                Button {
-                    if authSession.isAuthenticated {
+                if authSession.isAuthenticated {
+                    Button {
                         showsSignOutConfirmation = true
-                    } else {
-                        authSession.signOut()
+                    } label: {
+                        SettingsRow(
+                            icon: "rectangle.portrait.and.arrow.right",
+                            title: L10n.text("登出"),
+                            subtitle: authSession.currentUserEmail ?? L10n.text("目前帳號")
+                        )
                     }
-                } label: {
-                    SettingsRow(
-                        icon: "rectangle.portrait.and.arrow.right",
-                        title: authSession.isAuthenticated ? L10n.text("登出") : L10n.text("登入"),
-                        subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? L10n.text("目前帳號")) : L10n.text("目前未登入")
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+        }
+        .sheet(isPresented: $showsAccountAccess) {
+            AuthenticationView(
+                session: authSession,
+                startsInRegistrationMode: true,
+                onCompletion: { showsAccountAccess = false }
+            )
         }
         .sheet(isPresented: $showsPasswordReset) {
             PasswordResetView(

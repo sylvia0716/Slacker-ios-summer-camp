@@ -34,3 +34,6 @@
 "目前無法完成操作，請稍後再試。" = "Unable to complete this action. Please try again later.";
 "顯示密碼" = "Show password";
 "隱藏密碼" = "Hide password";
+"建立新帳號會保留目前資料；登入既有帳號會切換到該帳號的資料。" = "Creating a new account keeps your current data. Signing in switches to that account's data.";
+"使用臨時帳號" = "Use a temporary account";
+"這個登入方式尚未啟用，請先到 Firebase Console 開啟。" = "This sign-in method is not enabled. Enable it in Firebase Console first.";

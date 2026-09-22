@@ -748,3 +748,7 @@
 "允許通知與通知分類" = "Notification preferences and categories";
 "返回一般設定" = "Back to general settings";
 "返回開發工具" = "Back to developer tools";
+"臨時帳號" = "Temporary account";
+"綁定 Email 以跨裝置同步" = "Link an email to sync across devices";
+"綁定 Email" = "Link email";
+"保留目前資料並開啟跨裝置登入" = "Keep your data and enable cross-device sign-in";
