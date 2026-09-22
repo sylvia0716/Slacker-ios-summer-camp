@@ -6,6 +6,12 @@ struct PokeReception: Equatable {
     let groupName: String
     let pokeCount: Int
     let style: PokeStyle
+
+    init(groupName: String, pokeCount: Int, style: PokeStyle) {
+        self.groupName = groupName
+        self.pokeCount = pokeCount
+        self.style = pokeCount >= 15 ? .alarm : style
+    }
 }
 
 extension Notification.Name {
