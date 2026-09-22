@@ -555,6 +555,7 @@ exports.confirmTaskAttachment = onCall({ region }, async request => {
     const latest = attachments.docs.sort((a,b) => (b.data().createdAt?.toMillis() || 0) - (a.data().createdAt?.toMillis() || 0) || a.id.localeCompare(b.id))[0];
     if (latest?.id !== attachmentID) throw new HttpsError('failed-precondition', 'Attachment changed');
     const data = snapshot.data();
+    if (data.ownerMemberID === uid) throw new HttpsError('permission-denied', 'Owner does not review own task');
     const confirmed = data.confirmedAttachmentID === attachmentID ? (data.confirmedMemberUIDs || []) : [];
     tx.update(task, { confirmedAttachmentID: attachmentID, confirmedMemberUIDs: [...new Set([...confirmed, uid])] });
   });

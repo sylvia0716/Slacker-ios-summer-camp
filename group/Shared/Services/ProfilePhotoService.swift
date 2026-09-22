@@ -21,7 +21,7 @@ struct ProfilePhotoService {
         _ = try await ref.putDataAsync(jpeg, metadata: metadata)
         do {
             guard Auth.auth().currentUser?.uid == user.uid else { throw AttachmentOperationError.signedOut }
-            try await Firestore.firestore().collection("profiles").document(user.uid).setData(["avatarPath": path])
+            try await Firestore.firestore().collection("profiles").document(user.uid).setData(["avatarPath": path], merge: true)
         } catch {
             try? await ref.delete()
             throw error
@@ -30,16 +30,22 @@ struct ProfilePhotoService {
     }
 
     func share(_ data: Data, uid: String, groupIDs: [String]) async throws {
-        for groupID in groupIDs {
+        var firstError: Error?
+        for groupID in Set(groupIDs) {
             guard Auth.auth().currentUser?.uid == uid else { throw AttachmentOperationError.signedOut }
-            let path = "groups/\(groupID)/avatars/\(uid)/avatar.jpg"
-            let ref = Storage.storage().reference(withPath: path)
-            let metadata = StorageMetadata()
-            metadata.contentType = "image/jpeg"
-            _ = try await ref.putDataAsync(data, metadata: metadata)
-            try await Firestore.firestore().collection("groups").document(groupID).collection("members").document(uid)
-                .updateData(["avatarPath": path, "avatarVersion": UUID().uuidString])
+            do {
+                let path = "groups/\(groupID)/avatars/\(uid)/avatar.jpg"
+                let ref = Storage.storage().reference(withPath: path)
+                let metadata = StorageMetadata()
+                metadata.contentType = "image/jpeg"
+                _ = try await ref.putDataAsync(data, metadata: metadata)
+                try await Firestore.firestore().collection("groups").document(groupID).collection("members").document(uid)
+                    .updateData(["avatarPath": path, "avatarVersion": UUID().uuidString])
+            } catch {
+                if firstError == nil { firstError = error }
+            }
         }
+        if let firstError { throw firstError }
     }
 
     func load(uid: String) async throws -> Data? {

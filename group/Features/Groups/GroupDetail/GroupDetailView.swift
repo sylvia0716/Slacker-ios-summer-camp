@@ -825,6 +825,7 @@ struct GroupDetailView: View {
             ForEach(groupMembers) { member in
                 MemberProgressCard(
                     model: model,
+                    firestoreGroupID: currentGroup.firestoreDocumentID,
                     member: memberProgressItem(for: member),
                     tasks: model.tasks(for: member.id, in: group.id),
                     groupMemberIDs: currentGroup.memberIDs,

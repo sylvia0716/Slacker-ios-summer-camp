@@ -129,7 +129,7 @@ struct ChatRoomView: View {
     }
 
     private var topBar: some View {
-        BombHeader(title: group.name) {
+        BombHeader(title: group.name, wrapsTitle: true) {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
             }
@@ -231,7 +231,7 @@ struct ChatRoomView: View {
         HStack(alignment: .bottom, spacing: 8) {
             if isCurrentUser { Spacer(minLength: 42) }
 
-            if !isCurrentUser { avatar(for: sender) }
+            if !isCurrentUser { avatar(for: sender, messageID: id) }
 
             VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
                 Text(sender)
@@ -295,14 +295,12 @@ struct ChatRoomView: View {
         }
     }
 
-    private func avatar(for name: String) -> some View {
-        ZStack {
-            Circle().fill(BombTheme.ink)
-            Text(String(name.prefix(1)))
-                .font(.caption.weight(.black))
-                .foregroundStyle(BombTheme.yellow)
-        }
-        .frame(width: 32, height: 32)
+    private func avatar(for name: String, messageID: String) -> some View {
+        MemberPhotoAvatar(
+            groupID: group.firestoreDocumentID,
+            uid: model.chatSenderIDsByGroupID[group.id]?[messageID],
+            name: name
+        )
         .accessibilityHidden(true)
     }
 

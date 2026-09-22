@@ -24,6 +24,7 @@ struct MemberProgressPreviewItem: Identifiable {
 
 struct MemberProgressCard: View {
     let model: GroupBombModel
+    let firestoreGroupID: String?
     let member: MemberProgressPreviewItem
     let tasks: [ProjectTask]
     let groupMemberIDs: [UUID]
@@ -237,10 +238,10 @@ struct MemberProgressCard: View {
                     ForEach(task.subtasks) { subtask in
                         if isCurrentUser {
                             Button { onToggleSubtask(task.id, subtask.id) } label: {
-                                checklistRow(subtask)
+                                checklistRow(subtask, isUpdating: model.pendingSubtaskUpdates[task.id] == subtask.id)
                             }
                             .buttonStyle(.plain)
-                            .disabled(model.pendingTaskUpdates.contains(task.id))
+                            .allowsHitTesting(!model.pendingTaskUpdates.contains(task.id))
                             .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
                             .accessibilityHint(L10n.text("切換子任務完成狀態"))
                         } else {
@@ -258,7 +259,7 @@ struct MemberProgressCard: View {
         }
     }
 
-    private func checklistRow(_ subtask: Subtask) -> some View {
+    private func checklistRow(_ subtask: Subtask, isUpdating: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
                 .font(.body.weight(.bold))
@@ -270,6 +271,9 @@ struct MemberProgressCard: View {
                 .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
                 .strikethrough(subtask.isComplete)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if isUpdating {
+                ProgressView().controlSize(.small)
+            }
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
@@ -334,24 +338,25 @@ struct MemberProgressCard: View {
 
     private func confirmationSection(for task: ProjectTask, deliverable: Deliverable) -> some View {
         let confirmedIDs = Set(deliverable.confirmedMemberIDs)
-        let confirmedCount = groupMemberIDs.filter { confirmedIDs.contains($0) }.count
-        let isFullyConfirmed = !groupMemberIDs.isEmpty && confirmedCount == groupMemberIDs.count
+        let reviewers = groupMemberIDs.filter { $0 != task.ownerMemberID }
+        let confirmedCount = reviewers.filter { confirmedIDs.contains($0) }.count
+        let isFullyConfirmed = confirmedCount == reviewers.count
         let hasCurrentUserConfirmed = confirmedIDs.contains(currentUserID)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text(L10n.text("成員確認")).foregroundStyle(BombTheme.ink)
-                Text("\(confirmedCount)/\(groupMemberIDs.count)").foregroundStyle(.secondary)
+                Text("\(confirmedCount)/\(reviewers.count)").foregroundStyle(.secondary)
             }
             .font(.subheadline.weight(.black))
             ViewThatFits(in: .horizontal) {
-                confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
+                confirmationAvatars(reviewers: reviewers, confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
                 ScrollView(.horizontal) {
-                    confirmationAvatars(confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
+                    confirmationAvatars(reviewers: reviewers, confirmedIDs: confirmedIDs, isFullyConfirmed: isFullyConfirmed)
                 }
                 .scrollIndicators(.hidden)
             }
-            if !hasCurrentUserConfirmed && groupMemberIDs.contains(currentUserID) {
+            if !hasCurrentUserConfirmed && reviewers.contains(currentUserID) {
                 Button { onConfirmDeliverable(task.id) } label: {
                     Text(L10n.text("確認這項成果"))
                         .font(.subheadline.weight(.black))
@@ -366,32 +371,33 @@ struct MemberProgressCard: View {
         }
     }
 
-    private func confirmationAvatars(confirmedIDs: Set<UUID>, isFullyConfirmed: Bool) -> some View {
+    private func confirmationAvatars(reviewers: [UUID], confirmedIDs: Set<UUID>, isFullyConfirmed: Bool) -> some View {
         HStack(spacing: 7) {
-            ForEach(groupMemberIDs, id: \.self) { id in
+            ForEach(reviewers, id: \.self) { id in
                 let confirmed = confirmedIDs.contains(id)
                 let name = model.members.first(where: { $0.id == id })?.name ?? L10n.text("成員")
                 MemberPhotoAvatar(
-                    groupID: tasks.first?.firestoreGroupID,
+                    groupID: firestoreGroupID,
                     uid: model.members.first(where: { $0.id == id })?.firebaseUID,
                     name: name, confirmed: confirmed
                 )
                     .accessibilityLabel("\(name)：\(confirmed ? L10n.text("已確認") : L10n.text("尚未確認"))")
             }
-            Text(isFullyConfirmed ? L10n.text("已全部確認") : L10n.text("待確認"))
-                .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
-                .fixedSize()
+            if isFullyConfirmed && !reviewers.isEmpty {
+                Text(L10n.text("已全部確認"))
+                    .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                    .fixedSize()
+            }
         }
         .fixedSize(horizontal: true, vertical: false)
     }
 
     private var avatar: some View {
-        Circle().fill(BombTheme.ink)
-            .frame(width: 50, height: 50)
-            .overlay {
-                Text(String(member.name.prefix(1)).uppercased())
-                    .font(.title2.weight(.black)).foregroundStyle(BombTheme.yellow)
-            }
+        MemberPhotoAvatar(
+            groupID: firestoreGroupID,
+            uid: model.members.first(where: { $0.id.uuidString == member.id })?.firebaseUID,
+            name: member.name, size: 50
+        )
             .accessibilityHidden(true)
     }
 }
