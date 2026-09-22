@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function fixture(confirmed, members = ['owner', 'peer'], done = true) {
+function fixture(confirmed, members = ['owner', 'peer'], done = true, departureID = null) {
   let update;
-  const task = { ownerMemberID: 'owner', subtasks: [{ id: 's', isComplete: done }],
+  const task = { departureID, ownerMemberID: 'owner', subtasks: [{ id: 's', isComplete: done }],
     confirmedAttachmentID: 'attachment', confirmedMemberUIDs: confirmed };
   const ref = path => ({ path, collection: name => ref(`${path}/${name}`), doc: id => ref(`${path}/${id}`) });
   const db = { collection: name => ref(name), runTransaction: body => body({
@@ -49,4 +49,10 @@ test('single-member group does not wait for self-confirmation', async () => {
 test('peer confirmation does not bypass incomplete subtasks', async () => {
   const f = fixture(['peer'], ['owner', 'peer'], false); await f.run();
   assert.equal(f.value().status, 'submitted');
+});
+
+test('archived departure never changes on reconciliation or accepts progress edits', async () => {
+  const f = fixture(['peer'], ['owner','peer'], true, 'departure');
+  await f.run(); assert.equal(f.value(), undefined);
+  await assert.rejects(f.run({action:'setSubtask',uid:'owner',subtaskID:'s',isComplete:false}), /archived/);
 });

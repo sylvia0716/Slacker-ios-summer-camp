@@ -43,12 +43,18 @@ struct ProjectTask: Identifiable, Hashable {
     var createdAt: Date = .now
     var firestoreDocumentID: String? = nil
     var firestoreGroupID: String? = nil
+    var departureID: String? = nil
+    var departedMemberName: String? = nil
+    var departedProgress: Int? = nil
+    var includedInProgress = true
+    var departureReviewed = false
     var confirmedAttachmentID: String? = nil
     var confirmedMemberUIDs: [String] = []
     var cloudStatus: ProjectTaskStatus? = nil
 
     /// 依子任務權重算出的任務完成百分比，不應直接手動設定。
     var progress: Int {
+        if let departedProgress { return departedProgress }
         let totalWeight = subtasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return cloudStatus == .completed && deliverable != nil ? 100 : 0 }
         let completedWeight = subtasks.filter(\.isComplete).reduce(0) { $0 + $1.weight }

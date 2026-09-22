@@ -52,6 +52,19 @@ final class GroupJoinRepository {
         self.functions = functions
     }
 
+    func chooseLeader(groupID: String, candidateUID: String, electionID: String?) async throws {
+        var data: [String: Any] = ["groupID": groupID, "candidateUID": candidateUID,
+                                   "action": electionID == nil ? "transfer" : "vote"]
+        if let electionID { data["electionID"] = electionID }
+        _ = try await functions.httpsCallable("chooseGroupLeader").call(data)
+    }
+
+    func setDepartedTasksInclusion(groupID: String, departureID: String, included: Bool) async throws {
+        _ = try await functions.httpsCallable("setDepartedTasksInclusion").call([
+            "groupID": groupID, "departureID": departureID, "included": included,
+        ])
+    }
+
     func join(inviteCode: String) async throws -> GroupJoinResult {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw GroupJoinError.notAuthenticated

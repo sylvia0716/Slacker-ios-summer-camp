@@ -17,6 +17,10 @@ async function reconcile(groupID, taskID, actor = null) {
     ]);
     if (!task.exists) { if (actor) throw new HttpsError('not-found', 'Task missing'); return; }
     const data = task.data();
+    if (data.departureID) {
+      if (actor) throw new HttpsError('failed-precondition', 'Former member task is archived');
+      return;
+    }
     const uids = members.docs.filter(d => d.data().userID === d.id).map(d => d.id);
     const reviewers = uids.filter(uid => uid !== data.ownerMemberID);
     if (actor && !uids.includes(actor.uid)) throw new HttpsError('permission-denied', 'Membership required');

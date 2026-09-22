@@ -37,16 +37,51 @@ struct MemberProgressCard: View {
     let onConfirmDeliverable: (UUID) -> Void
     let onPoke: (PokeStyle) -> Int?
     let onPokeEmoji: (String, String?) -> Void
+    var onChangeLeader: (() -> Void)? = nil
 
     @State private var uploadTask: ProjectTask?
+    @State private var managedTask: ProjectTask?
+    @State private var managesDeletion = false
     @State private var previewDeliverable: Deliverable?
     @State private var expandedTaskID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let onChangeLeader {
+                HStack(spacing: 10) {
+                    Button(action: onToggleExpanded) { avatar }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Button(action: onToggleExpanded) {
+                            Text(member.name).font(.system(.title2, design: .rounded, weight: .black))
+                                .multilineTextAlignment(.leading)
+                        }
+                        Button(action: onChangeLeader) {
+                            Label {
+                                Text(L10n.text("更換組長")).underline()
+                            } icon: {
+                                Image(systemName: "crown.fill")
+                            }
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: onToggleExpanded) {
+                        HStack(spacing: 10) {
+                            Text(tasks.isEmpty ? "—" : "\(member.progress)%")
+                                .font(.system(.title2, design: .rounded, weight: .black)).monospacedDigit()
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.subheadline.weight(.black))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
             Button(action: onToggleExpanded) {
                 VStack(alignment: .leading, spacing: 12) {
-                    header
+                    if onChangeLeader == nil { header }
                     Text(tasks.isEmpty ? L10n.text("尚未指派任務") : L10n.format("{0} 項任務 · 已完成 {1} 項", String(describing: tasks.count), String(describing: tasks.filter(\.isCompleted).count)))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.secondary)
@@ -97,6 +132,9 @@ struct MemberProgressCard: View {
             if !expanded {
                 expandedTaskID = nil
             }
+        }
+        .sheet(item: $managedTask) { task in
+            AttachmentManagementSheet(model: model, task: task, deletionMode: managesDeletion, onSubmit: { onSubmitDeliverable(task.id, $0) })
         }
         .sheet(item: $uploadTask) { task in
             DeliverableSubmissionSheet(task: task) { deliverable in
@@ -281,6 +319,11 @@ struct MemberProgressCard: View {
         .contentShape(Rectangle())
     }
 
+    private func visibleDeliverables(for task: ProjectTask) -> [Deliverable] {
+        let items = (model.attachmentsByTaskID[task.id] ?? []).filter { $0.status == .ready }
+        return items.isEmpty ? task.deliverable.map { [$0] } ?? [] : items.map { Deliverable(attachment: $0) }
+    }
+
     private func deliverableSection(for task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -290,24 +333,42 @@ struct MemberProgressCard: View {
                 Spacer()
 
                 if isCurrentUser, task.deliverable != nil {
-                    Button(L10n.text("更換")) { uploadTask = task }
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(BombTheme.ink)
-                        .buttonStyle(.plain)
+                    HStack(spacing: 4) {
+                        Button { managesDeletion = false; managedTask = task } label: {
+                            Image(systemName: "pencil").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("編輯附件"))
+                        Button {
+                            managesDeletion = true
+                            managedTask = task
+                        } label: {
+                            Image(systemName: "trash").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("刪除附件"))
+                        .disabled(task.deliverable?.attachmentID == nil)
+                        Button { uploadTask = task } label: {
+                            Image(systemName: "plus").frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(L10n.text("新增附件"))
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .buttonStyle(.plain)
                 }
             }
             if let deliverable = task.deliverable {
-                AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
-                                       localPreview: { previewDeliverable = deliverable }) {
+                ForEach(visibleDeliverables(for: task)) { item in
+                    AttachmentActionButton(model: model, taskID: task.id, deliverable: item,
+                                       localPreview: { previewDeliverable = item }) {
                     HStack(spacing: 12) {
-                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: deliverable)
+                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: item)
                             .frame(width: 64, height: 64)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(deliverable.originalFilename ?? deliverable.title)
+                            Text(item.title)
                                 .font(.subheadline.weight(.black))
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(deliverable.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
+                            Text(item.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
                                 .font(.footnote.weight(.bold)).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -317,6 +378,7 @@ struct MemberProgressCard: View {
                     .padding(10)
                     .background(BombTheme.paper.mix(with: .white, by: 0.25), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(BombTheme.ink.opacity(0.12), lineWidth: 1))
+                }
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {

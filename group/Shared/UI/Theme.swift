@@ -26,6 +26,7 @@ struct ComicCard: ViewModifier {
         content.padding(16).background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 3))
+            .compositingGroup()
             .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 }
