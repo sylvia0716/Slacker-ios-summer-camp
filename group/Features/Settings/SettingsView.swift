@@ -6,7 +6,6 @@ struct SettingsView: View {
     let model: GroupBombModel
     let authSession: AuthSessionStore
     let onReplayTutorial: () -> Void
-    @State private var showsNotificationTest = false
     @State private var showsSignOutConfirmation = false
     @State private var showsPasswordReset = false
 
@@ -21,7 +20,7 @@ struct SettingsView: View {
                         } label: {
                             ProfileCard(
                                 name: model.profileName.isEmpty
-                                    ? (authSession.currentUserEmail ?? "我的帳號")
+                                    ? (authSession.currentUserEmail ?? L10n.text("我的帳號"))
                                     : model.profileName,
                                 role: model.profileRole,
                                 groupName: model.groups.first?.name,
@@ -32,53 +31,72 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     } else {
                         Button { authSession.signOut() } label: {
-                            SettingsRow(icon: "person.crop.circle", title: "尚未登入", subtitle: "登入以編輯個人資料")
+                            SettingsRow(icon: "person.crop.circle", title: L10n.text("尚未登入"), subtitle: L10n.text("登入以編輯個人資料"))
                                 .comicCard()
                         }
                         .buttonStyle(.plain)
                     }
 
-                    SettingsSection(title: "工作空間") {
-                        NavigationLink { PeerReviewReportView(model: model) } label: {
+                    SettingsSection(title: L10n.text("工作空間")) {
+                        NavigationLink {
+                            PersonalBattleReportView(model: model)
+                        } label: {
                             SettingsRow(
-                                icon: "scope",
-                                title: "戰力報告",
-                                subtitle: "AI 分析、互評與貢獻雷達"
+                                icon: "chart.line.uptrend.xyaxis",
+                                title: L10n.text("個人戰力檔案"),
+                                subtitle: L10n.text("累積每個專案收到的匿名互評")
                             )
                         }
                         .buttonStyle(.plain)
 
-                        SettingsDivider()
+                        Divider()
 
-                        NotificationSettingsRow(model: model) {
-                            showsNotificationTest = true
+                        NavigationLink {
+                            NotificationSettingsView(model: model)
+                        } label: {
+                            SettingsRow(icon: "bell.fill", title: L10n.text("通知設定"),
+                                        subtitle: L10n.text("通知分類與測試"))
                         }
+                        .buttonStyle(.plain)
                     }
 
-                    SettingsSection(title: "支援") {
+                    SettingsSection(title: L10n.text("語言")) {
+                        Picker(L10n.text("介面語言"), selection: Binding(
+                            get: { AppLanguageSettings.shared.preference },
+                            set: { AppLanguageSettings.shared.preference = $0 }
+                        )) {
+                            ForEach(AppLanguagePreference.allCases) { preference in
+                                Text(preference.title).tag(preference)
+                            }
+                        }
+                        .tint(BombTheme.ink)
+                        .padding(.vertical, 8)
+                    }
+
+                    SettingsSection(title: L10n.text("支援")) {
                         Button(action: onReplayTutorial) {
                             SettingsRow(
                                 icon: "book.pages.fill",
-                                title: "新手入門",
-                                subtitle: "建立專案、分配任務與查看進度"
+                                title: L10n.text("新手入門"),
+                                subtitle: L10n.text("建立專案、分配任務與查看進度")
                             )
                         }
                         .buttonStyle(.plain)
                     }
 
 #if DEBUG
-                    SettingsSection(title: "開發工具") {
+                    SettingsSection(title: L10n.text("開發工具")) {
                         TestModeSettingsRow(model: model)
                     }
 #endif
 
-                    SettingsSection(title: "帳號") {
+                    SettingsSection(title: L10n.text("帳號")) {
                         if authSession.isAuthenticated {
                             Button { showsPasswordReset = true } label: {
-                                SettingsRow(icon: "lock.rotation", title: "重設密碼", subtitle: "透過電子郵件重設密碼")
+                                SettingsRow(icon: "lock.rotation", title: L10n.text("重設密碼"), subtitle: L10n.text("透過電子郵件重設密碼"))
                             }
                             .buttonStyle(.plain)
-                            SettingsDivider()
+                            Divider()
                         }
                         Button {
                             if authSession.isAuthenticated {
@@ -89,8 +107,8 @@ struct SettingsView: View {
                         } label: {
                             SettingsRow(
                                 icon: "rectangle.portrait.and.arrow.right",
-                                title: authSession.isAuthenticated ? "登出" : "登入",
-                                subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? "目前帳號") : "目前未登入"
+                                title: authSession.isAuthenticated ? L10n.text("登出") : L10n.text("登入"),
+                                subtitle: authSession.isAuthenticated ? (authSession.currentUserEmail ?? L10n.text("目前帳號")) : L10n.text("目前未登入")
                             )
                         }
                         .buttonStyle(.plain)
@@ -101,22 +119,23 @@ struct SettingsView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "設定") {
+            BombHeader(title: L10n.text("設定")) {
                 EmptyView()
             } trailing: {
                 EmptyView()
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(isPresented: $showsNotificationTest) {
-            NotificationTestView(model: model)
-        }
         .sheet(isPresented: $showsPasswordReset) {
-            PasswordResetView(session: authSession, initialEmail: authSession.currentUserEmail ?? "", completionTitle: "完成")
+            PasswordResetView(
+                session: authSession,
+                initialEmail: authSession.currentUserEmail ?? "",
+                completionTitle: L10n.text("完成")
+            )
         }
-        .bombDialog("確定要登出嗎？", isPresented: $showsSignOutConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("登出", role: .destructive) {
+        .bombDialog(L10n.text("確定要登出嗎？"), isPresented: $showsSignOutConfirmation) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("登出"), role: .destructive) {
                 authSession.signOut()
             }
         }
@@ -164,9 +183,9 @@ private struct TestModeSettingsRow: View {
                 .frame(width: 34, height: 34)
                 .background(BombTheme.yellow)
                 .clipShape(.circle)
-            Text("測試模式").font(.body.weight(.bold))
+            Text(L10n.text("測試模式")).font(.body.weight(.bold))
             Spacer()
-            Toggle("測試模式", isOn: Binding(
+            Toggle(L10n.text("測試模式"), isOn: Binding(
                 get: { model.isDemoMode },
                 set: { model.setDemoMode($0) }
             ))
@@ -189,15 +208,6 @@ private struct SettingsSection<Content: View>: View {
             VStack(spacing: 0) { content }
                 .comicCard()
         }
-    }
-}
-
-private struct SettingsDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(BombTheme.ink.opacity(0.14))
-            .frame(height: 1)
-            .padding(.leading, 48)
     }
 }
 
@@ -225,107 +235,6 @@ private struct SettingsRow: View {
     }
 }
 
-private struct NotificationSettingsRow: View {
-    let model: GroupBombModel
-    let showsTestPage: () -> Void
-    @State private var titleTapCount = 0
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "bell.fill")
-                .font(.title3)
-                .frame(width: 34, height: 34)
-                .background(BombTheme.yellow)
-                .clipShape(.circle)
-            Button {
-                titleTapCount += 1
-                guard titleTapCount == 5 else { return }
-                titleTapCount = 0
-                showsTestPage()
-            } label: {
-                Text("通知設定").font(.body.weight(.bold))
-            }
-            .buttonStyle(.plain)
-            Spacer()
-            Toggle("通知設定", isOn: Binding(
-                get: { model.notificationsEnabled },
-                set: { model.notificationsEnabled = $0 }
-            ))
-            .labelsHidden()
-            .tint(BombTheme.green)
-        }
-        .foregroundStyle(BombTheme.ink)
-        .padding(.vertical, 8)
-    }
-}
-
-private struct NotificationTestView: View {
-    @Environment(\.dismiss) private var dismiss
-    let model: GroupBombModel
-    @State private var selectedGroupID: UUID?
-    @State private var pokeCount = 0
-    @State private var showsNotificationsDisabledAlert = false
-
-    var body: some View {
-        ZStack {
-            BombTheme.yellow.ignoresSafeArea()
-
-            VStack(spacing: 24) {
-                Picker("小組", selection: $selectedGroupID) {
-                    ForEach(model.groups) { group in
-                        Text(group.name).tag(Optional(group.id))
-                    }
-                }
-                .pickerStyle(.menu)
-                .font(.headline)
-
-                Button {
-                    guard let selectedGroupID,
-                          let count = model.sendTestPoke(in: selectedGroupID) else {
-                        showsNotificationsDisabledAlert = true
-                        return
-                    }
-                    pokeCount = count
-                } label: {
-                    Label("戳自己一下", systemImage: "hand.tap.fill")
-                        .font(.title3.weight(.black))
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 15)
-                        .foregroundStyle(.white)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
-                }
-                .buttonStyle(.plain)
-
-                if pokeCount > 0 {
-                    Text("已戳自己 \(pokeCount) 下")
-                        .font(.headline.weight(.black))
-                }
-            }
-            .padding(24)
-        }
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "通知測試") {
-                Button(action: dismiss.callAsFunction) {
-                    Image(systemName: "chevron.left")
-                }
-                .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
-            } trailing: {
-                EmptyView()
-            }
-        }
-        .onAppear {
-            selectedGroupID = selectedGroupID ?? model.groups.first?.id
-        }
-        .bombDialog("通知設定已關閉", isPresented: $showsNotificationsDisabledAlert) {
-            Button("好") { }
-        }
-    }
-}
-
 private struct GroupManagementView: View {
     let model: GroupBombModel
     @State private var groupToLeave: Group?
@@ -337,17 +246,17 @@ private struct GroupManagementView: View {
         ZStack {
             BombTheme.yellow.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 18) {
-                Text("群組管理").font(.largeTitle.weight(.black))
+                Text(L10n.text("群組管理")).font(.largeTitle.weight(.black))
                 ForEach(model.groups) { group in
                     VStack(alignment: .leading, spacing: 14) {
                         Text(group.name).font(.title3.weight(.black))
-                        Button("複製邀請碼", systemImage: "doc.on.doc.fill") {
+                        Button(L10n.text("複製邀請碼"), systemImage: "doc.on.doc.fill") {
                             UIPasteboard.general.string = group.inviteCode
-                            model.lastEvent = "邀請碼已複製"
+                            model.lastEvent = L10n.text("邀請碼已複製")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(BombTheme.ink)
-                        Button("離開群組", role: .destructive) {
+                        Button(L10n.text("離開群組"), role: .destructive) {
                             groupToLeave = group
                             showsLeaveConfirmation = true
                         }
@@ -362,28 +271,28 @@ private struct GroupManagementView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BombTheme.yellow, for: .navigationBar)
         .bombDialog(
-            "確定要離開「\(groupToLeave?.name ?? "")」嗎？",
+            L10n.format("確定要離開「{0}」嗎？", String(describing: groupToLeave?.name ?? "")),
             isPresented: $showsLeaveConfirmation,
             destructiveIsRed: true
         ) {
-            Button("取消", role: .cancel) { }
-            Button("離開群組", role: .destructive) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("離開群組"), role: .destructive) {
                 guard let groupToLeave else { return }
                 isLeaving = true
                 Task {
                     defer { isLeaving = false }
                     do { try await model.leaveGroup(groupID: groupToLeave.id) }
-                    catch { leaveError = "退出失敗，請確認網路後重試。" }
+                    catch { leaveError = L10n.text("退出失敗，請確認網路後重試。") }
                 }
             }
         } message: {
-            Text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。")
+            Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
         }
         .disabled(isLeaving)
-        .bombDialog("無法退出群組", isPresented: Binding(
+        .bombDialog(L10n.text("無法退出群組"), isPresented: Binding(
             get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: { Text(leaveError ?? "") }
     }
 }

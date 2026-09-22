@@ -59,11 +59,11 @@ enum GroupLoadError: LocalizedError {
     case signedOut, accountChanged, invalidData, permissionDenied, network
     var errorDescription: String? {
         switch self {
-        case .signedOut: "請先登入再載入群組。"
-        case .accountChanged: "帳號已變更，請重新載入。"
-        case .invalidData: "群組或任務資料格式不正確，請聯絡群組建立者。"
-        case .permissionDenied: "目前帳號沒有讀取群組資料的權限。"
-        case .network: "群組資料載入失敗，請確認網路後重試。"
+        case .signedOut: L10n.text("請先登入再載入群組。")
+        case .accountChanged: L10n.text("帳號已變更，請重新載入。")
+        case .invalidData: L10n.text("群組或任務資料格式不正確，請聯絡群組建立者。")
+        case .permissionDenied: L10n.text("目前帳號沒有讀取群組資料的權限。")
+        case .network: L10n.text("群組資料載入失敗，請確認網路後重試。")
         }
     }
 }

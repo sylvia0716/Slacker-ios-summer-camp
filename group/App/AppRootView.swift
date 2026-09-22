@@ -13,6 +13,8 @@ struct AppRootView: View {
     @State private var safeAreaInsets = EdgeInsets()
     @State private var activePokeReception: PokeReception?
     @State private var pokePresentationID = 0
+    @State private var reviewNotificationPath: [ReviewNotificationRoute] = []
+    private let reviewRouter = ReviewNotificationRouter.shared
 
     var body: some View {
         SwiftUI.Group {
@@ -25,6 +27,7 @@ struct AppRootView: View {
                 AuthenticationView(session: authSession)
             }
         }
+        .environment(\.locale, L10n.locale)
         .environment(\.bombSafeAreaInsets, safeAreaInsets)
         .onGeometryChange(for: EdgeInsets.self) { proxy in
             proxy.safeAreaInsets
@@ -32,22 +35,51 @@ struct AppRootView: View {
             safeAreaInsets = insets
         }
         .task {
+            WidgetSnapshotStore.updateLanguage()
             authSession.start { uid in store.changeCloudAccount(to: uid) }
             store.changeCloudAccount(to: authSession.currentUserID)
             if scenePhase == .active { store.resumeCloudSync() }
         }
         .onChange(of: authSession.currentUserID) { _, _ in
+            reviewNotificationPath = []
             if scenePhase == .active { store.resumeCloudSync() }
+            openPendingReview()
         }
+        .onChange(of: reviewRouter.pending) { _, _ in openPendingReview() }
+        .onChange(of: authSession.isCheckingSession) { _, _ in openPendingReview() }
+        .onChange(of: store.isLoadingCloudGroups) { _, _ in openPendingReview() }
+        .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.resumeCloudSync() }
-            else if phase == .background { store.suspendCloudSync() }
+            if phase == .active {
+                AppLanguageSettings.shared.refreshSystemLanguage()
+                store.resumeCloudSync()
+            }
+            else if phase == .background {
+                store.suspendCloudSync()
+                if !store.isDemoMode { PokeBackgroundRefresh.shared.schedule() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+            AppLanguageSettings.shared.refreshSystemLanguage()
+        }
+        .onChange(of: AppLanguageSettings.shared.preference) { _, _ in
+            WidgetSnapshotStore.updateLanguage()
+        }
+        .onChange(of: AppLanguageSettings.shared.language) { _, _ in
+            store.registerPokeDevice()
+            store.refreshDeadlineReminders()
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
-            guard let reception = notification.object as? PokeReception else { return }
+            guard store.receivesPokes, let reception = notification.object as? PokeReception else { return }
             pokePresentationID += 1
             activePokeReception = reception
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pokePushTokenUpdated)) { _ in
+            store.registerPokeDevice()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .notificationAuthorizationUpdated)) { _ in
+            store.refreshDeadlineReminders()
         }
         .overlay {
             if let activePokeReception {
@@ -57,24 +89,29 @@ struct AppRootView: View {
                 .id(pokePresentationID)
             }
         }
-        .bombDialog("雲端同步", isPresented: Binding(
+        .bombDialog(L10n.text("雲端同步"), isPresented: Binding(
             get: { store.cloudErrorMessage != nil },
             set: { if !$0 { store.cloudErrorMessage = nil } }
         )) {
-            Button("關閉", role: .cancel) { store.cloudErrorMessage = nil }
-            Button("重試") { Task { await store.reloadCloudGroups() } }
+            Button(L10n.text("關閉"), role: .cancel) { store.cloudErrorMessage = nil }
+            Button(L10n.text("重試")) { Task { await store.reloadCloudGroups() } }
         } message: { Text(store.cloudErrorMessage ?? "") }
     }
 
     private var authenticatedContent: some View {
         ZStack {
-            NavigationStack {
+            NavigationStack(path: $reviewNotificationPath) {
                 GroupListView(
                     model: store,
                     isSelected: tab == .groups,
                     tutorialStep: $tutorialStep,
                     onReplayTutorial: replayTutorial
                 )
+                .navigationDestination(for: ReviewNotificationRoute.self) { route in
+                    if let group = store.groups.first(where: { $0.id == route.groupID }) {
+                        GroupDetailView(group: group, model: store, opensPeerReview: true)
+                    }
+                }
             }
             .opacity(tab == .groups ? 1 : 0)
             .allowsHitTesting(tab == .groups)
@@ -145,6 +182,22 @@ struct AppRootView: View {
                 .controlSize(.large)
                 .tint(BombTheme.ink)
         }
+    }
+
+    private func openPendingReview() {
+        guard let destination = reviewRouter.pending, !authSession.isCheckingSession else { return }
+        guard destination.uid == authSession.currentUserID else {
+            reviewRouter.pending = nil
+            return
+        }
+        guard store.firebaseUID == destination.uid, !store.isLoadingCloudGroups else { return }
+        guard let group = store.groups.first(where: { $0.id == destination.groupID }),
+              group.memberIDs.contains(store.currentUserID) else { return }
+        reviewRouter.pending = nil
+        tab = .groups
+        tutorialStep = nil
+        guard !store.hasCompletedReviewReminders(in: group) else { return }
+        reviewNotificationPath = [ReviewNotificationRoute(groupID: group.id)]
     }
 
     private func tutorialFrames(

@@ -10,7 +10,14 @@ final class AuthSessionStore {
     private(set) var currentUserEmail: String?
     private(set) var isCheckingSession = true
     private(set) var isWorking = false
-    var errorMessage: String?
+    var language: AppLanguage {
+        get { AppLanguageSettings.shared.language }
+        set { AppLanguageSettings.shared.preference = AppLanguagePreference(rawValue: newValue.rawValue)! }
+    }
+    private var errorKey: String?
+    var errorMessage: String? { errorKey.map { text($0) } }
+
+    func text(_ key: String) -> String { language.text(key) }
 
     @ObservationIgnored private var authStateHandle: AuthStateDidChangeListenerHandle?
     @ObservationIgnored private var hasStarted = false
@@ -28,7 +35,7 @@ final class AuthSessionStore {
 
         guard FirebaseApp.app() != nil else {
             isCheckingSession = false
-            errorMessage = "Firebase 尚未設定完成，請確認 GoogleService-Info.plist 已加入 group target。"
+            errorKey = "Firebase 尚未設定完成，請確認 GoogleService-Info.plist 已加入 group target。"
             return
         }
 
@@ -46,12 +53,12 @@ final class AuthSessionStore {
     func signIn(email: String, password: String) async {
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
-            errorMessage = "Firebase 尚未設定完成，請稍後再試。"
+            errorKey = "Firebase 尚未設定完成，請稍後再試。"
             return
         }
 
         isWorking = true
-        errorMessage = nil
+        errorKey = nil
         defer { isWorking = false }
 
         do {
@@ -61,19 +68,19 @@ final class AuthSessionStore {
             )
             updateSession(userID: result.user.uid, email: result.user.email)
         } catch {
-            errorMessage = Self.localizedMessage(for: error)
+            errorKey = Self.localizedMessage(for: error)
         }
     }
 
     func register(email: String, password: String) async {
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
-            errorMessage = "Firebase 尚未設定完成，請稍後再試。"
+            errorKey = "Firebase 尚未設定完成，請稍後再試。"
             return
         }
 
         isWorking = true
-        errorMessage = nil
+        errorKey = nil
         defer { isWorking = false }
 
         do {
@@ -83,7 +90,7 @@ final class AuthSessionStore {
             )
             updateSession(userID: result.user.uid, email: result.user.email)
         } catch {
-            errorMessage = Self.localizedMessage(for: error)
+            errorKey = Self.localizedMessage(for: error)
         }
     }
 
@@ -91,23 +98,25 @@ final class AuthSessionStore {
         guard !isWorking else { return false }
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedEmail.isEmpty, normalizedEmail.contains("@") else {
-            errorMessage = "請輸入有效的電子郵件地址。"
+            errorKey = "請輸入有效的電子郵件地址。"
             return false
         }
         guard FirebaseApp.app() != nil else {
-            errorMessage = "Firebase 尚未設定完成，請稍後再試。"
+            errorKey = "Firebase 尚未設定完成，請稍後再試。"
             return false
         }
 
         isWorking = true
-        errorMessage = nil
+        errorKey = nil
         defer { isWorking = false }
 
         do {
-            try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
+            let auth = Auth.auth()
+            auth.languageCode = language.firebaseLanguageCode
+            try await auth.sendPasswordReset(withEmail: normalizedEmail)
             return true
         } catch {
-            errorMessage = Self.localizedMessage(for: error)
+            errorKey = Self.localizedMessage(for: error)
             return false
         }
     }
@@ -117,7 +126,8 @@ final class AuthSessionStore {
     func enterPreviewSession() {
         updateSession(userID: nil, email: nil)
         isPreviewSession = true
-        errorMessage = nil
+        updateSession(userID: "debug-preview", email: "preview@local")
+        errorKey = nil
     }
 #endif
 
@@ -126,7 +136,7 @@ final class AuthSessionStore {
         if isPreviewSession {
             isPreviewSession = false
             updateSession(userID: nil, email: nil)
-            errorMessage = nil
+            errorKey = nil
             return
         }
 #endif
@@ -135,24 +145,24 @@ final class AuthSessionStore {
         do {
             try Auth.auth().signOut()
             updateSession(userID: nil, email: nil)
-            errorMessage = nil
+            errorKey = nil
         } catch {
-            errorMessage = Self.localizedMessage(for: error)
+            errorKey = Self.localizedMessage(for: error)
         }
     }
 
     func clearError() {
-        errorMessage = nil
+        errorKey = nil
     }
 
     private func validate(email: String, password: String) -> Bool {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedEmail.isEmpty, normalizedEmail.contains("@") else {
-            errorMessage = "請輸入有效的電子郵件地址。"
+            errorKey = "請輸入有效的電子郵件地址。"
             return false
         }
         guard password.count >= 6 else {
-            errorMessage = "密碼至少需要 6 個字元。"
+            errorKey = "密碼至少需要 6 個字元。"
             return false
         }
         return true

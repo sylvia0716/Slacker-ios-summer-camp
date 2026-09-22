@@ -438,6 +438,80 @@ describe("Group Bomb Firestore Security Rules", () => {
   });
 });
 
+describe("匿名互評資料隔離", () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const firestore = context.firestore();
+      await setDoc(doc(firestore, `groups/${groupID}/peerReviewStates/${uploaderID}`), {
+        reviewedUIDs: [teammateID],
+        completed: false,
+      });
+      await setDoc(doc(firestore, `groups/${groupID}/peerReviewPublic/summary`), {
+        totalReviewCount: 1,
+        completedReviewerCount: 0,
+      });
+      await setDoc(doc(firestore, `groups/${groupID}/peerReviewSubmissions/private-review`), {
+        reviewerUID: uploaderID,
+        revieweeUID: teammateID,
+      });
+      await setDoc(doc(firestore, `groups/${groupID}/peerReviewAggregates/summary`), {
+        totalReviewCount: 1,
+      });
+      await setDoc(doc(firestore, `groups/${groupID}/peerReviewComments/${uploaderID}`), {
+        comments: ["合作過程很可靠"],
+      });
+    });
+  });
+
+  test("成員只能讀取自己的互評進度", async () => {
+    await assertSucceeds(getDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewStates/${uploaderID}`,
+    )));
+    await assertFails(getDoc(doc(
+      firestoreFor(teammateID),
+      `groups/${groupID}/peerReviewStates/${uploaderID}`,
+    )));
+  });
+
+  test("群組成員可讀匿名摘要，非成員不可讀", async () => {
+    const path = `groups/${groupID}/peerReviewPublic/summary`;
+    await assertSucceeds(getDoc(doc(firestoreFor(teammateID), path)));
+    await assertFails(getDoc(doc(firestoreFor(outsiderID), path)));
+  });
+
+  test("原始互評與私有統計不開放給任何用戶端", async () => {
+    await assertFails(getDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewSubmissions/private-review`,
+    )));
+    await assertFails(getDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewAggregates/summary`,
+    )));
+  });
+
+  test("成員只能讀取自己收到的匿名評語", async () => {
+    const ownCommentsPath = `groups/${groupID}/peerReviewComments/${uploaderID}`;
+    await assertSucceeds(getDoc(doc(firestoreFor(uploaderID), ownCommentsPath)));
+    await assertFails(getDoc(doc(firestoreFor(teammateID), ownCommentsPath)));
+    await assertFails(getDoc(doc(firestoreFor(outsiderID), ownCommentsPath)));
+  });
+
+  test("互評狀態與摘要只能由後端寫入", async () => {
+    await assertFails(setDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewStates/${uploaderID}`,
+    ), { reviewedUIDs: [], completed: false }));
+    await assertFails(setDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewPublic/summary`,
+    ), { totalReviewCount: 999, completedReviewerCount: 999 }));
+    await assertFails(setDoc(doc(
+      firestoreFor(uploaderID),
+      `groups/${groupID}/peerReviewComments/${uploaderID}`,
+    ), { comments: ["偽造評語"] }));
+  });
 test('profile photo metadata belongs to its account', async () => {
   const path = `profiles/${uploaderID}`;
   const value = {avatarPath: `avatars/${uploaderID}/12345678-1234-1234-1234-123456789abc.jpg`};

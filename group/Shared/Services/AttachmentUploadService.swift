@@ -171,19 +171,19 @@ enum AttachmentUploadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            "請先登入再上傳成果。"
+            L10n.text("請先登入再上傳成果。")
         case .fileTooLarge:
-            "檔案不可超過 20 MB。"
+            L10n.text("檔案不可超過 20 MB。")
         case .invalidHTTPSURL:
-            "請輸入以 https:// 開頭的有效網址。"
+            L10n.text("請輸入以 https:// 開頭的有效網址。")
         case .unsupportedFileType:
-            "僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。"
+            L10n.text("僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。")
         case .storageUploadFailed:
-            "檔案上傳失敗，請檢查網路後重新嘗試。"
+            L10n.text("檔案上傳失敗，請檢查網路後重新嘗試。")
         case .metadataSaveFailed:
-            "成果資料儲存失敗，已清除未完成的雲端檔案。"
+            L10n.text("成果資料儲存失敗，已清除未完成的雲端檔案。")
         case .orphanCleanupFailed:
-            "成果資料儲存失敗，且雲端檔案無法自動清除，請稍後再試。"
+            L10n.text("成果資料儲存失敗，且雲端檔案無法自動清除，請稍後再試。")
         }
     }
 }

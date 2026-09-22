@@ -37,16 +37,16 @@ struct GroupListView: View {
                         if model.groups.isEmpty {
                             emptyState
                         } else {
-                            Text("選一組，繼續拆彈。")
+                            Text(L10n.text("選一組，繼續拆彈。"))
                                 .font(.subheadline.bold())
 
                             let activeGroups = groups(matching: { $0 == .active }, now: context.date)
                             let awaitingGroups = groups(matching: { $0.isAwaitingReview }, now: context.date)
                             let closedGroups = groups(matching: { $0 == .closed }, now: context.date)
 
-                            groupSection(title: "進行中", groups: activeGroups, now: context.date)
-                            groupSection(title: "待評分", groups: awaitingGroups, now: context.date)
-                            groupSection(title: "已完成", groups: closedGroups, now: context.date)
+                            groupSection(title: L10n.text("進行中"), groups: activeGroups, now: context.date)
+                            groupSection(title: L10n.text("待評分"), groups: awaitingGroups, now: context.date)
+                            groupSection(title: L10n.text("已完成"), groups: closedGroups, now: context.date)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -58,7 +58,7 @@ struct GroupListView: View {
         }
         .refreshable { await model.reloadCloudGroups() }
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "我的群組") {
+            BombHeader(title: L10n.text("我的群組")) {
 #if DEBUG
                 debugMenu
                     .buttonStyle(BombHeaderButtonStyle())
@@ -66,7 +66,7 @@ struct GroupListView: View {
                 EmptyView()
 #endif
             } trailing: {
-                Button("新增", systemImage: "plus") {
+                Button(L10n.text("新增"), systemImage: "plus") {
                     if tutorialStep?.wrappedValue == .createGroup {
                         tutorialStep?.wrappedValue = .createGroupForm
                     }
@@ -104,11 +104,11 @@ struct GroupListView: View {
             guard isSelected else { return }
             animationSequence += 1
         }
-        .bombDialog("加入群組", isPresented: Binding(
+        .bombDialog(L10n.text("加入群組"), isPresented: Binding(
             get: { joinSuccessMessage != nil && !isAddGroupPresented },
             set: { if !$0 { joinSuccessMessage = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: {
             Text(joinSuccessMessage ?? "")
         }
@@ -118,9 +118,9 @@ struct GroupListView: View {
         VStack(spacing: 14) {
             Image(systemName: "person.3.fill")
                 .font(.system(size: 36, weight: .black))
-            Text("還沒有群組")
+            Text(L10n.text("還沒有群組"))
                 .font(.title3.weight(.black))
-            Text("建立自己的群組，或使用邀請碼加入")
+            Text(L10n.text("建立自己的群組，或使用邀請碼加入"))
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.65))
 
@@ -128,7 +128,7 @@ struct GroupListView: View {
                 Button {
                     presentAddGroup(mode: .create)
                 } label: {
-                    Label("建立群組", systemImage: "plus")
+                    Label(L10n.text("建立群組"), systemImage: "plus")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(GroupEntryActionButtonStyle(isPrimary: true))
@@ -136,7 +136,7 @@ struct GroupListView: View {
                 Button {
                     presentAddGroup(mode: .join)
                 } label: {
-                    Label("輸入邀請碼", systemImage: "viewfinder")
+                    Label(L10n.text("輸入邀請碼"), systemImage: "viewfinder")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(GroupEntryActionButtonStyle(isPrimary: false))
@@ -170,6 +170,7 @@ struct GroupListView: View {
                             status: status,
                             progress: model.projectProgress(for: group.id),
                             completedReviewerCount: model.completedPeerReviewerCount(in: group.id),
+                            peerReviewParticipantCount: model.peerReviewParticipantCount(in: group.id),
                             now: now,
                             animationDelay: Double(index) * 0.09,
                             animationSequence: animationSequence
@@ -194,7 +195,8 @@ struct GroupListView: View {
         guard now >= group.deadline else { return .active }
 
         let completedReviewerCount = model.completedPeerReviewerCount(in: group.id)
-        if !group.memberIDs.isEmpty, completedReviewerCount == group.memberIDs.count {
+        let participantCount = model.peerReviewParticipantCount(in: group.id)
+        if participantCount > 0, completedReviewerCount >= participantCount {
             return .closed
         }
 
@@ -204,13 +206,8 @@ struct GroupListView: View {
     }
 
     @ViewBuilder
-    private func destination(for group: Group, status: GroupListStatus) -> some View {
-        switch status {
-        case .active, .awaitingReviewCompleted, .awaitingReviewExploded:
-            GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
-        case .closed:
-            PostGameReviewView(groupName: group.name)
-        }
+    private func destination(for group: Group, status _: GroupListStatus) -> some View {
+        GroupDetailView(group: group, model: model, tutorialStep: tutorialStep)
     }
 
     private func restoreCreateGroupTutorialIfNeeded() {
@@ -222,29 +219,29 @@ struct GroupListView: View {
 #if DEBUG
     private var debugMenu: some View {
         Menu {
-            Button("重設 iOS Summer Camp 互評") {
+            Button(L10n.text("重設 iOS Summer Camp 互評")) {
                 resetReviews(inviteCode: "IOS100")
             }
-            Button("重設電子電路期末互評") {
+            Button(L10n.text("重設電子電路期末互評")) {
                 resetReviews(inviteCode: "EE0073")
             }
             Divider()
-            Button("完成 iOS Summer Camp 全部互評") {
+            Button(L10n.text("完成 iOS Summer Camp 全部互評")) {
                 completeAllReviews(inviteCode: "IOS100")
             }
-            Button("完成電子電路期末全部互評") {
+            Button(L10n.text("完成電子電路期末全部互評")) {
                 completeAllReviews(inviteCode: "EE0073")
             }
             if onReplayTutorial != nil {
                 Divider()
-                Button("重新播放新手教學", systemImage: "arrow.counterclockwise") {
+                Button(L10n.text("重新播放新手教學"), systemImage: "arrow.counterclockwise") {
                     onReplayTutorial?()
                 }
             }
         } label: {
             Image(systemName: "wrench.and.screwdriver.fill")
         }
-        .accessibilityLabel("測試工具")
+        .accessibilityLabel(L10n.text("測試工具"))
     }
 
     private func resetReviews(inviteCode: String) {
@@ -346,7 +343,7 @@ private struct AddGroupSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(flow == .entry ? "取消" : "上一步") {
+                    Button(flow == .entry ? L10n.text("取消") : L10n.text("上一步")) {
                         if flow == .entry { dismiss() } else { flow = .entry }
                     }
                     .disabled(isBusy)
@@ -361,7 +358,7 @@ private struct AddGroupSheet: View {
         .presentationDetents([.fraction(0.62)])
         .presentationDragIndicator(.visible)
         .presentationBackground(BombTheme.paper)
-        .bombDialog("無法加入群組", isPresented: Binding(
+        .bombDialog(L10n.text("無法加入群組"), isPresented: Binding(
             get: {
                 if joinError != nil { return true }
                 if case .failure = joinStore.state { return true }
@@ -369,7 +366,7 @@ private struct AddGroupSheet: View {
             },
             set: { if !$0 { joinStore.reset(); joinError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: {
             if let joinError {
                 Text(joinError)
@@ -377,11 +374,11 @@ private struct AddGroupSheet: View {
                 Text(error.localizedDescription)
             }
         }
-        .bombDialog("無法建立群組", isPresented: Binding(
+        .bombDialog(L10n.text("無法建立群組"), isPresented: Binding(
             get: { creationError != nil },
             set: { if !$0 { creationError = nil } }
         )) {
-            Button("知道了") { }
+            Button(L10n.text("知道了")) { }
         } message: {
             Text(creationError ?? "")
         }
@@ -390,10 +387,10 @@ private struct AddGroupSheet: View {
                 isCodeFieldFocused = true
             }
         }
-        .bombDialog("無法使用掃碼", isPresented: $isScannerUnavailableAlertPresented) {
-            Button("知道了") { }
+        .bombDialog(L10n.text("無法使用掃碼"), isPresented: $isScannerUnavailableAlertPresented) {
+            Button(L10n.text("知道了")) { }
         } message: {
-            Text("請在支援相機文字辨識的裝置上使用掃碼功能。")
+            Text(L10n.text("請在支援相機文字辨識的裝置上使用掃碼功能。"))
         }
         .fullScreenCover(isPresented: $isScannerPresented) {
             GroupCodeScanner(onRecognized: { scannedCode in
@@ -408,8 +405,8 @@ private struct AddGroupSheet: View {
 
     private var entryModePicker: some View {
         HStack(spacing: 4) {
-            entryButton(title: "建立群組", mode: .create)
-            entryButton(title: "加入群組", mode: .join)
+            entryButton(title: L10n.text("建立群組"), mode: .create)
+            entryButton(title: L10n.text("加入群組"), mode: .join)
         }
         .padding(4)
         .background(BombTheme.ink)
@@ -419,22 +416,22 @@ private struct AddGroupSheet: View {
 
     private var createGroupForm: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("群組名稱")
+            Text(L10n.text("群組名稱"))
                 .font(.headline.weight(.black))
 
-            TextField("例如：期末報告拆彈小隊", text: $groupName)
+            TextField(L10n.text("例如：期末報告拆彈小隊"), text: $groupName)
                 .font(.body.weight(.semibold))
                 .padding(.horizontal, 14)
                 .frame(height: 52)
                 .background(BombTheme.yellow.opacity(0.16))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
 
-            Text("截止時間")
+            Text(L10n.text("截止時間"))
                 .font(.headline.weight(.black))
                 .padding(.top, 10)
 
             DatePicker(
-                "截止時間",
+                L10n.text("截止時間"),
                 selection: $groupDeadline,
                 in: Date.now...,
                 displayedComponents: [.date, .hourAndMinute]
@@ -448,7 +445,7 @@ private struct AddGroupSheet: View {
 
     private var joinGroupForm: some View {
         VStack(spacing: 16) {
-            Text("6 位邀請碼")
+            Text(L10n.text("6 位邀請碼"))
                 .font(.title3.weight(.black))
 
             inviteCodeBoxes
@@ -472,9 +469,9 @@ private struct AddGroupSheet: View {
                     .clipShape(.circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("掃描邀請碼")
+            .accessibilityLabel(L10n.text("掃描邀請碼"))
 
-            Text("輸入隊友分享的邀請碼")
+            Text(L10n.text("輸入隊友分享的邀請碼"))
                 .font(.caption.weight(.bold))
         }
         .padding(18)
@@ -523,7 +520,7 @@ private struct AddGroupSheet: View {
                 .frame(height: 52)
                 .contentShape(Rectangle())
                 .onTapGesture { isCodeFieldFocused = true }
-                .accessibilityLabel("6 位邀請碼")
+                .accessibilityLabel(L10n.text("6 位邀請碼"))
                 .onChange(of: groupCode) { _, newValue in
                     groupCode = normalizedInviteCode(newValue)
                 }
@@ -535,7 +532,7 @@ private struct AddGroupSheet: View {
         if let createdGroup {
             VStack(spacing: 16) {
                 VStack(spacing: 12) {
-                    Text("分享給隊友")
+                    Text(L10n.text("分享給隊友"))
                         .font(.headline.weight(.black))
 
                     if let image = qrCodeImage(for: createdGroup.inviteCode) {
@@ -544,7 +541,7 @@ private struct AddGroupSheet: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 132, height: 132)
-                            .accessibilityLabel("群組邀請碼 QR Code")
+                            .accessibilityLabel(L10n.text("群組邀請碼 QR Code"))
                     }
 
                     Text(createdGroup.inviteCode)
@@ -560,14 +557,14 @@ private struct AddGroupSheet: View {
                             copyInviteCode(createdGroup.inviteCode)
                         } label: {
                             Label(
-                                showsCodeCopiedFeedback ? "已複製" : "複製代碼",
+                                showsCodeCopiedFeedback ? L10n.text("已複製") : L10n.text("複製代碼"),
                                 systemImage: showsCodeCopiedFeedback ? "checkmark" : "doc.on.doc"
                             )
                         }
                         .buttonStyle(ShareCodeButtonStyle(isPrimary: true))
 
                         ShareLink(item: shareMessage(for: createdGroup)) {
-                            Label("分享", systemImage: "square.and.arrow.up")
+                            Label(L10n.text("分享"), systemImage: "square.and.arrow.up")
                         }
                         .buttonStyle(ShareCodeButtonStyle(isPrimary: false))
                     }
@@ -588,8 +585,8 @@ private struct AddGroupSheet: View {
 
     private var navigationTitle: String {
         switch flow {
-        case .entry: "新增群組"
-        case .shareCode: "群組代碼"
+        case .entry: L10n.text("新增群組")
+        case .shareCode: L10n.text("群組代碼")
         }
     }
 
@@ -607,9 +604,9 @@ private struct AddGroupSheet: View {
     }
 
     private var primaryButtonTitle: String {
-        if isCreating { return "建立中…" }
-        if joinStore.isJoining { return "加入中…" }
-        return flow == .entry ? "完成" : "稍後分享"
+        if isCreating { return L10n.text("建立中…") }
+        if joinStore.isJoining { return L10n.text("加入中…") }
+        return flow == .entry ? L10n.text("完成") : L10n.text("稍後分享")
     }
 
     private func advance() {
@@ -666,7 +663,7 @@ private struct AddGroupSheet: View {
             dismiss()
             let refreshed = await model.reloadCloudGroups(reportError: false)
             guard model.firebaseUID == result.firebaseUID else { return }
-            joinedGroup(refreshed ? successMessage : successMessage + "，但列表更新失敗，請下拉重新整理。")
+            joinedGroup(refreshed ? successMessage : successMessage + L10n.text("，但列表更新失敗，請下拉重新整理。"))
         }
     }
 
@@ -698,7 +695,12 @@ private struct AddGroupSheet: View {
         filter.message = Data(code.utf8)
         filter.correctionLevel = "M"
 
-        guard let outputImage = filter.outputImage?.transformed(
+        let colors = CIFilter.falseColor()
+        colors.inputImage = filter.outputImage
+        colors.color0 = CIColor(color: UIColor(BombTheme.ink))
+        colors.color1 = CIColor.clear
+
+        guard let outputImage = colors.outputImage?.transformed(
             by: CGAffineTransform(scaleX: 10, y: 10)
         ) else { return nil }
 
@@ -723,7 +725,7 @@ private struct AddGroupSheet: View {
     }
 
     private func shareMessage(for group: Group) -> String {
-        "加入「\(group.name)」群組，邀請碼：\(group.inviteCode)"
+        L10n.format("加入「{0}」群組，邀請碼：{1}", String(describing: group.name), String(describing: group.inviteCode))
     }
 }
 
@@ -844,18 +846,18 @@ private enum GroupListStatus: Equatable {
 
     var title: String {
         switch self {
-        case .active: "進行中"
-        case .awaitingReviewCompleted: "成功拆彈"
-        case .awaitingReviewExploded: "任務爆炸"
-        case .closed: "已完成"
+        case .active: L10n.text("進行中")
+        case .awaitingReviewCompleted: L10n.text("成功拆彈")
+        case .awaitingReviewExploded: L10n.text("任務爆炸")
+        case .closed: L10n.text("已完成")
         }
     }
 
     var badgeTitle: String {
         switch self {
-        case .active: "進行中"
-        case .awaitingReviewCompleted, .awaitingReviewExploded: "待評分"
-        case .closed: "已完成"
+        case .active: L10n.text("進行中")
+        case .awaitingReviewCompleted, .awaitingReviewExploded: L10n.text("待評分")
+        case .closed: L10n.text("已完成")
         }
     }
 
@@ -875,6 +877,7 @@ private struct GroupRow: View {
     let status: GroupListStatus
     let progress: Int
     let completedReviewerCount: Int
+    let peerReviewParticipantCount: Int
     let now: Date
     let animationDelay: TimeInterval
     let animationSequence: Int
@@ -907,12 +910,12 @@ private struct GroupRow: View {
                 HStack {
                     Label(remainingDays, systemImage: "timer")
                     Spacer()
-                    Label("\(group.memberIDs.count) 位特工", systemImage: "person.3.fill")
+                    Label(L10n.format("{0} 位特工", String(describing: group.memberIDs.count)), systemImage: "person.3.fill")
                 }
                 .font(.caption.bold())
             } else {
                 HStack {
-                    Text("最終進度 \(progress)%")
+                    Text(L10n.format("最終進度 {0}%", String(describing: progress)))
                     Spacer()
                     Text(reviewProgressText)
                 }
@@ -925,7 +928,7 @@ private struct GroupRow: View {
 
             if status == .closed {
                 HStack(spacing: 5) {
-                    Text("查看賽後回顧")
+                    Text(L10n.text("查看專案結算"))
                     Image(systemName: "chevron.right")
                 }
                 .font(.caption.weight(.black))
@@ -968,12 +971,12 @@ private struct GroupRow: View {
     private var remainingDays: String {
         let seconds = max(0, group.deadline.timeIntervalSince(now))
         let days = max(1, Int(ceil(seconds / 86_400)))
-        return "剩 \(days) 天"
+        return L10n.format("剩 {0} 天", String(describing: days))
     }
 
     private var reviewProgressText: String {
         status == .closed
-            ? "互評已完成"
-            : "互評進度 \(completedReviewerCount) / \(group.memberIDs.count)"
+            ? L10n.text("互評已完成")
+            : L10n.format("互評進度 {0} / {1}", String(describing: completedReviewerCount), String(describing: peerReviewParticipantCount))
     }
 }

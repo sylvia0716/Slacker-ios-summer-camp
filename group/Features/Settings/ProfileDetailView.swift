@@ -48,20 +48,20 @@ struct ProfileDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
-            BombHeader(title: "編輯個人資料") {
+            BombHeader(title: L10n.text("編輯個人資料")) {
                 Button(action: dismiss.callAsFunction) {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel("返回設定")
+                .accessibilityLabel(L10n.text("返回設定"))
                 .disabled(isSavingProfile || model.isSavingNickname)
             } trailing: {
                 EmptyView()
             }
         }
         .interactiveDismissDisabled(isSavingProfile || model.isSavingNickname)
-        .alert("儲存失敗", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
-            Button("確定", role: .cancel) { saveError = nil }
+        .alert(L10n.text("儲存失敗"), isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button(L10n.text("確定"), role: .cancel) { saveError = nil }
         } message: { Text(saveError ?? "") }
         .task {
             guard let uid = model.firebaseUID else { return }
@@ -118,7 +118,7 @@ struct ProfileDetailView: View {
             .buttonStyle(.plain)
 
             PhotosPicker(selection: $selectedAvatarItem, matching: .images) {
-                Label("編輯大頭貼", systemImage: "photo.on.rectangle.angled")
+                Label(L10n.text("編輯大頭貼"), systemImage: "photo.on.rectangle.angled")
             }
             .font(.headline.weight(.black))
             .foregroundStyle(BombTheme.ink)
@@ -130,8 +130,8 @@ struct ProfileDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             EditProfileField(
                 icon: "person.fill",
-                title: "暱稱",
-                prompt: "輸入暱稱",
+                title: L10n.text("暱稱"),
+                prompt: L10n.text("輸入暱稱"),
                 text: $draftName
             )
 
@@ -139,18 +139,18 @@ struct ProfileDetailView: View {
 
             EditProfileField(
                 icon: "shield.lefthalf.filled",
-                title: "身分標籤",
-                prompt: "輸入身分標籤",
+                title: L10n.text("身分標籤"),
+                prompt: L10n.text("輸入身分標籤"),
                 text: $draftRole
             )
 
             Divider()
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("自我介紹", systemImage: "text.quote")
+                Label(L10n.text("自我介紹"), systemImage: "text.quote")
                     .font(.body.weight(.black))
 
-                TextField("寫一段自我介紹", text: $draftBio, axis: .vertical)
+                TextField(L10n.text("寫一段自我介紹"), text: $draftBio, axis: .vertical)
                     .lineLimit(3...6)
                     .padding(12)
                     .background(.white.opacity(0.58))
@@ -188,12 +188,12 @@ struct ProfileDetailView: View {
                     dismiss()
                 } catch {
                     saveError = savingPhoto
-                        ? "頭貼上傳或群組同步失敗，請確認網路後重試。"
-                        : (error as? LocalizedError)?.errorDescription ?? "個人資料儲存失敗，請稍後重試。"
+                        ? L10n.text("頭貼上傳或群組同步失敗，請確認網路後重試。")
+                        : (error as? LocalizedError)?.errorDescription ?? L10n.text("個人資料儲存失敗，請稍後重試。")
                 }
             }
         } label: {
-            Label(isSavingProfile ? "儲存中…" : "儲存變更", systemImage: "checkmark.circle.fill")
+            Label(isSavingProfile ? L10n.text("儲存中…") : L10n.text("儲存變更"), systemImage: "checkmark.circle.fill")
                 .font(.headline.weight(.black))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

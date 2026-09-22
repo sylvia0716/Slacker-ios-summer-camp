@@ -20,6 +20,11 @@ struct CloudChatMessage: Identifiable {
     let analysisScore: Int?
     let analysisStrength: String?
     let analysisSuggestion: String?
+    let taskCompletionScore: Int?
+    let discussionScore: Int?
+    let collaborationScore: Int?
+    let problemSolvingScore: Int?
+    let reliabilityScore: Int?
 }
 
 /// 群組內一位成員的即時在線狀態。
@@ -72,7 +77,7 @@ final class ChatRepository {
         try await messagesCollection(groupID: groupID).document(id).setData([
             "id": id,
             "senderID": userID,
-            "senderName": "拆彈 AI 通訊官",
+            "senderName": L10n.text("拆彈 AI 通訊官"),
             "text": text,
             "kind": CloudChatItemKind.botReply.rawValue,
             "createdAt": FieldValue.serverTimestamp()
@@ -85,17 +90,85 @@ final class ChatRepository {
         analysis: CommunicationAnalysis
     ) async throws {
         let userID = try currentUserID()
-        try await messagesCollection(groupID: groupID).document(id).setData([
+        var data: [String: Any] = [
             "id": id,
             "senderID": userID,
-            "senderName": "拆彈 AI 通訊官",
+            "senderName": L10n.text("拆彈 AI 通訊官"),
             "text": analysis.summary,
             "kind": CloudChatItemKind.botAnalysis.rawValue,
             "analysisScore": analysis.score,
             "analysisStrength": analysis.strength,
             "analysisSuggestion": analysis.suggestion,
             "createdAt": FieldValue.serverTimestamp()
-        ])
+        ]
+        if let taskCompletionScore = analysis.taskCompletionScore,
+           let discussionScore = analysis.discussionScore,
+           let collaborationScore = analysis.collaborationScore,
+           let problemSolvingScore = analysis.problemSolvingScore,
+           let reliabilityScore = analysis.reliabilityScore {
+            data["taskCompletionScore"] = taskCompletionScore
+            data["discussionScore"] = discussionScore
+            data["collaborationScore"] = collaborationScore
+            data["problemSolvingScore"] = problemSolvingScore
+            data["reliabilityScore"] = reliabilityScore
+        }
+        try await messagesCollection(groupID: groupID).document(id).setData(data)
+    }
+
+    func loadHumanConversation(groupID: String) async throws -> [String] {
+        let snapshot = try await recentMessages(groupID: groupID)
+        return snapshot.documents.compactMap { document in
+            let data = document.data()
+            guard (data["kind"] as? String ?? CloudChatItemKind.message.rawValue)
+                    == CloudChatItemKind.message.rawValue,
+                  let senderName = data["senderName"] as? String,
+                  let text = data["text"] as? String,
+                  !text.hasPrefix("@機器人"),
+                  !text.hasPrefix("＠機器人"),
+                  !text.hasPrefix("@bot"),
+                  !text.hasPrefix("＠bot"),
+                  !text.hasPrefix("@Bomb AI") else { return nil }
+            return "\(senderName)：\(text)"
+        }
+    }
+
+    func loadLatestProjectAnalysis(groupID: String, appGroupID: UUID) async throws -> CommunicationAnalysis? {
+        let snapshot = try await recentMessages(groupID: groupID)
+        return snapshot.documents.reversed().compactMap { document -> CommunicationAnalysis? in
+            let data = document.data()
+            guard data["kind"] as? String == CloudChatItemKind.botAnalysis.rawValue,
+                  let id = UUID(uuidString: document.documentID),
+                  let score = data["analysisScore"] as? Int,
+                  let summary = data["text"] as? String,
+                  let strength = data["analysisStrength"] as? String,
+                  let suggestion = data["analysisSuggestion"] as? String,
+                  let taskCompletionScore = data["taskCompletionScore"] as? Int,
+                  let discussionScore = data["discussionScore"] as? Int,
+                  let collaborationScore = data["collaborationScore"] as? Int,
+                  let problemSolvingScore = data["problemSolvingScore"] as? Int,
+                  let reliabilityScore = data["reliabilityScore"] as? Int else { return nil }
+            return CommunicationAnalysis(
+                id: id,
+                groupID: appGroupID,
+                score: score,
+                summary: summary,
+                strength: strength,
+                suggestion: suggestion,
+                updatedAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? .now,
+                taskCompletionScore: taskCompletionScore,
+                discussionScore: discussionScore,
+                collaborationScore: collaborationScore,
+                problemSolvingScore: problemSolvingScore,
+                reliabilityScore: reliabilityScore
+            )
+        }.first
+    }
+
+    private func recentMessages(groupID: String) async throws -> QuerySnapshot {
+        try await messagesCollection(groupID: groupID)
+            .order(by: "createdAt")
+            .limit(toLast: 200)
+            .getDocuments()
     }
 
     @discardableResult
@@ -129,7 +202,12 @@ final class ChatRepository {
                         ) ?? .message,
                         analysisScore: data["analysisScore"] as? Int,
                         analysisStrength: data["analysisStrength"] as? String,
-                        analysisSuggestion: data["analysisSuggestion"] as? String
+                        analysisSuggestion: data["analysisSuggestion"] as? String,
+                        taskCompletionScore: data["taskCompletionScore"] as? Int,
+                        discussionScore: data["discussionScore"] as? Int,
+                        collaborationScore: data["collaborationScore"] as? Int,
+                        problemSolvingScore: data["problemSolvingScore"] as? Int,
+                        reliabilityScore: data["reliabilityScore"] as? Int
                     )
                 }
                 onChange(.success(messages))
@@ -205,9 +283,9 @@ enum ChatRepositoryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            "請先登入再使用聊天室。"
+            L10n.text("請先登入再使用聊天室。")
         case .notGroupMember:
-            "目前帳號不是這個雲端群組的成員。"
+            L10n.text("目前帳號不是這個雲端群組的成員。")
         }
     }
 }

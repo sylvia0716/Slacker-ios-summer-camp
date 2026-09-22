@@ -14,6 +14,12 @@ enum WidgetSnapshotStore {
     static let snapshotKey = "widgetProgressSnapshot"
     static let widgetKind = "GroupProgressWidget"
 
+    static func updateLanguage() {
+        UserDefaults(suiteName: appGroupIdentifier)?.set(
+            AppLanguageSettings.shared.preference.rawValue, forKey: "appLanguagePreference")
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+    }
+
     static func save(_ snapshot: WidgetProgressSnapshot?) {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
 

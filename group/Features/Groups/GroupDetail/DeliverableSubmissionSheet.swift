@@ -36,7 +36,7 @@ private final class DeliverableSubmissionStore {
     }
 
     func reportUnavailableTask() {
-        state = .failure("此任務尚未從雲端載入，請返回群組列表重新整理。")
+        state = .failure(L10n.text("此任務尚未從雲端載入，請返回群組列表重新整理。"))
     }
 
     func resetSelection() {
@@ -88,7 +88,7 @@ private final class DeliverableSubmissionStore {
         guard !isBusy else { return }
         let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedTitle.isEmpty else {
-            state = .failure("請輸入成果標題。")
+            state = .failure(L10n.text("請輸入成果標題。"))
             return
         }
 
@@ -105,7 +105,7 @@ private final class DeliverableSubmissionStore {
                 )
             } else {
                 guard let preparedAttachment else {
-                    state = .failure("請先選擇照片或檔案。")
+                    state = .failure(L10n.text("請先選擇照片或檔案。"))
                     return
                 }
                 state = .uploading(0)
@@ -140,15 +140,15 @@ private final class DeliverableSubmissionStore {
 
     func handleSelectionFailure() {
         clearPreparedSelection()
-        state = .failure("無法讀取選取的檔案，請重新選擇。")
+        state = .failure(L10n.text("無法讀取選取的檔案，請重新選擇。"))
     }
 
-    nonisolated private static func message(for error: Error) -> String {
+    private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError,
            let description = localized.errorDescription {
             return description
         }
-        return "操作失敗，請檢查網路後重新嘗試。"
+        return L10n.text("操作失敗，請檢查網路後重新嘗試。")
     }
 }
 
@@ -173,13 +173,13 @@ struct DeliverableSubmissionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("成果任務：\(task.title)")
+                    Text(L10n.format("成果任務：{0}", String(describing: task.title)))
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(.secondary)
 
-                    Picker("成果類型", selection: $source) {
+                    Picker(L10n.text("成果類型"), selection: $source) {
                         ForEach(DeliverableSource.allCases) { option in
-                            Text(option.rawValue).tag(option)
+                            Text(L10n.text(option.rawValue)).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -187,13 +187,13 @@ struct DeliverableSubmissionSheet: View {
 
                     sourcePicker
 
-                    field(title: "成果標題") {
-                        TextField("例如：完成版簡報", text: $title)
+                    field(title: L10n.text("成果標題")) {
+                        TextField(L10n.text("例如：完成版簡報"), text: $title)
                             .textFieldStyle(.plain)
                     }
 
-                    field(title: "成果說明") {
-                        TextField("簡短說明這份成果", text: $detail, axis: .vertical)
+                    field(title: L10n.text("成果說明")) {
+                        TextField(L10n.text("簡短說明這份成果"), text: $detail, axis: .vertical)
                             .lineLimit(3...5)
                             .textFieldStyle(.plain)
                     }
@@ -212,7 +212,7 @@ struct DeliverableSubmissionSheet: View {
                     .disabled(!canSubmit)
 
                     if case .failure = store.state {
-                        Button("重新嘗試") {
+                        Button(L10n.text("重新嘗試")) {
                             Task { await submit() }
                         }
                         .font(.subheadline.weight(.black))
@@ -225,7 +225,7 @@ struct DeliverableSubmissionSheet: View {
                         .disabled(store.isBusy)
                     }
 
-                    Button(store.state == .success ? "完成" : "取消") { dismiss() }
+                    Button(store.state == .success ? L10n.text("完成") : L10n.text("取消")) { dismiss() }
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(BombTheme.ink)
                         .frame(maxWidth: .infinity)
@@ -235,7 +235,7 @@ struct DeliverableSubmissionSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(BombTheme.paper.ignoresSafeArea())
-            .navigationTitle("上傳成果")
+            .navigationTitle(L10n.text("上傳成果"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.light, for: .navigationBar)
         }
@@ -264,7 +264,7 @@ struct DeliverableSubmissionSheet: View {
             Task {
                 await store.loadPhoto(from: item)
                 if title.isEmpty, store.selectedFilename != nil {
-                    title = "成果照片"
+                    title = L10n.text("成果照片")
                 }
             }
         }
@@ -281,7 +281,7 @@ struct DeliverableSubmissionSheet: View {
             let previewData = store.preparedAttachment?.kind == .image
                 ? store.preparedAttachment?.data
                 : nil
-            let pickerTitle = store.state == .preparing ? "正在處理照片…" : "選擇照片"
+            let pickerTitle = store.state == .preparing ? L10n.text("正在處理照片…") : L10n.text("選擇照片")
             PhotosPicker(selection: $selectedPhoto, matching: .images, preferredItemEncoding: .current) {
                 PhotoSelectionLabel(previewData: previewData, title: pickerTitle)
             }
@@ -292,14 +292,14 @@ struct DeliverableSubmissionSheet: View {
             Button { showsFileImporter = true } label: {
                 pickerPlaceholder(
                     icon: "doc.badge.plus",
-                    title: store.selectedFilename ?? "選擇 PNG、JPG、PDF、Office 或 ZIP"
+                    title: store.selectedFilename ?? L10n.text("選擇 PNG、JPG、PDF、Office 或 ZIP")
                 )
             }
             .buttonStyle(.plain)
             .disabled(store.isBusy)
 
         case .link:
-            field(title: "HTTPS 網址") {
+            field(title: L10n.text("HTTPS 網址")) {
                 TextField("https://", text: $link)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -332,17 +332,17 @@ struct DeliverableSubmissionSheet: View {
         switch store.state {
         case .waiting:
             Label(
-                source == .link || store.preparedAttachment != nil ? "等待送出" : "等待選擇",
+                source == .link || store.preparedAttachment != nil ? L10n.text("等待送出") : L10n.text("等待選擇"),
                 systemImage: "clock"
             )
             .foregroundStyle(.secondary)
         case .preparing:
-            Label("正在準備檔案…", systemImage: "hourglass")
+            Label(L10n.text("正在準備檔案…"), systemImage: "hourglass")
                 .foregroundStyle(BombTheme.ink)
         case let .uploading(progress):
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(source == .link ? "正在儲存連結…" : "正在上傳…")
+                    Text(source == .link ? L10n.text("正在儲存連結…") : L10n.text("正在上傳…"))
                     Spacer()
                     Text("\(Int((progress * 100).rounded()))%")
                         .monospacedDigit()
@@ -352,7 +352,7 @@ struct DeliverableSubmissionSheet: View {
                     .tint(BombTheme.red)
             }
         case .success:
-            Label("上傳成功", systemImage: "checkmark.circle.fill")
+            Label(L10n.text("上傳成功"), systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.green)
         case let .failure(message):
@@ -375,9 +375,9 @@ struct DeliverableSubmissionSheet: View {
 
     private var submitButtonTitle: String {
         switch store.state {
-        case .uploading: "正在上傳"
-        case .success: "已送出"
-        default: "送出成果"
+        case .uploading: L10n.text("正在上傳")
+        case .success: L10n.text("已送出")
+        default: L10n.text("送出成果")
         }
     }
 

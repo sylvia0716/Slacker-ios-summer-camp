@@ -51,8 +51,8 @@ struct GroupProgressWidget: Widget {
         StaticConfiguration(kind: kind, provider: GroupProgressProvider()) { entry in
             GroupProgressWidgetView(entry: entry)
         }
-        .configurationDisplayName("拆彈進度")
-        .description("快速查看小組報告的倒數與整體進度。")
+        .configurationDisplayName(Text(WidgetLanguage.text("拆彈進度", "Project Progress")))
+        .description(Text(WidgetLanguage.text("快速查看小組報告的倒數與整體進度。", "See your team’s deadline and overall progress.")))
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
     }
@@ -67,10 +67,10 @@ private struct GroupProgressWidgetView: View {
             HStack {
                 Image(systemName: "bolt.fill")
                     .foregroundStyle(.yellow)
-                Text("GROUP BOMB")
+                Text("Oops Bomb")
                     .font(.caption.weight(.black))
                 Spacer()
-                Text("LIVE")
+                Text(WidgetLanguage.text("即時", "LIVE"))
                     .font(.caption2.weight(.black))
                     .foregroundStyle(Color(red: 196.0 / 255, green: 61.0 / 255, blue: 50.0 / 255))
             }
@@ -106,13 +106,13 @@ private struct GroupProgressWidgetView: View {
         let hours = remaining % 86_400 / 3_600
 
         if remaining == 0 {
-            return "已截止"
+            return WidgetLanguage.text("已截止", "Ended")
         }
 
         if days > 0 {
-            return "剩 \(days) 天"
+            return WidgetLanguage.text("剩 \(days) 天", "\(days)d left")
         }
 
-        return "剩 \(hours) 小時"
+        return WidgetLanguage.text("剩 \(hours) 小時", "\(hours)h left")
     }
 }

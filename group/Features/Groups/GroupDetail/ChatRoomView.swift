@@ -97,7 +97,7 @@ struct ChatRoomView: View {
                             .padding(.trailing, 16)
                             .padding(.bottom, 12)
                             .transition(.scale.combined(with: .opacity))
-                            .accessibilityLabel("回到最新訊息")
+                            .accessibilityLabel(L10n.text("回到最新訊息"))
                         }
                     }
                 }
@@ -134,7 +134,7 @@ struct ChatRoomView: View {
                 Image(systemName: "chevron.left")
             }
             .buttonStyle(BombHeaderButtonStyle())
-            .accessibilityLabel("返回群組")
+            .accessibilityLabel(L10n.text("返回群組"))
         } trailing: {
             EmptyView()
         }
@@ -146,7 +146,7 @@ struct ChatRoomView: View {
                 Circle()
                     .fill(onlineMembers.isEmpty ? BombTheme.ink.opacity(0.3) : BombTheme.green)
                     .frame(width: 9, height: 9)
-                Text("\(onlineMembers.count) 人在線")
+                Text(L10n.format("{0} 人在線", String(describing: onlineMembers.count)))
                     .font(.caption.weight(.black))
 
                 if !onlineMembers.isEmpty {
@@ -163,20 +163,20 @@ struct ChatRoomView: View {
                     Spacer()
                 }
 
-                Text("今天")
+                Text(L10n.text("今天"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(BombTheme.ink.opacity(0.6))
             }
 
             if let syncError = model.chatMessageSyncError(for: group.id) {
-                Label("訊息同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.format("訊息同步：{0}", String(describing: syncError)), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(BombTheme.red)
                     .lineLimit(2)
             }
 
             if let syncError = model.chatPresenceSyncError(for: group.id) {
-                Label("在線狀態：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.format("在線狀態：{0}", String(describing: syncError)), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(BombTheme.red)
                     .lineLimit(2)
@@ -276,7 +276,7 @@ struct ChatRoomView: View {
             HStack(spacing: 5) {
                 ProgressView()
                     .controlSize(.mini)
-                Text("傳送中")
+                Text(L10n.text("傳送中"))
             }
             .font(.caption2.weight(.bold))
             .foregroundStyle(BombTheme.ink.opacity(0.55))
@@ -284,12 +284,12 @@ struct ChatRoomView: View {
             Button {
                 retryMessage(id: id, text: text)
             } label: {
-                Label("傳送失敗・重試", systemImage: "arrow.clockwise")
+                Label(L10n.text("傳送失敗・重試"), systemImage: "arrow.clockwise")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(BombTheme.red)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("訊息傳送失敗，點兩下重試")
+            .accessibilityLabel(L10n.text("訊息傳送失敗，點兩下重試"))
         case .sent:
             EmptyView()
         }
@@ -312,7 +312,7 @@ struct ChatRoomView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .tint(BombTheme.ink)
-                    Text("Apple Intelligence 思考中…")
+                    Text(L10n.text("Apple Intelligence 思考中…"))
                         .font(.caption.weight(.black))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -337,9 +337,9 @@ struct ChatRoomView: View {
                         .overlay(Circle().stroke(BombTheme.ink, lineWidth: 2))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(showsShortcuts ? "收起快捷指令" : "展開快捷指令")
+                .accessibilityLabel(showsShortcuts ? L10n.text("收起快捷指令") : L10n.text("展開快捷指令"))
 
-                TextField("輸入訊息", text: $draft, axis: .vertical)
+                TextField(L10n.text("輸入訊息"), text: $draft, axis: .vertical)
                     .focused($isComposerFocused)
                     .lineLimit(1...3)
                     .font(.subheadline.weight(.semibold))
@@ -363,7 +363,7 @@ struct ChatRoomView: View {
                 .buttonStyle(.plain)
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-                .accessibilityLabel("發送訊息")
+                .accessibilityLabel(L10n.text("發送訊息"))
             }
         }
         .padding(.horizontal, 16)
@@ -391,7 +391,7 @@ struct ChatRoomView: View {
 
     /// 同時支援半形與全形 @，讓直接輸入提及和快捷按鈕採用相同 AI 流程。
     private func botCommand(in text: String) -> String? {
-        let prefixes = ["@機器人", "＠機器人"]
+        let prefixes = ["@機器人", "＠機器人", "@bot", "＠bot", "@Bomb AI"]
         guard let prefix = prefixes.first(where: { text.hasPrefix($0) }) else { return nil }
         return String(text.dropFirst(prefix.count))
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -399,27 +399,27 @@ struct ChatRoomView: View {
 
     private func handleBotCommand(_ command: String, conversation: [String]) async {
         guard !isAIResponding else {
-            await appendBotReply("我正在處理上一個請求，請稍後再試一次。")
+            await appendBotReply(L10n.text("我正在處理上一個請求，請稍後再試一次。"))
             return
         }
 
         guard !command.isEmpty else {
-            await appendBotReply("請問需要我幫忙什麼？你可以輸入「@機器人 你的問題」。")
+            await appendBotReply(L10n.text("請問需要我幫忙什麼？你可以輸入「@機器人 你的問題」。"))
             return
         }
 
-        if command.contains("分析溝通") {
+        if ["分析溝通", "分析專案", "analyze communication", "analyze project"].contains(where: { command.lowercased().contains($0) }) {
             guard conversation.count >= 2 else {
-                await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
+                await appendBotReply(L10n.text("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。"))
                 return
             }
-            await requestAICommunicationAnalysis(conversation: conversation)
+            await requestAIProjectAnalysis(conversation: conversation)
             return
         }
 
-        let queryPrefix = "幫我們查詢"
+        let queryPrefix = ["幫我們查詢", "Help us look this up"].first(where: { command.hasPrefix($0) })
         let explicitQuestion: String
-        if command.hasPrefix(queryPrefix) {
+        if let queryPrefix {
             explicitQuestion = String(command.dropFirst(queryPrefix.count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
@@ -428,7 +428,7 @@ struct ChatRoomView: View {
 
         if explicitQuestion.isEmpty {
             guard let latestMessage = conversation.last else {
-                await appendBotReply("請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。")
+                await appendBotReply(L10n.text("請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。"))
                 return
             }
             await requestAIAnswer(question: latestMessage, conversation: conversation)
@@ -461,16 +461,16 @@ struct ChatRoomView: View {
             switch shortcut {
             case .query:
                 guard let latestMessage = conversation.last else {
-                    await appendBotReply("請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。")
+                    await appendBotReply(L10n.text("請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。"))
                     return
                 }
                 await requestAIAnswer(question: latestMessage, conversation: conversation)
             case .analyze:
                 guard conversation.count >= 2 else {
-                    await appendBotReply("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。")
+                    await appendBotReply(L10n.text("目前對話還不足以分析溝通狀況，請先讓成員進行一些討論。"))
                     return
                 }
-                await requestAICommunicationAnalysis(conversation: conversation)
+                await requestAIProjectAnalysis(conversation: conversation)
             }
         }
     }
@@ -482,7 +482,7 @@ struct ChatRoomView: View {
                 id: messageID,
                 sender: model.profileName,
                 text: text,
-                time: Date.now.formatted(date: .omitted, time: .shortened),
+                time: Date.now.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(L10n.locale)),
                 isCurrentUser: true,
                 createdAt: .now,
                 deliveryState: .sending
@@ -543,12 +543,18 @@ struct ChatRoomView: View {
         }
     }
 
-    private func requestAICommunicationAnalysis(conversation: [String]) async {
+    private func requestAIProjectAnalysis(conversation: [String]) async {
         isAIResponding = true
         defer { isAIResponding = false }
         do {
             let generated = try await AppleIntelligenceService()
-                .analyzeCommunication(conversation: conversation)
+                .analyzeProject(
+                    groupName: group.name,
+                    groupDeadline: group.deadline,
+                    tasks: model.projectTasks.filter { $0.groupID == group.id },
+                    members: model.members.filter { group.memberIDs.contains($0.id) },
+                    conversation: conversation
+                )
             let analysis = model.saveCommunicationAnalysis(
                 groupID: group.id,
                 generated: generated
@@ -585,7 +591,7 @@ struct ChatRoomView: View {
         if let serviceError = error as? AppleIntelligenceServiceError {
             return serviceError.localizedDescription
         }
-        return "Apple Intelligence 暫時無法完成這次請求，請稍後再試。"
+        return L10n.text("Apple Intelligence 暫時無法完成這次請求，請稍後再試。")
     }
 }
 
@@ -598,8 +604,8 @@ private enum ChatShortcut: CaseIterable, Identifiable {
 
     var command: String {
         switch self {
-        case .query: "@機器人 幫我們查詢"
-        case .analyze: "@機器人 分析溝通"
+        case .query: L10n.text("@機器人 幫我們查詢")
+        case .analyze: L10n.text("@機器人 分析專案")
         }
     }
 
@@ -636,17 +642,17 @@ private struct ChatShortcutBar: View {
     }
 }
 
-/// 聊天室內的 AI 回覆卡；完整報告可在設定的 AI 戰情成績單查看。
+/// 聊天室內的 AI 回覆卡；完整報告可在專案結算查看。
 private struct ChatBotAnalysisCard: View {
     let analysis: CommunicationAnalysis
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("拆彈 AI 通訊官", systemImage: "sparkles")
+                Label(L10n.text("拆彈 AI 通訊官"), systemImage: "sparkles")
                     .font(.subheadline.weight(.black))
                 Spacer()
-                Text("\(analysis.score) 分")
+                Text(L10n.format("{0} 分", String(describing: analysis.score)))
                     .font(.headline.monospacedDigit().weight(.black))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -655,10 +661,10 @@ private struct ChatBotAnalysisCard: View {
             }
             Text(analysis.summary)
                 .font(.subheadline.weight(.semibold))
-            Text("完整報告已送至「設定 > 戰力報告」。")
+            Text(L10n.text("完整報告可至專案結算的「戰力報告」查看。"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.65))
-            Text(analysis.updatedAt.formatted(date: .omitted, time: .shortened))
+            Text(analysis.updatedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(L10n.locale)))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.5))
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -683,7 +689,7 @@ private struct ChatBotReplyBubble: View {
                 .clipShape(.circle)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("拆彈 AI 通訊官")
+                Text(L10n.text("拆彈 AI 通訊官"))
                     .font(.caption2.weight(.black))
                     .foregroundStyle(BombTheme.ink.opacity(0.62))
 
@@ -699,7 +705,7 @@ private struct ChatBotReplyBubble: View {
                             .stroke(BombTheme.ink, lineWidth: 2)
                     }
 
-                Text(createdAt.formatted(date: .omitted, time: .shortened))
+                Text(createdAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(L10n.locale)))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(BombTheme.ink.opacity(0.5))
             }

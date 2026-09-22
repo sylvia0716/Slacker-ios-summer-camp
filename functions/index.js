@@ -4,6 +4,9 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
 const { getAuth } = require("firebase-admin/auth");
 const { memberDisplayName } = require("./member-display-name");
+const { pokeNotification } = require("./poke-notification");
+const { getMessaging } = require("firebase-admin/messaging");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 
 initializeApp();
 
@@ -166,6 +169,31 @@ function normalizedUpdateSubtaskData(data) {
   };
 }
 
+function normalizedPokeData(data) {
+  requireExactKeys(data, ["groupID", "recipientUID", "style"]);
+  const groupID = normalizedUUID(data.groupID, "invalid-group-id", true);
+  const recipientUID = typeof data.recipientUID === "string" ? data.recipientUID.trim() : "";
+  const style = typeof data.style === "string" ? data.style : "";
+  if (!recipientUID || recipientUID.length > 128 || !["輕敲", "迷因轟炸", "警報催命"].includes(style)) {
+    throw callableError("invalid-argument", "Invalid poke.", "invalid-recipient");
+  }
+  return { groupID, recipientUID, style };
+}
+
+function normalizedDeviceData(data) {
+  requireExactKeys(data, data?.languageCode === undefined
+    ? ["deviceID", "token"] : ["deviceID", "token", "languageCode"]);
+  if (data.languageCode !== undefined && !["en", "zh-Hant"].includes(data.languageCode)) {
+    throw callableError("invalid-argument", "Invalid language.", "invalid-device");
+  }
+  const deviceID = typeof data.deviceID === "string" ? data.deviceID : "";
+  const token = typeof data.token === "string" ? data.token : "";
+  if (!deviceID || deviceID.length > 128 || !token || token.length > 4096) {
+    throw callableError("invalid-argument", "Invalid device.", "invalid-device");
+  }
+  return { deviceID, token, languageCode: data.languageCode || "zh-Hant" };
+}
+
 function makeInviteCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from(randomBytes(6), byte => alphabet[byte % alphabet.length]).join("");
@@ -271,6 +299,10 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
     }
 
     if (!memberSnapshot.exists) {
+      const groupDeadline = millis(groupSnapshot.data().deadline);
+      if (groupDeadline === null || groupDeadline <= Date.now()) {
+        throw callableError("failed-precondition", "This group is already closed.", "group-closed");
+      }
       transaction.create(memberRef, {
         userID,
         role: "member",
@@ -427,7 +459,81 @@ exports.updateSubtask = onCall({ region }, async (request) => {
   return { taskID: data.taskID, subtaskID: data.subtaskID, isComplete: data.isComplete, status };
 });
 
+exports.registerPokeDevice = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  const { deviceID, token, languageCode } = normalizedDeviceData(request.data);
+  await db.collection("users").doc(userID).collection("devices").doc(deviceID).set({
+    token,
+    languageCode,
+    platform: "ios",
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { registered: true };
+});
+
+exports.sendPoke = onCall({ region }, async (request) => {
+  const senderID = requireAuthenticatedUser(request);
+  const { groupID, recipientUID, style } = normalizedPokeData(request.data);
+  if (senderID === recipientUID) {
+    throw callableError("invalid-argument", "Cannot poke yourself.", "invalid-recipient");
+  }
+  const groupRef = db.collection("groups").doc(groupID);
+  return db.runTransaction(async (transaction) => {
+    const [group, sender, recipient, countSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(groupRef.collection("members").doc(senderID)),
+      transaction.get(groupRef.collection("members").doc(recipientUID)),
+      transaction.get(groupRef.collection("pokeCounts").doc(recipientUID)),
+    ]);
+    if (!group.exists || group.data()?.deleting === true) {
+      throw callableError("not-found", "Group not found.", "group-not-found");
+    }
+    if (sender.data()?.userID !== senderID || recipient.data()?.userID !== recipientUID) {
+      throw callableError("permission-denied", "Membership required.", "not-group-member");
+    }
+    const count = (countSnapshot.data()?.count || 0) + 1;
+    transaction.set(groupRef.collection("pokeCounts").doc(recipientUID), {
+      count,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.create(groupRef.collection("pokes").doc(randomUUID().toLowerCase()), {
+      senderID,
+      recipientID: recipientUID,
+      style,
+      pokeCount: count,
+      groupName: group.data().name || "你的群組",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { count };
+  });
+});
+
+exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID}/pokes/{pokeID}" }, async (event) => {
+  const poke = event.data?.data();
+  if (!poke?.recipientID || !poke?.groupName || !poke?.style || !Number.isInteger(poke?.pokeCount)) return;
+  const devices = await db.collection("users").doc(poke.recipientID).collection("devices").get();
+  const recipients = devices.docs.filter((device) => {
+    const token = device.data().token;
+    return typeof token === "string" && token.length > 0;
+  });
+  for (let offset = 0; offset < recipients.length; offset += 500) {
+    const batch = recipients.slice(offset, offset + 500);
+    const response = await getMessaging().sendEach(batch.map((device) => ({
+      token: device.data().token,
+      notification: pokeNotification(poke, device.data().languageCode),
+      data: { groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
+      apns: { payload: { aps: { sound: "default" } } },
+    })));
+    await Promise.all(response.responses.map((result, index) => {
+      if (result.success || !["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(result.error?.code)) return null;
+      return batch[index].ref.delete();
+    }));
+  }
+});
+
 Object.assign(exports, require('./group-membership'));
+Object.assign(exports, require('./peer-review'));
+
 
 // Confirm only the current cloud attachment; progress remains driven by subtasks.
 exports.confirmTaskAttachment = onCall({ region }, async request => {

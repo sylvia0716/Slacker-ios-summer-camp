@@ -8,9 +8,9 @@ enum DeliverableImageStoreError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidImage: "無法載入這張照片，請改選另一張"
-        case .compressionFailed: "照片處理失敗，請再試一次"
-        case .cacheUnavailable: "照片儲存失敗，請再試一次"
+        case .invalidImage: L10n.text("無法載入這張照片，請改選另一張")
+        case .compressionFailed: L10n.text("照片處理失敗，請再試一次")
+        case .cacheUnavailable: L10n.text("照片儲存失敗，請再試一次")
         }
     }
 }

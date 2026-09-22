@@ -15,6 +15,7 @@ struct DemoDataSnapshot {
     let tasks: [MissionTask]
     let agents: [Agent]
     let radar: [RadarMetric]
+    let communicationAnalyses: [UUID: CommunicationAnalysis]
 }
 
 enum DemoData {
@@ -129,7 +130,11 @@ enum DemoData {
                         collaborationScore: 4,
                         ideaScore: 4,
                         reliabilityScore: 4,
-                        comment: "",
+                        comment: reviewer.id == xiaoYu.id
+                            ? "合作時很可靠，也會主動回報進度。"
+                            : reviewer.id == miMi.id
+                                ? "討論時提供了很實用的想法。"
+                                : "遇到問題時願意一起找解法。",
                         submittedAt: deadline.addingTimeInterval(60)
                     )
                 }
@@ -141,6 +146,50 @@ enum DemoData {
             Group(id: summerCampGroupID, name: "iOS Summer Camp", deadline: summerCampDeadline, memberIDs: allMembers.map(\.id), taskIDs: summerCampTasks.map(\.id), inviteCode: "IOS100"),
             Group(id: circuitGroupID, name: "電子電路期末", deadline: circuitDeadline, memberIDs: allMembers.map(\.id), taskIDs: circuitTasks.map(\.id), inviteCode: "EE0073"),
             Group(id: maicGroupID, name: "MAIC 比賽", deadline: maicDeadline, memberIDs: allMembers.map(\.id), taskIDs: maicTasks.map(\.id), inviteCode: "MAIC24")
+        ]
+
+        func projectAnalysis(
+            groupID: UUID,
+            deadline: Date,
+            scores: (Int, Int, Int, Int, Int),
+            summary: String
+        ) -> CommunicationAnalysis {
+            let values = [scores.0, scores.1, scores.2, scores.3, scores.4]
+            return CommunicationAnalysis(
+                id: UUID(),
+                groupID: groupID,
+                score: values.reduce(0, +) / values.count,
+                summary: summary,
+                strength: "團隊能依分工推進任務，並在討論中形成具體下一步。",
+                suggestion: "下次可更完整記錄任務完成時間與跨成員支援，讓分析證據更充分。",
+                updatedAt: deadline.addingTimeInterval(120),
+                taskCompletionScore: scores.0,
+                discussionScore: scores.1,
+                collaborationScore: scores.2,
+                problemSolvingScore: scores.3,
+                reliabilityScore: scores.4
+            )
+        }
+
+        let communicationAnalyses = [
+            summerCampGroupID: projectAnalysis(
+                groupID: summerCampGroupID,
+                deadline: summerCampDeadline,
+                scores: (100, 82, 78, 84, 50),
+                summary: "任務全數完成，討論能形成明確行動；由於缺少完成時間紀錄，準時可靠採中性分數。"
+            ),
+            circuitGroupID: projectAnalysis(
+                groupID: circuitGroupID,
+                deadline: circuitDeadline,
+                scores: (73, 68, 64, 70, 50),
+                summary: "多數任務已有進展，但仍有交付缺口；準時可靠因證據不足採中性分數。"
+            ),
+            maicGroupID: projectAnalysis(
+                groupID: maicGroupID,
+                deadline: maicDeadline,
+                scores: (100, 86, 83, 88, 50),
+                summary: "團隊完成全部競賽任務，討論與問題處理紀錄完整；準時可靠因證據不足採中性分數。"
+            )
         ]
 
         return DemoDataSnapshot(
@@ -173,7 +222,8 @@ enum DemoData {
                 RadarMetric(title: "溝通", score: 0.92),
                 RadarMetric(title: "救火", score: 0.68),
                 RadarMetric(title: "合作", score: 0.88)
-            ]
+            ],
+            communicationAnalyses: communicationAnalyses
         )
     }
 }

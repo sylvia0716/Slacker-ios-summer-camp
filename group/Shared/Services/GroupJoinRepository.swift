@@ -29,17 +29,17 @@ enum GroupJoinError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated: "請先登入再加入群組。"
-        case .invalidCode: "找不到這組邀請碼，請確認後再試一次。"
-        case .inactiveCode: "這組邀請碼已失效。"
-        case .expiredCode: "這組邀請碼已過期。"
-        case .alreadyMember: "你已經是這個群組的成員。"
-        case .network: "網路連線異常，請確認網路後再試。"
-        case .permissionDenied: "目前帳號沒有加入這個群組的權限。"
-        case .invalidGroupData: "群組資料格式不正確，請聯絡群組建立者。"
-        case .unavailable: "目前無法加入群組，請稍後再試。"
-        case .invalidName: "請輸入 60 個字以內的群組名稱。"
-        case .invalidDeadline: "群組期限必須晚於目前時間。"
+        case .notAuthenticated: L10n.text("請先登入再加入群組。")
+        case .invalidCode: L10n.text("找不到這組邀請碼，請確認後再試一次。")
+        case .inactiveCode: L10n.text("這組邀請碼已失效。")
+        case .expiredCode: L10n.text("這組邀請碼已過期。")
+        case .alreadyMember: L10n.text("你已經是這個群組的成員。")
+        case .network: L10n.text("網路連線異常，請確認網路後再試。")
+        case .permissionDenied: L10n.text("目前帳號沒有加入這個群組的權限。")
+        case .invalidGroupData: L10n.text("群組資料格式不正確，請聯絡群組建立者。")
+        case .unavailable: L10n.text("目前無法加入群組，請稍後再試。")
+        case .invalidName: L10n.text("請輸入 60 個字以內的群組名稱。")
+        case .invalidDeadline: L10n.text("群組期限必須晚於目前時間。")
         }
     }
 }

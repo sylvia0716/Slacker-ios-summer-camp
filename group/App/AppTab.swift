@@ -8,9 +8,9 @@ enum AppTab: Hashable, CaseIterable {
 
     var title: String {
         switch self {
-        case .groups: "群組"
-        case .myTasks: "我的任務"
-        case .settings: "設定"
+        case .groups: L10n.text("群組")
+        case .myTasks: L10n.text("我的任務")
+        case .settings: L10n.text("設定")
         }
     }
 

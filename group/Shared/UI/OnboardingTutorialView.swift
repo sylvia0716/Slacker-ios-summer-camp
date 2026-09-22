@@ -167,9 +167,9 @@ struct OnboardingTutorialView: View {
             case .welcome:
                 SpotlightOverlay(
                     targetFrame: nil,
-                    title: "💣 歡迎來到 Group Bomb",
-                    description: "一起建立任務、\n分配工作、\n避免專案爆炸！",
-                    actionTitle: "開始拆彈",
+                    title: L10n.text("💣 歡迎來到 Oops Bomb"),
+                    description: L10n.text("一起建立任務、\n分配工作、\n避免專案爆炸！"),
+                    actionTitle: L10n.text("開始拆彈"),
                     action: {
                         self.step = .createGroup
                     },
@@ -179,8 +179,8 @@ struct OnboardingTutorialView: View {
             case .createGroup:
                 SpotlightOverlay(
                     targetFrame: targets[.createGroupButton],
-                    title: "建立你的第一個專案",
-                    description: "點選右上角的「新增」，設定專案名稱與 Deadline。",
+                    title: L10n.text("建立你的第一個專案"),
+                    description: L10n.text("點選右上角的「新增」，設定專案名稱與 Deadline。"),
                     actionTitle: nil,
                     action: nil,
                     onSkip: onSkip,
@@ -193,9 +193,9 @@ struct OnboardingTutorialView: View {
             case .inviteCode:
                 SpotlightOverlay(
                     targetFrame: targets[.inviteCode],
-                    title: "🔑 分享這組代碼",
-                    description: "邀請隊友加入你的拆彈任務。",
-                    actionTitle: "下一步",
+                    title: L10n.text("🔑 分享這組代碼"),
+                    description: L10n.text("邀請隊友加入你的拆彈任務。"),
+                    actionTitle: L10n.text("下一步"),
                     action: {
                         self.step = .publishTask
                     },
@@ -206,9 +206,9 @@ struct OnboardingTutorialView: View {
             case .publishTask:
                 SpotlightOverlay(
                     targetFrame: targets[.publishTask],
-                    title: "分配工作給隊友",
-                    description: "設定工作內容、負責人與 Deadline。好的分工，是避免爆炸的第一步。",
-                    actionTitle: "下一步",
+                    title: L10n.text("分配工作給隊友"),
+                    description: L10n.text("設定工作內容、負責人與 Deadline。好的分工，是避免爆炸的第一步。"),
+                    actionTitle: L10n.text("下一步"),
                     action: {
                         self.step = .memberProgress
                     },
@@ -218,9 +218,9 @@ struct OnboardingTutorialView: View {
             case .memberProgress:
                 SpotlightOverlay(
                     targetFrame: targets[.memberProgress],
-                    title: "查看每位隊員進度",
-                    description: "掌握待完成事項、已完成事項與成果證明。",
-                    actionTitle: "前往聊天室",
+                    title: L10n.text("查看每位隊員進度"),
+                    description: L10n.text("掌握待完成事項、已完成事項與成果證明。"),
+                    actionTitle: L10n.text("前往聊天室"),
                     action: {
                         self.step = .chatEntry
                     },
@@ -231,8 +231,8 @@ struct OnboardingTutorialView: View {
             case .chatEntry:
                 SpotlightOverlay(
                     targetFrame: targets[.chatButton],
-                    title: "開啟小隊聊天室",
-                    description: "點擊聊天室，認識 Bomb AI 協作方式。",
+                    title: L10n.text("開啟小隊聊天室"),
+                    description: L10n.text("點擊聊天室，認識 Bomb AI 協作方式。"),
                     actionTitle: nil,
                     action: nil,
                     onSkip: onSkip
@@ -242,8 +242,8 @@ struct OnboardingTutorialView: View {
                 SpotlightOverlay(
                     targetFrame: targets[.chatInput],
                     title: "🤖 @Bomb AI",
-                    description: "輸入：@Bomb AI 幫我們整理目前任務\n\nAI 可以協助發想點子、整理討論與提供下一步建議。",
-                    actionTitle: "完成訓練",
+                    description: L10n.text("輸入：@Bomb AI 幫我們整理目前任務\n\nAI 可以協助發想點子、整理討論與提供下一步建議。"),
+                    actionTitle: L10n.text("完成訓練"),
                     action: {
                         self.step = .completed
                     },
@@ -253,9 +253,9 @@ struct OnboardingTutorialView: View {
             case .completed:
                 SpotlightOverlay(
                     targetFrame: nil,
-                    title: "💣 任務準備完成！",
-                    description: "你已學會：\n✓ 建立專案\n✓ 分配任務\n✓ 查看進度\n✓ 與 AI 協作",
-                    actionTitle: "開始拆彈",
+                    title: L10n.text("💣 任務準備完成！"),
+                    description: L10n.text("你已學會：\n✓ 建立專案\n✓ 分配任務\n✓ 查看進度\n✓ 與 AI 協作"),
+                    actionTitle: L10n.text("開始拆彈"),
                     action: onFinish
                 )
             }
@@ -364,13 +364,13 @@ struct SpotlightOverlay: View {
                     .clipShape(.capsule)
                     .buttonStyle(.plain)
             } else {
-                Text("請點擊聚光燈位置繼續")
+                Text(L10n.text("請點擊聚光燈位置繼續"))
                     .font(.caption.weight(.black))
                     .foregroundStyle(BombTheme.red)
             }
 
             if let onSkip {
-                Button("跳過教學", action: onSkip)
+                Button(L10n.text("跳過教學"), action: onSkip)
                     .font(.subheadline.weight(.black))
                     .foregroundStyle(BombTheme.ink.opacity(0.7))
                     .frame(maxWidth: .infinity)

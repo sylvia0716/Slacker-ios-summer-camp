@@ -57,7 +57,10 @@ enum ChatRoomItem: Identifiable, Codable {
     var humanConversationLine: String? {
         guard case let .message(_, sender, text, _, _, _, _) = self,
               !text.hasPrefix("@機器人"),
-              !text.hasPrefix("＠機器人") else { return nil }
+              !text.hasPrefix("＠機器人"),
+                  !text.hasPrefix("@bot"),
+                  !text.hasPrefix("＠bot"),
+                  !text.hasPrefix("@Bomb AI") else { return nil }
         return "\(sender)：\(text)"
     }
 

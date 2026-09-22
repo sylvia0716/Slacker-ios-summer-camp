@@ -16,7 +16,7 @@ struct GroupCodeScanner: View {
             ScannerController(onRecognized: onRecognized, onFailure: onFailure)
                 .ignoresSafeArea()
 
-            Button("取消") { dismiss() }
+            Button(L10n.text("取消")) { dismiss() }
                 .font(.headline.weight(.black))
                 .foregroundStyle(BombTheme.ink)
                 .padding(.horizontal, 18)
@@ -80,7 +80,7 @@ private struct ScannerController: UIViewControllerRepresentable {
             guard !hasFinished else { return }
             hasFinished = true
             DispatchQueue.main.async { [onFailure] in
-                onFailure("無法啟動掃描，請確認相機權限，或手動輸入邀請碼。")
+                onFailure(L10n.text("無法啟動掃描，請確認相機權限，或手動輸入邀請碼。"))
             }
         }
 

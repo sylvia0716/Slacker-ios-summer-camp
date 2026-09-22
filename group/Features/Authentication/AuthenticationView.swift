@@ -1,14 +1,13 @@
 import SwiftUI
 
-/// Group Bomb 的 Email/Password 登入與註冊入口。
+/// Oops Bomb 的 Email/Password 登入與註冊入口。
 struct AuthenticationView: View {
     let session: AuthSessionStore
 
     @State private var mode = AuthenticationMode.signIn
     @State private var email = ""
     @State private var password = ""
-    @State private var passwordConfirmation = ""
-    @State private var localErrorMessage: String?
+    @State private var isPasswordVisible = false
     @State private var isPasswordResetPresented = false
     @FocusState private var focusedField: Field?
 
@@ -26,13 +25,62 @@ struct AuthenticationView: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
+        .environment(\.locale, Locale(identifier: session.language.rawValue))
         .onChange(of: mode) { _, _ in
-            localErrorMessage = nil
+            isPasswordVisible = false
             session.clearError()
         }
         .sheet(isPresented: $isPasswordResetPresented) {
             PasswordResetView(session: session, initialEmail: email)
         }
+    }
+
+    private var languageMenu: some View {
+        Menu {
+            Picker(L10n.text("介面語言"), selection: Binding(
+                get: { AppLanguageSettings.shared.preference },
+                set: { AppLanguageSettings.shared.preference = $0 }
+            )) {
+                ForEach(AppLanguagePreference.allCases) { preference in
+                    Text(preference.title).tag(preference)
+                }
+            }
+        } label: {
+            Image(systemName: "globe")
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(.circle)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .accessibilityLabel(L10n.text("介面語言"))
+        .disabled(session.isWorking)
+    }
+
+    private var modeSwitch: some View {
+        HStack(spacing: 3) {
+            ForEach(AuthenticationMode.allCases) { option in
+                Button {
+                    focusedField = nil
+                    withAnimation(.snappy(duration: 0.18)) { mode = option }
+                } label: {
+                    Text(session.text(option.title))
+                        .font(.subheadline.weight(.black))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(mode == option ? BombTheme.ink : BombTheme.paper)
+                        .background(mode == option ? BombTheme.yellow : .clear, in: Capsule())
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(mode == option ? [.isSelected] : [])
+            }
+        }
+        .padding(3)
+        .background(BombTheme.ink, in: Capsule())
+        .containerRelativeFrame(.horizontal) { width, _ in width * 0.60 }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(session.text("登入模式"))
+        .disabled(session.isWorking)
     }
 
     private var brandHeader: some View {
@@ -46,9 +94,10 @@ struct AuthenticationView: View {
                 .overlay(Circle().stroke(BombTheme.paper, lineWidth: 5))
                 .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
 
-            Text("GROUP BOMB")
+            Text(session.text("Oops Bomb"))
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
-            Text(mode == .signIn ? "登入後繼續拆彈" : "建立你的拆彈手帳號")
+            Text(session.text("一起拆彈，一起過關。"))
+                .multilineTextAlignment(.center)
                 .font(.headline)
         }
         .foregroundStyle(BombTheme.ink)
@@ -56,54 +105,47 @@ struct AuthenticationView: View {
 
     private var formCard: some View {
         VStack(spacing: 18) {
-            Picker("登入模式", selection: $mode) {
-                ForEach(AuthenticationMode.allCases) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
+            modeSwitch
+                .padding(.top, 12)
 
             VStack(spacing: 12) {
                 authenticationField(
-                    title: "電子郵件",
+                    title: session.text("電子郵件"),
                     symbol: "envelope.fill",
                     text: $email,
                     field: .email,
                     isSecure: false
                 )
                 authenticationField(
-                    title: "密碼",
+                    title: session.text("密碼"),
                     symbol: "lock.fill",
                     text: $password,
                     field: .password,
                     isSecure: true
                 )
 
+            }
+            .padding(.horizontal, 16)
+
+            HStack(spacing: 4) {
+                Spacer(minLength: 0)
+                languageMenu
                 if mode == .signIn {
-                    Button("忘記密碼？") {
+                    Button(session.text("忘記密碼？")) {
                         focusedField = nil
                         session.clearError()
                         isPasswordResetPresented = true
                     }
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(BombTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                     .buttonStyle(.plain)
-                }
-
-                if mode == .register {
-                    authenticationField(
-                        title: "再次輸入密碼",
-                        symbol: "lock.rotation",
-                        text: $passwordConfirmation,
-                        field: .passwordConfirmation,
-                        isSecure: true
-                    )
+                    .frame(minHeight: 44)
+                    .disabled(session.isWorking)
                 }
             }
 
-            if let message = localErrorMessage ?? session.errorMessage {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
+            if let message = session.errorMessage {
+                Label(session.text(message), systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(BombTheme.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,23 +156,23 @@ struct AuthenticationView: View {
             } label: {
                 SwiftUI.Group {
                     if session.isWorking {
-                        ProgressView().tint(BombTheme.yellow)
+                        ProgressView().tint(BombTheme.paper)
                     } else {
-                        Label(mode.actionTitle, systemImage: mode.actionSymbol)
+                        Label(session.text(mode.actionTitle), systemImage: mode.actionSymbol)
                     }
                 }
                 .font(.headline.weight(.black))
-                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.horizontal) { width, _ in width * 0.60 }
                 .frame(height: 52)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(BombTheme.yellow)
+            .foregroundStyle(BombTheme.paper)
             .background(BombTheme.ink)
             .clipShape(.capsule)
             .disabled(session.isWorking)
 
 #if DEBUG
-            Button("不登入，直接預覽 App") {
+            Button(session.text("不登入，直接預覽 App")) {
                 focusedField = nil
                 session.enterPreviewSession()
             }
@@ -154,17 +196,41 @@ struct AuthenticationView: View {
                 .frame(width: 24)
 
             SwiftUI.Group {
-                if isSecure {
+                if isSecure && !isPasswordVisible {
                     SecureField(title, text: text)
                 } else {
                     TextField(title, text: text)
                         .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
+                        .keyboardType(isSecure ? .default : .emailAddress)
                 }
             }
             .focused($focusedField, equals: field)
             .textContentType(field == .email ? .emailAddress : (mode == .register ? .newPassword : .password))
             .submitLabel(field == .email ? .next : .done)
+            .autocorrectionDisabled()
+
+            if isSecure {
+                Button {
+                    isPasswordVisible.toggle()
+                    focusedField = field
+                } label: {
+                    SwiftUI.Group {
+                        if isPasswordVisible {
+                            ClosedEyeIcon()
+                                .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                                .frame(width: 23, height: 23)
+                        } else {
+                            Image(systemName: "eye")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                    }
+                        .foregroundStyle(BombTheme.ink)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(session.text(isPasswordVisible ? "隱藏密碼" : "顯示密碼"))
+            }
         }
         .font(.body.weight(.semibold))
         .padding(.horizontal, 14)
@@ -176,13 +242,7 @@ struct AuthenticationView: View {
 
     private func submit() {
         focusedField = nil
-        localErrorMessage = nil
         session.clearError()
-
-        if mode == .register, password != passwordConfirmation {
-            localErrorMessage = "兩次輸入的密碼不一致。"
-            return
-        }
 
         Task {
             switch mode {
@@ -211,85 +271,89 @@ struct PasswordResetView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                if isSent {
-                    Image(systemName: "envelope.badge.fill")
-                        .font(.system(size: 44, weight: .black))
-                    Text("重設信已寄出")
-                        .font(.title2.weight(.black))
-                    Text("若此信箱已註冊，請從信件中的連結設定新密碼。")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.65))
-                        .multilineTextAlignment(.center)
+            ScrollView {
+                VStack(spacing: 20) {
+                    if isSent {
+                        Image(systemName: "envelope.badge.fill")
+                            .font(.system(size: 44, weight: .black))
+                        Text(session.text("重設信已寄出"))
+                            .font(.title2.weight(.black))
+                        Text(session.text("若此信箱已註冊，請從信件中的連結設定新密碼。"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BombTheme.ink.opacity(0.65))
+                            .multilineTextAlignment(.center)
 
-                    Button(completionTitle) { dismiss() }
-                        .font(.headline.weight(.black))
-                        .foregroundStyle(BombTheme.yellow)
-                        .frame(maxWidth: .infinity)
+                        Button(session.text(completionTitle)) { dismiss() }
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(BombTheme.yellow)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(BombTheme.ink)
+                            .clipShape(.capsule)
+                    } else {
+                        Text(session.text("輸入註冊時使用的電子郵件，我們會寄送密碼重設連結。"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BombTheme.ink.opacity(0.65))
+                            .multilineTextAlignment(.center)
+
+                        HStack(spacing: 12) {
+                            Image(systemName: "envelope.fill")
+                                .frame(width: 24)
+                            TextField(session.text("電子郵件"), text: $email)
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.emailAddress)
+                                .textContentType(.emailAddress)
+                                .focused($isEmailFocused)
+                                .submitLabel(.send)
+                                .onSubmit(sendResetEmail)
+                        }
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 14)
+
                         .frame(height: 52)
+                        .background(.white.opacity(0.6))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
+
+                        if let message = session.errorMessage {
+                            Label(session.text(message), systemImage: "exclamationmark.triangle.fill")
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(BombTheme.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Button(action: sendResetEmail) {
+                            SwiftUI.Group {
+                                if session.isWorking {
+                                    ProgressView().tint(BombTheme.yellow)
+                                } else {
+                                    Label(session.text("寄送重設信"), systemImage: "paperplane.fill")
+                                }
+                            }
+                            .font(.headline.weight(.black))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(BombTheme.yellow)
                         .background(BombTheme.ink)
                         .clipShape(.capsule)
-                } else {
-                    Text("輸入註冊時使用的電子郵件，我們會寄送密碼重設連結。")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.65))
-                        .multilineTextAlignment(.center)
-
-                    HStack(spacing: 12) {
-                        Image(systemName: "envelope.fill")
-                            .frame(width: 24)
-                        TextField("電子郵件", text: $email)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .focused($isEmailFocused)
-                            .submitLabel(.send)
-                            .onSubmit(sendResetEmail)
+                        .disabled(session.isWorking)
                     }
-                    .font(.body.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .frame(height: 52)
-                    .background(.white.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
-
-                    if let message = session.errorMessage {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .font(.footnote.weight(.bold))
-                            .foregroundStyle(BombTheme.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Button(action: sendResetEmail) {
-                        SwiftUI.Group {
-                            if session.isWorking {
-                                ProgressView().tint(BombTheme.yellow)
-                            } else {
-                                Label("寄送重設信", systemImage: "paperplane.fill")
-                            }
-                        }
-                        .font(.headline.weight(.black))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(BombTheme.yellow)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-                    .disabled(session.isWorking)
                 }
+                .foregroundStyle(BombTheme.ink)
+                .padding(20)
             }
-            .foregroundStyle(BombTheme.ink)
-            .padding(20)
-            .navigationTitle("忘記密碼")
+            .navigationTitle(session.text("忘記密碼"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(session.text("取消")) { dismiss() }
                         .disabled(session.isWorking)
                 }
             }
         }
+
         .interactiveDismissDisabled(session.isWorking)
         .presentationDetents([.medium, .large])
         .presentationBackground(BombTheme.paper)
@@ -323,5 +387,24 @@ private enum AuthenticationMode: String, CaseIterable, Identifiable {
 private enum Field: Hashable {
     case email
     case password
-    case passwordConfirmation
+}
+
+/// Matches the eyelid and lashes used on the password reset web page.
+private struct ClosedEyeIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.addCurve(to: CGPoint(x: 12, y: 15), control1: CGPoint(x: 3, y: 9), control2: CGPoint(x: 6, y: 15))
+        path.addCurve(to: CGPoint(x: 21, y: 9), control1: CGPoint(x: 18, y: 15), control2: CGPoint(x: 21, y: 9))
+        for (start, end) in [
+            (CGPoint(x: 5, y: 12), CGPoint(x: 3, y: 15)),
+            (CGPoint(x: 9, y: 14), CGPoint(x: 8, y: 18)),
+            (CGPoint(x: 15, y: 14), CGPoint(x: 16, y: 18)),
+            (CGPoint(x: 19, y: 12), CGPoint(x: 21, y: 15))
+        ] {
+            path.move(to: start)
+            path.addLine(to: end)
+        }
+        return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+    }
 }

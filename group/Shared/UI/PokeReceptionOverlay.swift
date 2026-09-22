@@ -32,7 +32,7 @@ struct PokeReceptionOverlay: View {
                 VStack(spacing: 8) {
                     Text(headline)
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
-                    Text("\(reception.groupName) 的隊友正在找你")
+                    Text(L10n.format("{0} 的隊友正在找你", String(describing: reception.groupName)))
                         .font(.headline.weight(.bold))
                     Text(countMessage)
                         .font(.subheadline.weight(.black))
@@ -40,7 +40,7 @@ struct PokeReceptionOverlay: View {
                 }
                 .multilineTextAlignment(.center)
 
-                Button("我回來了", action: onDismiss)
+                Button(L10n.text("我回來了"), action: onDismiss)
                     .font(.headline.weight(.black))
                     .foregroundStyle(BombTheme.ink)
                     .padding(.horizontal, 24)
@@ -67,7 +67,7 @@ struct PokeReceptionOverlay: View {
             withAnimation(.easeOut(duration: 1).repeatForever(autoreverses: false)) {
                 isPulsing = true
             }
-            withAnimation(.bouncy(duration: 0.25).repeatCount(6, autoreverses: true)) {
+            withAnimation(.bouncy(duration: 0.25).repeatForever(autoreverses: true)) {
                 isWobbling = true
             }
         }
@@ -83,14 +83,14 @@ struct PokeReceptionOverlay: View {
 
     private var headline: String {
         switch reception.style {
-        case .gentle: "有人戳你一下"
-        case .meme: "你被迷因轟炸了"
-        case .alarm: "進度警報！"
+        case .gentle: L10n.text("有人戳你一下")
+        case .meme: L10n.text("你被迷因轟炸了")
+        case .alarm: L10n.text("進度警報！")
         }
     }
 
     private var countMessage: String {
-        "這是第 \(reception.pokeCount) 下提醒"
+        L10n.format("這是第 {0} 下提醒", String(describing: reception.pokeCount))
     }
 
     private var effectColor: Color {
@@ -104,7 +104,7 @@ struct PokeReceptionOverlay: View {
 
 #Preview {
     PokeReceptionOverlay(
-        reception: PokeReception(groupName: "期末專案", pokeCount: 3, style: .alarm),
+        reception: PokeReception(groupName: L10n.text("期末專案"), pokeCount: 3, style: .alarm),
         onDismiss: { }
     )
 }

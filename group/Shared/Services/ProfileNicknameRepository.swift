@@ -40,11 +40,11 @@ enum NicknameError: LocalizedError, Equatable {
     case invalid, signedOut, accountChanged, partial, network
     var errorDescription: String? {
         switch self {
-        case .invalid: "暱稱需為 1 至 60 個字元，且不可包含換行或控制字元。"
-        case .signedOut: "請先登入再儲存暱稱。"
-        case .accountChanged: "帳號已變更，請重新編輯。"
-        case .partial: "帳號暱稱已儲存，但部分群組尚未同步。請再次按儲存重試。"
-        case .network: "暱稱儲存失敗，請確認網路後重試。"
+        case .invalid: L10n.text("暱稱需為 1 至 60 個字元，且不可包含換行或控制字元。")
+        case .signedOut: L10n.text("請先登入再儲存暱稱。")
+        case .accountChanged: L10n.text("帳號已變更，請重新編輯。")
+        case .partial: L10n.text("帳號暱稱已儲存，但部分群組尚未同步。請再次按儲存重試。")
+        case .network: L10n.text("暱稱儲存失敗，請確認網路後重試。")
         }
     }
 }

@@ -41,9 +41,9 @@ enum TaskProgressError: LocalizedError {
     case permission, changed, unavailable
     var errorDescription: String? {
         switch self {
-        case .permission: "目前帳號沒有更新此任務的權限。"
-        case .changed: "請先完成所有子任務；若成果已更換，請重新整理後確認。"
-        case .unavailable: "任務同步服務尚未就緒，請稍後再試。"
+        case .permission: L10n.text("目前帳號沒有更新此任務的權限。")
+        case .changed: L10n.text("請先完成所有子任務；若成果已更換，請重新整理後確認。")
+        case .unavailable: L10n.text("任務同步服務尚未就緒，請稍後再試。")
         }
     }
 }

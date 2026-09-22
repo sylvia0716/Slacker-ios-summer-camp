@@ -168,13 +168,13 @@ enum AttachmentRepositoryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            "請先登入再操作成果附件。"
+            L10n.text("請先登入再操作成果附件。")
         case .uploaderMismatch:
-            "目前帳號與附件上傳者不一致。"
+            L10n.text("目前帳號與附件上傳者不一致。")
         case .notGroupMember:
-            "你不是這個群組的成員，無法上傳成果。"
+            L10n.text("你不是這個群組的成員，無法上傳成果。")
         case .membershipCheckFailed:
-            "目前無法確認群組資格，請檢查網路後再試一次。"
+            L10n.text("目前無法確認群組資格，請檢查網路後再試一次。")
         }
     }
 }

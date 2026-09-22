@@ -47,7 +47,7 @@ struct PublishTaskSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("發布任務")
+                    Text(L10n.text("發布任務"))
                         .font(.system(.title2, design: .rounded, weight: .black))
 
                     taskFields
@@ -82,7 +82,7 @@ struct PublishTaskSheet: View {
     private var subtaskFields: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                fieldLabel("子任務", isRequired: true)
+                fieldLabel(L10n.text("子任務"), isRequired: true)
                 Spacer()
                 Text("\(subtaskDrafts.count) / 10")
                     .font(.caption2.monospacedDigit().weight(.black))
@@ -91,7 +91,7 @@ struct PublishTaskSheet: View {
 
             ForEach($subtaskDrafts) { $draft in
                 HStack(spacing: 9) {
-                    TextField("例如「整理簡報架構」", text: $draft.title)
+                    TextField(L10n.text("例如「整理簡報架構」"), text: $draft.title)
                         .textInputAutocapitalization(.never)
                         .inputFieldStyle()
 
@@ -107,7 +107,7 @@ struct PublishTaskSheet: View {
                                 .clipShape(.circle)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("刪除子任務")
+                        .accessibilityLabel(L10n.text("刪除子任務"))
                     }
                 }
             }
@@ -116,14 +116,14 @@ struct PublishTaskSheet: View {
                 Button {
                     subtaskDrafts.append(SubtaskDraft())
                 } label: {
-                    Label("新增子任務", systemImage: "plus.circle.fill")
+                    Label(L10n.text("新增子任務"), systemImage: "plus.circle.fill")
                         .font(.subheadline.weight(.black))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(BombTheme.ink)
             }
 
-            Text("每項子任務會平均計入任務進度")
+            Text(L10n.text("每項子任務會平均計入任務進度"))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.55))
         }
@@ -132,15 +132,15 @@ struct PublishTaskSheet: View {
     private var taskFields: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("任務名稱", isRequired: true)
-                TextField("例如「製作競品分析」", text: $title)
+                fieldLabel(L10n.text("任務名稱"), isRequired: true)
+                TextField(L10n.text("例如「製作競品分析」"), text: $title)
                     .textInputAutocapitalization(.never)
                     .inputFieldStyle()
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("任務說明", isRequired: false)
-                TextField("例如「整理三個競品的功能與差異」", text: $detail, axis: .vertical)
+                fieldLabel(L10n.text("任務說明"), isRequired: false)
+                TextField(L10n.text("例如「整理三個競品的功能與差異」"), text: $detail, axis: .vertical)
                     .lineLimit(2...4)
                     .inputFieldStyle()
             }
@@ -149,7 +149,7 @@ struct PublishTaskSheet: View {
 
     private var assigneePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            fieldLabel("負責人", isRequired: true)
+            fieldLabel(L10n.text("負責人"), isRequired: true)
 
             ScrollView(.horizontal) {
                 HStack(spacing: 10) {
@@ -205,10 +205,10 @@ struct PublishTaskSheet: View {
 
     private var deadlinePicker: some View {
         VStack(alignment: .leading, spacing: 7) {
-            fieldLabel("截止時間", isRequired: true)
+            fieldLabel(L10n.text("截止時間"), isRequired: true)
 
             DatePicker(
-                "選擇日期與時間",
+                L10n.text("選擇日期與時間"),
                 selection: $deadline,
                 in: allowedDeadlineRange,
                 displayedComponents: [.date, .hourAndMinute]
@@ -233,12 +233,12 @@ struct PublishTaskSheet: View {
 
     private var publishSummary: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("發布摘要")
+            Text(L10n.text("發布摘要"))
                 .font(.subheadline.weight(.black))
-            summaryRow(label: "任務", value: trimmedTitle.isEmpty ? "尚未填寫" : trimmedTitle)
-            summaryRow(label: "子任務", value: "\(filledSubtaskCount) 項")
-            summaryRow(label: "負責人", value: selectedMember?.name ?? "尚未選擇")
-            summaryRow(label: "截止", value: deadline.formatted(date: .abbreviated, time: .shortened))
+            summaryRow(label: L10n.text("任務"), value: trimmedTitle.isEmpty ? L10n.text("尚未填寫") : trimmedTitle)
+            summaryRow(label: L10n.text("子任務"), value: L10n.format("{0} 項", String(describing: filledSubtaskCount)))
+            summaryRow(label: L10n.text("負責人"), value: selectedMember?.name ?? L10n.text("尚未選擇"))
+            summaryRow(label: L10n.text("截止"), value: deadline.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .comicCard()
@@ -247,7 +247,7 @@ struct PublishTaskSheet: View {
     private var actionBar: some View {
         VStack(spacing: 6) {
             Button(action: publish) {
-                Text(isPublishing ? "發布中…" : "發布任務")
+                Text(isPublishing ? L10n.text("發布中…") : L10n.text("發布任務"))
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -259,7 +259,7 @@ struct PublishTaskSheet: View {
             .disabled(!canPublish || isPublishing)
             .opacity(canPublish && !isPublishing ? 1 : 0.42)
 
-            Button("取消", action: onCancel)
+            Button(L10n.text("取消"), action: onCancel)
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.ink)
                 .buttonStyle(.plain)
@@ -294,8 +294,8 @@ struct PublishTaskSheet: View {
     }
 
     private var deadlineError: String? {
-        if deadline <= Date.now { return "截止時間必須晚於目前時間" }
-        if deadline > group.deadline { return "截止時間不可晚於群組總截止時間" }
+        if deadline <= Date.now { return L10n.text("截止時間必須晚於目前時間") }
+        if deadline > group.deadline { return L10n.text("截止時間不可晚於群組總截止時間") }
         return nil
     }
 
@@ -313,9 +313,11 @@ struct PublishTaskSheet: View {
     private func fieldLabel(_ title: String, isRequired: Bool) -> some View {
         HStack(spacing: 4) {
             Text(title)
-            Text(isRequired ? "必填" : "選填")
-                .font(.caption2.weight(.black))
-                .foregroundStyle(isRequired ? BombTheme.red : BombTheme.ink.opacity(0.5))
+            if isRequired {
+                Text("＊")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+            }
         }
         .font(.subheadline.weight(.black))
     }
