@@ -27,6 +27,28 @@ struct NotificationSettingsView: View {
                         .comicCard()
                         .disabled(!model.notificationsEnabled)
                     }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(L10n.text("提醒時間")).font(.title2.weight(.black))
+                        VStack(alignment: .leading, spacing: 8) {
+                            DatePicker(
+                                L10n.text("任務與專案提醒時間"),
+                                selection: $model.deadlineReminderTime,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .font(.body.bold())
+
+                            Text(L10n.text("截止提醒會在指定時間送出；戳戳與互評仍會即時提醒。"))
+                                .font(.caption)
+                                .foregroundStyle(BombTheme.ink.opacity(0.6))
+                        }
+                        .comicCard()
+                        .disabled(
+                            !model.notificationsEnabled
+                                || (!model.notificationCategories.tasks && !model.notificationCategories.projects)
+                        )
+                    }
+
                 }
                 .foregroundStyle(BombTheme.ink)
                 .tint(BombTheme.green)

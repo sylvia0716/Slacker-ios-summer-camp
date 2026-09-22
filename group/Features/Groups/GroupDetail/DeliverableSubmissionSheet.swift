@@ -52,17 +52,9 @@ private final class DeliverableSubmissionStore {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw DeliverableImageStoreError.invalidImage
             }
-            let result = try DeliverableImageStore.compressedJPEG(from: data)
-            guard result.data.count <= AttachmentUploadService.maximumFileSize else {
-                throw AttachmentUploadError.fileTooLarge
-            }
-            preparedAttachment = PreparedAttachment(
-                data: result.data,
-                originalFilename: "photo.jpg",
-                contentType: "image/jpeg",
-                kind: .image
-            )
-            selectedFilename = L10n.text("成果照片.jpg")
+            let prepared = try AttachmentDocumentReader.readPhoto(data)
+            preparedAttachment = prepared
+            selectedFilename = prepared.originalFilename
             state = .waiting
         } catch {
             clearPreparedSelection()
@@ -74,7 +66,7 @@ private final class DeliverableSubmissionStore {
         state = .preparing
         do {
             let prepared = try await Task.detached(priority: .userInitiated) {
-                try Self.readDocument(at: url)
+                try AttachmentDocumentReader.read(at: url)
             }.value
             preparedAttachment = prepared
             selectedFilename = prepared.originalFilename
@@ -151,49 +143,6 @@ private final class DeliverableSubmissionStore {
         state = .failure(L10n.text("無法讀取選取的檔案，請重新選擇。"))
     }
 
-    nonisolated private static func readDocument(at url: URL) throws -> PreparedAttachment {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess { url.stopAccessingSecurityScopedResource() }
-        }
-
-        let filename = url.lastPathComponent
-        let fileExtension = url.pathExtension.lowercased()
-        guard let attributes = Self.documentAttributes(for: fileExtension) else {
-            throw AttachmentUploadError.unsupportedFileType
-        }
-
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        if let fileSize = values.fileSize,
-           fileSize > AttachmentUploadService.maximumFileSize {
-            throw AttachmentUploadError.fileTooLarge
-        }
-
-        let data = try Data(contentsOf: url, options: .mappedIfSafe)
-        guard data.count <= AttachmentUploadService.maximumFileSize else {
-            throw AttachmentUploadError.fileTooLarge
-        }
-        return PreparedAttachment(
-            data: data,
-            originalFilename: filename,
-            contentType: attributes.contentType,
-            kind: attributes.kind
-        )
-    }
-
-    nonisolated private static func documentAttributes(
-        for fileExtension: String
-    ) -> (contentType: String, kind: AttachmentKind)? {
-        switch fileExtension {
-        case "pdf": ("application/pdf", .pdf)
-        case "pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", .presentation)
-        case "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", .document)
-        case "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", .spreadsheet)
-        case "zip": ("application/zip", .archive)
-        default: nil
-        }
-    }
-
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError,
            let description = localized.errorDescription {
@@ -217,7 +166,7 @@ struct DeliverableSubmissionSheet: View {
     @State private var detail = ""
     @State private var link = ""
 
-    private static let allowedDocumentTypes: [UTType] = ["pdf", "pptx", "docx", "xlsx", "zip"]
+    private static let allowedDocumentTypes: [UTType] = ["png", "jpg", "jpeg", "pdf", "pptx", "docx", "xlsx", "zip"]
         .compactMap { UTType(filenameExtension: $0) }
 
     var body: some View {
@@ -333,7 +282,7 @@ struct DeliverableSubmissionSheet: View {
                 ? store.preparedAttachment?.data
                 : nil
             let pickerTitle = store.state == .preparing ? L10n.text("正在處理照片…") : L10n.text("選擇照片")
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+            PhotosPicker(selection: $selectedPhoto, matching: .images, preferredItemEncoding: .current) {
                 PhotoSelectionLabel(previewData: previewData, title: pickerTitle)
             }
             .buttonStyle(.plain)
@@ -343,7 +292,7 @@ struct DeliverableSubmissionSheet: View {
             Button { showsFileImporter = true } label: {
                 pickerPlaceholder(
                     icon: "doc.badge.plus",
-                    title: store.selectedFilename ?? L10n.text("選擇 PDF、PPTX、DOCX、XLSX 或 ZIP")
+                    title: store.selectedFilename ?? L10n.text("選擇 PNG、JPG、PDF、Office 或 ZIP")
                 )
             }
             .buttonStyle(.plain)

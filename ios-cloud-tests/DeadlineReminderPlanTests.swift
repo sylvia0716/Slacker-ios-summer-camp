@@ -80,4 +80,25 @@ struct DeadlineReminderPlanTests {
         task.cloudStatus = .completed
         #expect(plan([group], [task]).allSatisfy { $0.taskID == nil })
     }
+
+    @Test func configuredTimeMovesDeadlineRemindersToChosenClockTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let group = group()
+        let result = DeadlineReminderPlan.make(
+            groups: [group],
+            tasks: [],
+            memberID: memberID,
+            uid: "A",
+            now: now,
+            reminderTime: DateComponents(hour: 9, minute: 30),
+            calendar: calendar
+        )
+        #expect(!result.isEmpty)
+        #expect(result.allSatisfy {
+            let components = calendar.dateComponents([.hour, .minute], from: $0.fireDate)
+            return components.hour == 9 && components.minute == 30
+        })
+        #expect(result.allSatisfy { $0.fireDate < group.deadline })
+    }
 }

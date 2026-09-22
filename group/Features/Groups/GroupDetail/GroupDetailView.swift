@@ -61,12 +61,17 @@ struct GroupDetailView: View {
 
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 18) {
-                                groupIdentity
+                                VStack(alignment: .leading, spacing: 12) {
+                                    groupIdentity
+                                    if deadlineOutcome(now: context.date) == .active {
+                                        countdownCard(now: context.date)
+                                    } else {
+                                        settlementSection(outcome: deadlineOutcome(now: context.date))
+                                    }
+                                }
+
                                 if deadlineOutcome(now: context.date) == .active {
-                                    countdownCard(now: context.date)
                                     memberSection
-                                } else {
-                                    settlementSection(outcome: deadlineOutcome(now: context.date))
                                 }
                                 Button(role: .destructive) {
                                     showsLeaveConfirmation = true
@@ -116,28 +121,6 @@ struct GroupDetailView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
-                    if shouldShowExplosionMeme(now: context.date) {
-                        ExplosionMemeOverlay(
-                            groupName: group.name,
-                            progress: model.projectProgress(for: group.id),
-                            incompleteTaskCount: model.projectTasks.filter {
-                                $0.groupID == group.id && $0.progress < 100
-                            }.count,
-                            onDismiss: dismissOutcomeMeme
-                        )
-                        .zIndex(25)
-                        .transition(.scale(scale: 0.16, anchor: .topTrailing).combined(with: .opacity))
-                    }
-
-                    if shouldShowSuccessMeme(now: context.date) {
-                        SuccessMemeOverlay(
-                            groupName: group.name,
-                            onDismiss: dismissOutcomeMeme
-                        )
-                        .zIndex(25)
-                        .transition(.scale(scale: 0.16, anchor: .topTrailing).combined(with: .opacity))
-                    }
-
 #if DEBUG
                     if showsDebugPanel {
                         debugPanel
@@ -146,8 +129,6 @@ struct GroupDetailView: View {
                     }
 #endif
                 }
-                .animation(.snappy, value: shouldShowExplosionMeme(now: context.date))
-                .animation(.snappy, value: shouldShowSuccessMeme(now: context.date))
                 .onChange(of: deadlineOutcome(now: context.date)) { oldValue, newValue in
                     if oldValue == .active, newValue != .active {
                         presentOutcomeMemeIfNeeded(outcome: newValue)
@@ -210,6 +191,29 @@ struct GroupDetailView: View {
             .zIndex(100)
         }
         .animation(.bouncy, value: pokeButtonEmoji)
+        .overlay {
+            if shouldShowExplosionMeme(now: .now) {
+                ExplosionMemeOverlay(
+                    groupName: group.name,
+                    progress: model.projectProgress(for: group.id),
+                    incompleteTaskCount: model.projectTasks.filter {
+                        $0.groupID == group.id && $0.progress < 100
+                    }.count,
+                    onDismiss: dismissOutcomeMeme
+                )
+                .transition(.opacity)
+                .zIndex(200)
+            } else if shouldShowSuccessMeme(now: .now) {
+                SuccessMemeOverlay(
+                    groupName: group.name,
+                    onDismiss: dismissOutcomeMeme
+                )
+                .transition(.opacity)
+                .zIndex(200)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: shouldShowExplosionMeme(now: .now))
+        .animation(.easeOut(duration: 0.2), value: shouldShowSuccessMeme(now: .now))
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
@@ -239,7 +243,7 @@ struct GroupDetailView: View {
     }
 
     private var topBar: some View {
-        BombHeader(title: L10n.text("專案任務"), subtitle: currentGroup.name) {
+        BombHeader(title: L10n.text("專案任務")) {
             Button(action: dismiss.callAsFunction) {
                 Image(systemName: "chevron.left")
             }
@@ -567,7 +571,7 @@ struct GroupDetailView: View {
               !UserDefaults.standard.bool(forKey: outcomeMemeSeenKey) else { return }
 
         reviewDeferred = true
-        withAnimation(.snappy) {
+        withAnimation(.easeOut(duration: 0.2)) {
             showsExplosionMeme = outcome == .incomplete
             showsSuccessMeme = outcome == .completed
         }
@@ -576,7 +580,7 @@ struct GroupDetailView: View {
     private func dismissOutcomeMeme() {
         UserDefaults.standard.set(true, forKey: outcomeMemeSeenKey)
         reviewDeferred = true
-        withAnimation(.snappy) {
+        withAnimation(.easeOut(duration: 0.2)) {
             showsExplosionMeme = false
             showsSuccessMeme = false
         }
@@ -587,7 +591,7 @@ struct GroupDetailView: View {
         guard outcome != .active else { return }
 
         reviewDeferred = true
-        withAnimation(.snappy) {
+        withAnimation(.easeOut(duration: 0.2)) {
             showsExplosionMeme = outcome == .incomplete
             showsSuccessMeme = outcome == .completed
         }
@@ -674,38 +678,49 @@ struct GroupDetailView: View {
     }
 
     private var groupIdentity: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(currentGroup.name)
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                Text(L10n.format("群組代碼：{0}", String(describing: currentGroup.inviteCode)))
-                    .font(.subheadline.weight(.black))
-                    .lineLimit(1)
-
                 Button(action: copyInviteCode) {
-                    Label(L10n.text("複製"), systemImage: "doc.on.doc.fill")
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
+                    HStack(spacing: 5) {
+                        Text(showsCopiedFeedback
+                            ? L10n.format("已複製：{0}", String(describing: currentGroup.inviteCode))
+                            : L10n.format("群組代碼：{0}", String(describing: currentGroup.inviteCode)))
+                        Image(systemName: showsCopiedFeedback ? "checkmark" : "doc.on.doc")
+                            .font(.caption2.weight(.black))
+                    }
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(showsCopiedFeedback ? BombTheme.green : BombTheme.ink)
+                    .lineLimit(1)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(showsCopiedFeedback
+                    ? L10n.text("群組代碼已複製")
+                    : L10n.format("複製群組代碼 {0}", String(describing: currentGroup.inviteCode)))
+
+                Spacer(minLength: 0)
 
                 ShareLink(
-                    item: L10n.format("加入「{0}」的群組，邀請碼：{1}", String(describing: currentGroup.name), String(describing: currentGroup.inviteCode))
+                    item: L10n.format(
+                        "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}",
+                        String(describing: currentGroup.name),
+                        String(describing: currentGroup.inviteCode)
+                    )
                 ) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
+                        .frame(width: 34, height: 34)
                         .background(BombTheme.ink)
-                        .clipShape(.capsule)
+                        .clipShape(.circle)
+                        .frame(width: 44, height: 44)
                 }
+                .accessibilityLabel(L10n.text("分享群組邀請"))
 
                 Menu {
                     Button(L10n.text("修改群組名稱"), systemImage: "pencil") {
@@ -721,10 +736,10 @@ struct GroupDetailView: View {
                     Image(systemName: "pencil")
                         .font(.caption.weight(.black))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
+                        .frame(width: 34, height: 34)
                         .background(BombTheme.ink)
-                        .clipShape(.capsule)
+                        .clipShape(.circle)
+                        .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel(L10n.text("修改群組"))
             }
@@ -732,13 +747,6 @@ struct GroupDetailView: View {
                 .inviteCode,
                 enabled: tutorialStep?.wrappedValue == .inviteCode
             )
-
-            if showsCopiedFeedback {
-                Text(L10n.text("群組代碼已複製"))
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(BombTheme.green)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
     }
 
@@ -747,7 +755,7 @@ struct GroupDetailView: View {
             HStack(spacing: 8) {
                 Image(systemName: "timer")
                     .foregroundStyle(BombTheme.yellow)
-                Text(L10n.format("行動代號：{0}", String(describing: missionName)))
+                Text(L10n.text("專案倒數"))
                     .font(.headline.weight(.black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -887,12 +895,6 @@ struct GroupDetailView: View {
 
     private var isGroupDeadlinePassed: Bool {
         currentGroup.deadline <= .now
-    }
-
-    private var missionName: String {
-        let name = currentGroup.name.replacingOccurrences(of: L10n.text("拆彈小隊"), with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? currentGroup.name : name
     }
 
     private func remainingTime(now: Date) -> String {
@@ -1121,7 +1123,7 @@ private struct ExplosionMemeOverlay: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
                 .frame(maxWidth: 560)
-                .frame(maxHeight: max(320, proxy.size.height - 32))
+                .frame(maxHeight: max(320, proxy.size.height - 64))
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 16)
@@ -1260,7 +1262,7 @@ private struct SuccessMemeOverlay: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
                 .frame(maxWidth: 560)
-                .frame(maxHeight: max(320, proxy.size.height - 32))
+                .frame(maxHeight: max(320, proxy.size.height - 64))
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 16)

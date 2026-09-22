@@ -72,9 +72,16 @@ struct BombHeader<Leading: View, Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            leading
-                .frame(minWidth: 44, alignment: .leading)
+        ZStack {
+            HStack(spacing: 12) {
+                leading
+                    .frame(minWidth: 44, alignment: .leading)
+
+                Spacer(minLength: 12)
+
+                trailing
+                    .frame(minWidth: 44, alignment: .trailing)
+            }
 
             VStack(spacing: 1) {
                 Text(title)
@@ -89,9 +96,8 @@ struct BombHeader<Leading: View, Trailing: View>: View {
                 }
             }
             .frame(maxWidth: .infinity)
-
-            trailing
-                .frame(minWidth: 44, alignment: .trailing)
+            .padding(.horizontal, 112)
+            .allowsHitTesting(false)
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.horizontal, 16)

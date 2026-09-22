@@ -71,4 +71,3 @@ struct NotificationTestView: View {
         }
     }
 }
-

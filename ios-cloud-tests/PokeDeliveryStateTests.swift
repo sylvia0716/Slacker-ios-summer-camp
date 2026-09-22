@@ -69,4 +69,18 @@ struct PokeDeliveryStateTests {
             #expect(!PokeDeliveryState(defaults: defaults).notificationsEnabled)
         }
     }
+
+    @Test func deadlineReminderTimeSurvivesRelaunch() {
+        withState { state, defaults in
+            var components = DateComponents()
+            components.calendar = .current
+            components.hour = 18
+            components.minute = 30
+            state.deadlineReminderTime = components.date!
+            let restored = PokeDeliveryState(defaults: defaults)
+            let restoredComponents = Calendar.current.dateComponents([.hour, .minute], from: restored.deadlineReminderTime)
+            #expect(restoredComponents.hour == 18)
+            #expect(restoredComponents.minute == 30)
+        }
+    }
 }

@@ -14,7 +14,8 @@ enum DeadlineReminderPlan {
     static let identifierPrefix = "deadline-reminder."
 
     static func make(groups: [Group], tasks: [ProjectTask], memberID: UUID,
-                     uid: String, now: Date, completedReviewGroupIDs: Set<UUID>? = nil) -> [DeadlineReminder] {
+                     uid: String, now: Date, reminderTime: DateComponents? = nil,
+                     completedReviewGroupIDs: Set<UUID>? = nil, calendar: Calendar = .current) -> [DeadlineReminder] {
         let joinedGroups = groups.filter { $0.memberIDs.contains(memberID) }
         let groupIDs = Set(joinedGroups.map(\.id))
         var reminders: [DeadlineReminder] = []
@@ -23,13 +24,26 @@ enum DeadlineReminderPlan {
         func append(id: UUID, name: String, deadline: Date, groupID: UUID, isTask: Bool) {
             guard deadline < .distantFuture else { return }
             for offset in offsets {
-                let fireDate = deadline.addingTimeInterval(-Double(offset.hours) * 3600)
-                guard fireDate > now else { continue }
+                let candidateDate = deadline.addingTimeInterval(-Double(offset.hours) * 3600)
+                let fireDate: Date
+                if let reminderTime, let hour = reminderTime.hour, let minute = reminderTime.minute {
+                    fireDate = calendar.date(
+                        bySettingHour: hour,
+                        minute: minute,
+                        second: 0,
+                        of: candidateDate
+                    ) ?? candidateDate
+                } else {
+                    fireDate = candidateDate
+                }
+                guard fireDate > now, fireDate < deadline else { continue }
                 let kind = isTask ? "task" : "project"
                 reminders.append(DeadlineReminder(
                     id: "\(identifierPrefix)\(uid).\(kind).\(id.uuidString).\(offset.hours)",
                     title: isTask ? L10n.text("我的任務即將到期") : L10n.text("專案倒數提醒"),
-                    body: L10n.format("「{0}」將在 {1}後截止。", String(describing: name), String(describing: offset.label)),
+                    body: reminderTime == nil
+                        ? L10n.format("「{0}」將在 {1}後截止。", String(describing: name), String(describing: offset.label))
+                        : L10n.format("「{0}」即將截止，請留意進度。", String(describing: name)),
                     fireDate: fireDate, groupID: groupID, taskID: isTask ? id : nil
                 ))
             }
