@@ -752,3 +752,39 @@
 "綁定 Email 以跨裝置同步" = "Link an email to sync across devices";
 "綁定 Email" = "Link email";
 "保留目前資料並開啟跨裝置登入" = "Keep your data and enable cross-device sign-in";
+
+"{0} 的離開前任務" = "{0}’s tasks before leaving";
+
+"已計入專案進度" = "Included in project progress";
+
+"已排除專案進度" = "Excluded from project progress";
+
+"目前計入專案進度，等待組長決定" = "Included for now; awaiting leader decision";
+
+"保留計入" = "Keep included";
+
+"排除計算" = "Exclude from progress";
+
+"確認組長人選" = "Confirm leader selection";
+
+"選擇 {0} 擔任組長" = "Select {0} as leader";
+
+"投票選組長" = "Vote for a leader";
+
+"需 {0} 票當選，可更改投票" = "{0} votes required; you can change your vote";
+
+"更換組長" = "Change leader";
+
+"{0} 票" = "{0} votes";
+
+"其他成員加入後即可更換組長" = "You can change the leader after others join";
+
+"建立者先暫任組長，成員加入後可更換" = "The creator leads initially; you can change the leader after others join";
+
+"編輯附件" = "Edit attachments";
+
+"新增附件" = "Add attachment";
+
+"替換檔案" = "Replace file";
+
+"新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "The new file was uploaded, but the old attachment could not be removed. Please delete the old attachment again.";

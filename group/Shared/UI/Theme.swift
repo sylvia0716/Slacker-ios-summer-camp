@@ -26,6 +26,7 @@ struct ComicCard: ViewModifier {
         content.padding(16).background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 3))
+            .compositingGroup()
             .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 }
@@ -52,17 +53,20 @@ struct BombHeader<Leading: View, Trailing: View>: View {
 
     let title: String
     let subtitle: String?
+    let wrapsTitle: Bool
     @ViewBuilder let leading: Leading
     @ViewBuilder let trailing: Trailing
 
     init(
         title: String,
         subtitle: String? = nil,
+        wrapsTitle: Bool = false,
         @ViewBuilder leading: () -> Leading,
         @ViewBuilder trailing: () -> Trailing
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.wrapsTitle = wrapsTitle
         self.leading = leading()
         self.trailing = trailing()
     }
@@ -86,8 +90,9 @@ struct BombHeader<Leading: View, Trailing: View>: View {
             VStack(spacing: 1) {
                 Text(title)
                     .font(.system(.title2, design: .rounded, weight: .black))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+                    .lineLimit(wrapsTitle ? 2 : 1)
+                    .minimumScaleFactor(wrapsTitle ? 1 : 0.65)
+                    .multilineTextAlignment(.center)
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption.weight(.bold))
@@ -96,7 +101,7 @@ struct BombHeader<Leading: View, Trailing: View>: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 112)
+            .padding(.horizontal, wrapsTitle ? 60 : 112)
             .allowsHitTesting(false)
         }
         .foregroundStyle(BombTheme.ink)

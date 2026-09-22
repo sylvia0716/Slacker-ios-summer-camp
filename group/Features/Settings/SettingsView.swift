@@ -21,7 +21,6 @@ struct SettingsView: View {
                                     ? (authSession.currentUserEmail ?? L10n.text("我的帳號"))
                                     : model.profileName,
                                 role: model.profileRole,
-                                groupName: model.groups.first?.name,
                                 avatarSymbol: model.profileAvatarSymbol,
                                 avatarData: model.profileAvatarData
                             )
@@ -247,7 +246,6 @@ private struct SettingsPage<Content: View>: View {
 private struct ProfileCard: View {
     let name: String
     let role: String
-    let groupName: String?
     let avatarSymbol: String
     let avatarData: Data?
 
@@ -261,10 +259,6 @@ private struct ProfileCard: View {
                 Text(name).font(.title2.weight(.black))
                 if !role.isEmpty {
                     Text(role).font(.subheadline.bold()).foregroundStyle(.secondary)
-                }
-                if let groupName {
-                    Label(groupName, systemImage: "person.3.fill")
-                        .font(.caption.bold())
                 }
             }
             Spacer()
@@ -334,6 +328,8 @@ private struct SettingsRow: View {
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

@@ -43,6 +43,8 @@ function setup(uids) {
   const joinContext = {...context, exports:{}};
   vm.runInNewContext(fs.readFileSync(__dirname+'/index.js','utf8'),joinContext);
   return {join: code => joinContext.exports.joinGroupByInviteCode({auth:{uid:'new'},data:{inviteCode:code}}), documents, removedPrefixes, failStorage:()=>storageFailures++, leave: uid => context.exports.leaveGroup({auth:{uid},data:{groupID:gid}}),
+    choose: (uid, candidateUID, action, electionID) => context.exports.chooseGroupLeader({auth:{uid},data:{groupID:gid,candidateUID,action,...(electionID ? {electionID} : {})}}),
+    decide: (uid, departureID, included) => context.exports.setDepartedTasksInclusion({auth:{uid},data:{groupID:gid,departureID,included}}),
     call: context.exports.leaveGroup, clean:()=>context.exports.cleanupEmptyGroup({params:{groupID:gid},data:{after:{data:()=>({deleting:true})}}})};
 }
 test('only caller leaves; another member and task remain; leadership transfers', async()=>{
@@ -85,4 +87,81 @@ test('invite cannot add a new member after the group deadline', async()=>{
  s.documents.set('groupInviteCodes/ABC123',{groupID:gid,isActive:true});
  await assert.rejects(s.join('ABC123'),e=>e.code==='failed-precondition');
  assert(!s.documents.has(`groups/${gid}/members/new`));
+});
+
+test('exit detaches tasks, freezes progress and keeps them included; rejoin cannot reclaim them', async()=>{
+ const s=setup(['leader','member']);
+ const path=`groups/${gid}/tasks/old`;
+ s.documents.set(path,{ownerMemberID:'member',subtasks:[{weight:1,isComplete:true},{weight:3,isComplete:false}]});
+ await s.leave('member');
+ const task=s.documents.get(path);
+ assert.equal(task.ownerMemberID,null);
+ assert.equal(task.departedProgress,25);
+ assert.equal(task.includedInProgress,true);
+ assert.equal(task.departureReviewed,false);
+ assert(task.departureID);
+ s.documents.set(`groups/${gid}/members/member`,{userID:'member',role:'member'});
+ assert.equal(s.documents.get(path).ownerMemberID,null);
+ await assert.rejects(s.decide('member',task.departureID,false),e=>e.code==='permission-denied');
+ await assert.rejects(s.decide('outsider',task.departureID,false),e=>e.code==='permission-denied');
+ await s.decide('leader',task.departureID,false);
+ assert.equal(s.documents.get(path).includedInProgress,false);
+ assert.equal(s.documents.get(path).departureReviewed,true);
+ assert.equal(s.documents.get(path).departedProgress,25);
+ await s.decide('leader',task.departureID,true);
+ assert.equal(s.documents.get(path).includedInProgress,true);
+});
+test('leader decision covers one departure only, preserving another member task',async()=>{
+ const s=setup(['leader','member','other']);
+ s.documents.set(`groups/${gid}/tasks/a`,{ownerMemberID:'member',subtasks:[]});
+ s.documents.set(`groups/${gid}/tasks/b`,{ownerMemberID:'member',subtasks:[]});
+ s.documents.set(`groups/${gid}/tasks/c`,{ownerMemberID:'other',subtasks:[]});
+ await s.leave('member');
+ const departure=s.documents.get(`groups/${gid}/tasks/a`).departureID;
+ await s.decide('leader',departure,false);
+ assert.equal(s.documents.get(`groups/${gid}/tasks/b`).includedInProgress,false);
+ assert.equal(s.documents.get(`groups/${gid}/tasks/c`).ownerMemberID,'other');
+ assert.equal(s.documents.get(`groups/${gid}/tasks/c`).includedInProgress,undefined);
+});
+
+test('only current leader can transfer leadership; all roles change atomically',async()=>{
+ const s=setup(['a','b','c']);
+ await assert.rejects(s.choose('b','c','transfer'),e=>e.code==='permission-denied');
+ await assert.rejects(s.choose('outsider','c','transfer'),e=>e.code==='permission-denied');
+ await assert.rejects(s.choose('a','missing','transfer'),e=>e.code==='failed-precondition');
+ await s.choose('a','b','transfer');
+ assert.equal(s.documents.get(`groups/${gid}/members/a`).role,'member');
+ assert.equal(s.documents.get(`groups/${gid}/members/b`).role,'leader');
+ await assert.rejects(s.choose('a','c','transfer'),e=>e.code==='permission-denied');
+});
+test('leader exit starts election; tie stays open and changed vote elects majority',async()=>{
+ const s=setup(['a','b','c']); await s.leave('a');
+ const election=s.documents.get(`groups/${gid}`).leaderElectionID;
+ assert(election);
+ assert.equal(s.documents.get(`groups/${gid}/members/b`).role,'member');
+ await s.choose('b','b','vote',election);
+ await s.choose('c','c','vote',election);
+ assert.equal(s.documents.get(`groups/${gid}`).leaderElectionID,election);
+ await s.choose('c','b','vote',election);
+ assert.equal(s.documents.get(`groups/${gid}/members/b`).role,'leader');
+ assert.equal(s.documents.get(`groups/${gid}`).leaderElectionID,null);
+ await assert.rejects(s.choose('c','c','vote',election),e=>e.code==='failed-precondition');
+});
+test('voting twice does not add votes and an obsolete election cannot be used',async()=>{
+ const s=setup(['a','b','c','d']); await s.leave('a');
+ const election=s.documents.get(`groups/${gid}`).leaderElectionID;
+ await s.choose('b','c','vote',election); await s.choose('b','c','vote',election);
+ assert.equal(s.documents.get(`groups/${gid}/members/c`).role,'member');
+ await assert.rejects(s.choose('d','c','vote','22222222-2222-4222-8222-222222222222'),e=>e.code==='failed-precondition');
+ await s.choose('c','c','vote',election);
+ assert.equal(s.documents.get(`groups/${gid}/members/c`).role,'leader');
+});
+test('departing candidate votes are removed; last remaining member becomes leader',async()=>{
+ const s=setup(['a','b','c','d']); await s.leave('a');
+ const election=s.documents.get(`groups/${gid}`).leaderElectionID;
+ await s.choose('b','c','vote',election); await s.leave('c');
+ assert.equal(s.documents.get(`groups/${gid}/members/b`).leaderVoteUID,null);
+ await s.leave('d');
+ assert.equal(s.documents.get(`groups/${gid}/members/b`).role,'leader');
+ assert.equal(s.documents.get(`groups/${gid}`).leaderElectionID,null);
 });

@@ -35,6 +35,35 @@ struct GroupRepositoryTests {
         #expect(result.tasks.count == 1)
         #expect(result.tasks[0].ownerMemberID == nil)
     }
+    @Test func rejoinedMemberDoesNotReclaimArchivedTask() throws {
+        let archived = CloudTaskDocument(title: "Old task", departureID: "departure",
+            departedMemberName: "Member", departedProgress: 25, includedInProgress: false,
+            departureReviewed: true)
+        let result = try GroupRepository.map(summary, members: [member("firebase-A")],
+            tasks: [CloudDocument(id: taskID, value: archived)], currentUID: "firebase-A")
+        #expect(result.tasks[0].ownerMemberID == nil)
+        #expect(result.tasks[0].progress == 25)
+        #expect(result.tasks[0].includedInProgress == false)
+        #expect(result.tasks[0].departureReviewed)
+        #expect(result.tasks[0].departureID == "departure")
+    }
+
+    @Test func mapsElectionAndVotesWithoutInventingLeader() throws {
+        var a = member("firebase-A").value
+        a.leaderElectionID = "election"
+        a.leaderVoteUID = "firebase-B"
+        var b = member("firebase-B").value
+        b.leaderElectionID = "election"
+        b.leaderVoteUID = "departed"
+        let result = try GroupRepository.map(summary,
+            members: [CloudDocument(id: "firebase-A", value: a), CloudDocument(id: "firebase-B", value: b)],
+            tasks: [], currentUID: "firebase-A")
+        #expect(result.group.leaderElectionID == "election")
+        #expect(result.group.leaderVotes.count == 1)
+        #expect(result.group.leaderVotes[FirebaseMemberIdentity.uiID(for: "firebase-A")] == FirebaseMemberIdentity.uiID(for: "firebase-B"))
+        #expect(!result.group.memberRoles.values.contains(.leader))
+    }
+
     @Test func rejectsMismatchedMemberDocument() {
         let forged = CloudDocument(id: "firebase-A", value: member("firebase-B").value)
         #expect(throws: GroupLoadError.self) {

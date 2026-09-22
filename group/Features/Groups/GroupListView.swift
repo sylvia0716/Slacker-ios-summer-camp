@@ -416,6 +416,8 @@ private struct AddGroupSheet: View {
 
     private var createGroupForm: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.text("建立者先暫任組長，成員加入後可更換"))
+                .font(.caption).foregroundStyle(.secondary)
             Text(L10n.text("群組名稱"))
                 .font(.headline.weight(.black))
 

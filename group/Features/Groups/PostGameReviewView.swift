@@ -254,6 +254,7 @@ private struct PostGameCardModifier: ViewModifier {
             .background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 22))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .compositingGroup()
             .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 }
