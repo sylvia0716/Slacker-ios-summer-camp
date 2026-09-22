@@ -54,7 +54,6 @@ struct PublishTaskSheet: View {
                     subtaskFields
                     assigneePicker
                     deadlinePicker
-                    publishSummary
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -231,19 +230,6 @@ struct PublishTaskSheet: View {
         }
     }
 
-    private var publishSummary: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(L10n.text("發布摘要"))
-                .font(.subheadline.weight(.black))
-            summaryRow(label: L10n.text("任務"), value: trimmedTitle.isEmpty ? L10n.text("尚未填寫") : trimmedTitle)
-            summaryRow(label: L10n.text("子任務"), value: L10n.format("{0} 項", String(describing: filledSubtaskCount)))
-            summaryRow(label: L10n.text("負責人"), value: selectedMember?.name ?? L10n.text("尚未選擇"))
-            summaryRow(label: L10n.text("截止"), value: deadline.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .comicCard()
-    }
-
     private var actionBar: some View {
         VStack(spacing: 6) {
             Button(action: publish) {
@@ -277,10 +263,6 @@ struct PublishTaskSheet: View {
 
     private var trimmedSubtaskTitles: [String] {
         subtaskDrafts.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
-    }
-
-    private var filledSubtaskCount: Int {
-        trimmedSubtaskTitles.filter { !$0.isEmpty }.count
     }
 
     private var selectedMember: Member? {
@@ -320,17 +302,6 @@ struct PublishTaskSheet: View {
             }
         }
         .font(.subheadline.weight(.black))
-    }
-
-    private func summaryRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(label)：")
-                .foregroundStyle(BombTheme.ink.opacity(0.6))
-            Text(value)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-        }
-        .font(.caption.weight(.bold))
     }
 
     private func publish() {

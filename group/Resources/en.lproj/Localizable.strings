@@ -358,6 +358,8 @@
 "請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。" = "What should I look up? Type your question after @bot.";
 "請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。" = "What should I look up? Describe your question in the chat, then tap “Help us look this up” again.";
 "Apple Intelligence 暫時無法完成這次請求，請稍後再試。" = "Apple Intelligence could not complete this request. Please try again later.";
+"目前裝置上的 Apple Intelligence 模型尚未支援英文。" = "The Apple Intelligence model on this device does not currently support English.";
+"Apple Intelligence 無法辨識這段對話的語言，請改用繁體中文或英文再試一次。" = "Apple Intelligence could not identify the conversation language. Please try again in Traditional Chinese or English.";
 "@機器人 幫我們查詢" = "@bot Help us look this up";
 "@機器人 分析專案" = "@bot Analyze project";
 "拆彈 AI 通訊官" = "Bomb AI communications agent";
@@ -394,6 +396,7 @@
 "修改群組" = "Edit group";
 "群組代碼已複製" = "Group code copied";
 "成員進度" = "Member progress";
+"我的進度" = "My progress";
 "已截止" = "Deadline passed";
 "＋ 發布任務" = "＋ Publish task";
 "拆彈小隊" = "Defusing squad";
