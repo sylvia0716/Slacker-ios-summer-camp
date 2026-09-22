@@ -142,6 +142,7 @@ final class AppStore {
     @ObservationIgnored private var attachmentRepository: AttachmentRepository?
     @ObservationIgnored private var progressSubscriptions: [UUID: GroupProgressSubscription] = [:]
     private(set) var pendingTaskUpdates: Set<UUID> = []
+    private(set) var pendingSubtaskUpdates: [UUID: UUID] = [:]
     private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
@@ -1085,6 +1086,7 @@ final class AppStore {
         progressSubscriptions = [:]
         progressSyncErrorsByGroupID = [:]
         pendingTaskUpdates = []
+        pendingSubtaskUpdates = [:]
         attachmentListeners.values.forEach { $0.remove() }
         attachmentListeners.removeAll()
     }
@@ -1253,16 +1255,21 @@ final class AppStore {
               let groupID = task.firestoreGroupID, let documentID = task.firestoreDocumentID else { return }
         let generation = cloudGeneration
         pendingTaskUpdates.insert(taskID)
+        if action == "setSubtask", let subtaskID, let id = UUID(uuidString: subtaskID) {
+            pendingSubtaskUpdates[taskID] = id
+        }
         Task { [weak self] in
             do {
                 try await TaskProgressRepository().update(groupID: groupID, taskID: documentID, action: action,
                     subtaskID: subtaskID, isComplete: isComplete, attachmentID: attachmentID)
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
                 self.pendingTaskUpdates.remove(taskID)
+                self.pendingSubtaskUpdates.removeValue(forKey: taskID)
                 self.lastEvent = action == "confirm" ? "已送出成果確認" : "已更新子任務"
             } catch {
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
                 self.pendingTaskUpdates.remove(taskID)
+                self.pendingSubtaskUpdates.removeValue(forKey: taskID)
                 self.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? "任務更新失敗，請重試。"
             }
         }

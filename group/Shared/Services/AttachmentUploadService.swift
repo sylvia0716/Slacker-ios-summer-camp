@@ -2,13 +2,6 @@ import FirebaseAuth
 import FirebaseStorage
 import Foundation
 
-struct PreparedAttachment: Sendable {
-    let data: Data
-    let originalFilename: String
-    let contentType: String
-    let kind: AttachmentKind
-}
-
 /// 負責 Storage 與 Firestore 的兩階段成果送出，避免 SwiftUI View 直接操作 Firebase。
 final class AttachmentUploadService {
     nonisolated static let maximumFileSize = 20 * 1_024 * 1_024
@@ -184,7 +177,7 @@ enum AttachmentUploadError: LocalizedError {
         case .invalidHTTPSURL:
             "請輸入以 https:// 開頭的有效網址。"
         case .unsupportedFileType:
-            "僅支援 PDF、PPTX、DOCX、XLSX 和 ZIP。"
+            "僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。"
         case .storageUploadFailed:
             "檔案上傳失敗，請檢查網路後重新嘗試。"
         case .metadataSaveFailed:

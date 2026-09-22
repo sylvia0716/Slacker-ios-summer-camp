@@ -147,11 +147,10 @@ struct MemberProgressCard: View {
                 ForEach(task.subtasks) { subtask in
                     if isCurrentUser {
                         Button { onToggleSubtask(task.id, subtask.id) } label: {
-                            checklistRow(subtask)
+                            checklistRow(subtask, isUpdating: model.pendingSubtaskUpdates[task.id] == subtask.id)
                         }
                         .buttonStyle(.plain)
-                        .disabled(model.pendingTaskUpdates.contains(task.id))
-                        .accessibilityValue(subtask.isComplete ? "已完成" : "未完成")
+                        .accessibilityValue(model.pendingSubtaskUpdates[task.id] == subtask.id ? "更新中" : (subtask.isComplete ? "已完成" : "未完成"))
                         .accessibilityHint("切換子任務完成狀態")
                     } else {
                         checklistRow(subtask)
@@ -161,18 +160,27 @@ struct MemberProgressCard: View {
         }
     }
 
-    private func checklistRow(_ subtask: Subtask) -> some View {
-        Text(subtask.title)
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
-            .strikethrough(subtask.isComplete)
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-            .contentShape(Rectangle())
+    private func checklistRow(_ subtask: Subtask, isUpdating: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink.opacity(0.72))
+            Text(subtask.title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(subtask.isComplete ? Color.secondary : BombTheme.ink)
+                .strikethrough(subtask.isComplete)
+            Spacer(minLength: 0)
+            if isUpdating {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .contentShape(.rect)
+        .padding(.vertical, 11)
     }
 
     private func deliverableSection(for task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("成果附件").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+            Text("成果附件").font(.subheadline.weight(.bold)).foregroundStyle(BombTheme.ink)
             if let deliverable = task.deliverable {
                 AttachmentActionButton(model: model, taskID: task.id, deliverable: deliverable,
                                        localPreview: { previewDeliverable = deliverable }) {

@@ -12,7 +12,7 @@ let package = Package(
             "Models/Member.swift", "Models/Group.swift", "Models/ProjectTask.swift",
             "Models/Subtask.swift", "Models/Deliverable.swift", "Models/TaskAttachment.swift",
             "Shared/Services/GroupRepository.swift", "Models/AttachmentOperationError.swift",
-            "Shared/Services/AttachmentDownloadService.swift", "Shared/Services/AttachmentDeletionService.swift",
+            "Shared/Services/AttachmentDocumentReader.swift", "Shared/Services/AttachmentDownloadService.swift", "Shared/Services/AttachmentDeletionService.swift",
             "Store/AttachmentActionStore.swift", "Shared/Services/ProfileNicknameRepository.swift"
         ]),
         .testTarget(name: "GroupCloudDataTests", dependencies: ["GroupCloudData"], path: "ios-cloud-tests")
