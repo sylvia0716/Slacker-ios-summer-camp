@@ -317,7 +317,8 @@ struct GroupDetailView: View {
                             object: PokeReception(
                                 groupName: currentGroup.name,
                                 pokeCount: 1,
-                                style: .alarm
+                                style: .alarm,
+                                recipientUID: model.firebaseUID
                             )
                         )
                     }

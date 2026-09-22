@@ -165,6 +165,12 @@ private struct AccountSettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .disabled(authSession.isWorking)
+                    if let message = authSession.signOutErrorMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(BombTheme.red)
+                    }
                 }
             }
         }

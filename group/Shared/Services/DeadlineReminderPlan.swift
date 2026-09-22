@@ -23,6 +23,7 @@ enum DeadlineReminderPlan {
 
         func append(id: UUID, name: String, deadline: Date, groupID: UUID, isTask: Bool) {
             guard deadline < .distantFuture else { return }
+            var scheduledDates = Set<Date>()
             for offset in offsets {
                 let candidateDate = deadline.addingTimeInterval(-Double(offset.hours) * 3600)
                 let fireDate: Date
@@ -37,6 +38,8 @@ enum DeadlineReminderPlan {
                     fireDate = candidateDate
                 }
                 guard fireDate > now, fireDate < deadline else { continue }
+                // Configured clock times can move both offsets onto the same instant.
+                guard scheduledDates.insert(fireDate).inserted else { continue }
                 let kind = isTask ? "task" : "project"
                 reminders.append(DeadlineReminder(
                     id: "\(identifierPrefix)\(uid).\(kind).\(id.uuidString).\(offset.hours)",

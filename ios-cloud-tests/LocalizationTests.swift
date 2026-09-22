@@ -37,6 +37,29 @@ struct LocalizationTests {
         #expect(AppLanguage.english.text("設定", table: "Localizable") == "Settings")
     }
 
+    @Test @MainActor func attachmentErrorsFollowAppLanguageChanges() {
+        let settings = AppLanguageSettings.shared
+        let original = settings.preference
+        defer { settings.preference = original }
+        let cases: [(DocumentReadError, String, String)] = [
+            (.unsupported, "僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。",
+             "Only PNG, JPG, PDF, PPTX, DOCX, XLSX, and ZIP files are supported."),
+            (.unsupportedPhoto, "請選擇 PNG 或 JPG 照片。", "Please choose a PNG or JPG photo."),
+            (.empty, "檔案沒有可上傳的內容，請重新選擇。", "This file is empty. Please choose another file."),
+            (.tooLarge, "檔案不可超過 20 MB。", "Files must be 20 MB or smaller."),
+            (.unavailable, "無法讀取檔案，請確認檔案已下載後重試。",
+             "Unable to read the file. Make sure it has finished downloading, then try again.")
+        ]
+        for preference in [AppLanguagePreference.english, .traditionalChinese, .english] {
+            settings.preference = preference
+            for (error, chinese, english) in cases {
+                let expected = preference == .english ? english : chinese
+                #expect(error.errorDescription == expected)
+                #expect(error.localizedDescription == expected)
+            }
+        }
+    }
+
     @Test func catalogsHaveMatchingKeysAndInterpolationSlots() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         func catalog(_ language: String) throws -> [String: String] {

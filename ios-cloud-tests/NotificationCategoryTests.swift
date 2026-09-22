@@ -21,6 +21,20 @@ struct NotificationCategoryTests {
         #expect(restored.categories.projects && restored.categories.reviews)
     }
 
+    @Test func pokeDeliveryRequiresBothMasterAndPokeCategory() {
+        let suite = "NotificationCategoryTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = PokeDeliveryState(defaults: defaults)
+        for master in [false, true] {
+            for pokes in [false, true] {
+                state.notificationsEnabled = master
+                state.categories.pokes = pokes
+                #expect(state.receivesPokes == (master && pokes))
+            }
+        }
+    }
+
     @Test func disablingEachReminderLeavesOtherCategoriesEnabled() {
         var categories = NotificationCategories()
         categories.tasks = false

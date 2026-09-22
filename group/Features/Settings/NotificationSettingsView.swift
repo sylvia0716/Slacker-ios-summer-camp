@@ -13,6 +13,16 @@ struct NotificationSettingsView: View {
                         .font(.headline)
                         .comicCard()
 
+                    if model.pokeNotificationSyncFailed {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(L10n.text("通知設定尚未同步，背景通知可能仍依原設定送出。"))
+                                .font(.footnote)
+                            Button(L10n.text("重試")) { model.registerPokeDevice() }
+                                .font(.subheadline.bold())
+                        }
+                        .foregroundStyle(BombTheme.red)
+                    }
+
                     VStack(alignment: .leading, spacing: 10) {
                         Text(L10n.text("通知分類")).font(.title2.weight(.black))
                         VStack(spacing: 0) {

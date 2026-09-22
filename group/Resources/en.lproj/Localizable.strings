@@ -752,3 +752,10 @@
 "綁定 Email 以跨裝置同步" = "Link an email to sync across devices";
 "綁定 Email" = "Link email";
 "保留目前資料並開啟跨裝置登入" = "Keep your data and enable cross-device sign-in";
+
+"通知設定尚未同步，背景通知可能仍依原設定送出。" = "Notification settings haven’t synced. Background notifications may still follow your previous settings.";
+
+"僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。" = "Only PNG, JPG, PDF, PPTX, DOCX, XLSX, and ZIP files are supported.";
+"請選擇 PNG 或 JPG 照片。" = "Please choose a PNG or JPG photo.";
+"檔案沒有可上傳的內容，請重新選擇。" = "This file is empty. Please choose another file.";
+"無法讀取檔案，請確認檔案已下載後重試。" = "Unable to read the file. Make sure it has finished downloading, then try again.";

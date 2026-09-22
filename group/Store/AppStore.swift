@@ -220,7 +220,11 @@ final class AppStore {
 
     var receivesPokes: Bool { notificationsEnabled && notificationCategories.pokes }
 
+    private(set) var pokeNotificationSyncFailed = false
+    private var pokeRegistrationID = UUID()
+
     private func notificationSettingsChanged() {
+        registerPokeDevice()
         refreshDeadlineReminders()
         if receivesPokes, dataMode == .live {
             PokeBackgroundRefresh.shared.schedule()
@@ -1390,6 +1394,8 @@ final class AppStore {
         chatItemsByGroupID = [:]
         communicationAnalyses = [:]
         pokeCounts = [:]
+        pokeNotificationSyncFailed = false
+        pokeRegistrationID = UUID()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         cloudErrorMessage = nil
@@ -1448,14 +1454,19 @@ final class AppStore {
     }
 
     func registerPokeDevice() {
-        guard dataMode == .live, firebaseUID != nil else { return }
+        guard dataMode == .live, let uid = firebaseUID else { return }
+        let registrationID = UUID()
+        pokeRegistrationID = registrationID
         Task { [weak self] in
             do {
                 let repository = self?.pokeRepository ?? PokeRepository()
                 self?.pokeRepository = repository
                 try await repository.registerCurrentDevice()
+                guard let self, self.firebaseUID == uid, self.pokeRegistrationID == registrationID else { return }
+                self.pokeNotificationSyncFailed = false
             } catch {
-                // Notification registration must not block cloud-group synchronization.
+                guard let self, self.firebaseUID == uid, self.pokeRegistrationID == registrationID else { return }
+                self.pokeNotificationSyncFailed = true
             }
         }
     }

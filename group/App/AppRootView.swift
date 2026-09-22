@@ -41,6 +41,7 @@ struct AppRootView: View {
             if scenePhase == .active { store.resumeCloudSync() }
         }
         .onChange(of: authSession.currentUserID) { _, _ in
+            activePokeReception = nil
             reviewNotificationPath = []
             if scenePhase == .active { store.resumeCloudSync() }
             openPendingReview()
@@ -71,7 +72,9 @@ struct AppRootView: View {
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
-            guard store.receivesPokes, let reception = notification.object as? PokeReception else { return }
+            guard store.receivesPokes, let reception = notification.object as? PokeReception,
+                  PokeDeliveryState.accepts(recipientUID: reception.recipientUID,
+                                            currentUID: authSession.currentUserID) else { return }
             pokePresentationID += 1
             activePokeReception = reception
         }
