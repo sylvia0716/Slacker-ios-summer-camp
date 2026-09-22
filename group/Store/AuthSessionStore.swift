@@ -3,11 +3,12 @@ import FirebaseCore
 import Foundation
 import Observation
 
-/// Firebase Email/Password 的單一登入狀態來源。
+/// Firebase 匿名與 Email/Password 帳號的單一登入狀態來源。
 @MainActor @Observable
 final class AuthSessionStore {
     private(set) var currentUserID: String?
     private(set) var currentUserEmail: String?
+    private(set) var isAnonymous = false
     private(set) var isCheckingSession = true
     private(set) var isWorking = false
     var language: AppLanguage {
@@ -21,11 +22,14 @@ final class AuthSessionStore {
 
     @ObservationIgnored private var authStateHandle: AuthStateDidChangeListenerHandle?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var isStartingAnonymousSession = false
     private(set) var isPreviewSession = false
     @ObservationIgnored private var onUserChange: ((String?) -> Void)?
 
-    var isAuthenticated: Bool { currentUserID != nil && !isPreviewSession }
-    var canEnterApp: Bool { isAuthenticated || isPreviewSession }
+    /// 已綁定 Email/Password、可在其他裝置登入的正式帳號。
+    var isAuthenticated: Bool { currentUserID != nil && !isAnonymous && !isPreviewSession }
+    /// 匿名 Firebase 帳號也具有 UID，可正常使用群組與雲端功能。
+    var canEnterApp: Bool { currentUserID != nil || isPreviewSession }
 
     /// App 啟動且 Firebase 完成設定後才開始監聽，避免缺少 plist 時存取 Auth 而閃退。
     func start(onUserChange: ((String?) -> Void)? = nil) {
@@ -40,13 +44,50 @@ final class AuthSessionStore {
         }
 
         let auth = Auth.auth()
-        updateSession(userID: auth.currentUser?.uid, email: auth.currentUser?.email)
+        isStartingAnonymousSession = auth.currentUser == nil
         authStateHandle = auth.addStateDidChangeListener { [weak self] _, user in
-            let userID = user?.uid
-            let email = user?.email
             Task { @MainActor in
-                self?.updateSession(userID: userID, email: email)
+                guard let self else { return }
+                if user == nil, self.isStartingAnonymousSession { return }
+                self.updateSession(user: user)
             }
+        }
+
+        if let user = auth.currentUser {
+            updateSession(user: user)
+        } else {
+            Task { await startAnonymousSession() }
+        }
+    }
+
+    /// 建立此裝置的臨時 Firebase 身分。若失敗，可由登入頁再次呼叫重試。
+    func startAnonymousSession() async {
+        guard FirebaseApp.app() != nil else {
+            isCheckingSession = false
+            errorKey = "Firebase 尚未設定完成，請稍後再試。"
+            return
+        }
+        guard Auth.auth().currentUser == nil else {
+            updateSession(user: Auth.auth().currentUser)
+            return
+        }
+
+        isStartingAnonymousSession = true
+        isCheckingSession = true
+        isWorking = true
+        errorKey = nil
+        defer {
+            isStartingAnonymousSession = false
+            isCheckingSession = false
+            isWorking = false
+        }
+
+        do {
+            let result = try await Auth.auth().signInAnonymously()
+            updateSession(user: result.user)
+        } catch {
+            updateSession(user: nil)
+            errorKey = Self.localizedMessage(for: error)
         }
     }
 
@@ -66,7 +107,7 @@ final class AuthSessionStore {
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
-            updateSession(userID: result.user.uid, email: result.user.email)
+            updateSession(user: result.user)
         } catch {
             errorKey = Self.localizedMessage(for: error)
         }
@@ -84,11 +125,15 @@ final class AuthSessionStore {
         defer { isWorking = false }
 
         do {
-            let result = try await Auth.auth().createUser(
-                withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                password: password
-            )
-            updateSession(userID: result.user.uid, email: result.user.email)
+            let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result: AuthDataResult
+            if let user = Auth.auth().currentUser, user.isAnonymous {
+                let credential = EmailAuthProvider.credential(withEmail: normalizedEmail, password: password)
+                result = try await user.link(with: credential)
+            } else {
+                result = try await Auth.auth().createUser(withEmail: normalizedEmail, password: password)
+            }
+            updateSession(user: result.user)
         } catch {
             errorKey = Self.localizedMessage(for: error)
         }
@@ -124,9 +169,9 @@ final class AuthSessionStore {
 #if DEBUG
     /// 本機 UI 驗證專用；不建立 Firebase 帳號，也不會出現在正式版本。
     func enterPreviewSession() {
-        updateSession(userID: nil, email: nil)
+        updateSession(userID: nil, email: nil, isAnonymous: false)
         isPreviewSession = true
-        updateSession(userID: "debug-preview", email: "preview@local")
+        updateSession(userID: "debug-preview", email: "preview@local", isAnonymous: false)
         errorKey = nil
     }
 #endif
@@ -135,18 +180,26 @@ final class AuthSessionStore {
 #if DEBUG
         if isPreviewSession {
             isPreviewSession = false
-            updateSession(userID: nil, email: nil)
+            updateSession(userID: nil, email: nil, isAnonymous: false)
             errorKey = nil
+            Task { await startAnonymousSession() }
             return
         }
 #endif
         guard FirebaseApp.app() != nil else { return }
 
         do {
+            isStartingAnonymousSession = true
+            isCheckingSession = true
             try Auth.auth().signOut()
-            updateSession(userID: nil, email: nil)
             errorKey = nil
+            Task {
+                isStartingAnonymousSession = false
+                await startAnonymousSession()
+            }
         } catch {
+            isStartingAnonymousSession = false
+            isCheckingSession = false
             errorKey = Self.localizedMessage(for: error)
         }
     }
@@ -168,7 +221,11 @@ final class AuthSessionStore {
         return true
     }
 
-    private func updateSession(userID: String?, email: String?) {
+    private func updateSession(user: User?) {
+        updateSession(userID: user?.uid, email: user?.email, isAnonymous: user?.isAnonymous ?? false)
+    }
+
+    private func updateSession(userID: String?, email: String?, isAnonymous: Bool) {
 #if DEBUG
         if isPreviewSession, userID == nil {
             isCheckingSession = false
@@ -179,6 +236,7 @@ final class AuthSessionStore {
         if userID != currentUserID { onUserChange?(userID) }
         currentUserID = userID
         currentUserEmail = email
+        self.isAnonymous = isAnonymous
         isCheckingSession = false
     }
 
@@ -201,7 +259,7 @@ final class AuthSessionStore {
         case .keychainError:
             "無法儲存登入狀態，請重新安裝 App 後再試。"
         case .operationNotAllowed:
-            "Email／Password 登入尚未啟用，請先到 Firebase Console 開啟。"
+            "這個登入方式尚未啟用，請先到 Firebase Console 開啟。"
         case .invalidAPIKey, .appNotAuthorized:
             "Firebase 設定有誤，請確認 App 設定檔。"
         default:
