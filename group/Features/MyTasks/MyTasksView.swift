@@ -296,34 +296,69 @@ private struct MyTaskCard: View {
     let groupName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title).font(.title2.weight(.black))
-                    Text(groupName).font(.body.weight(.semibold)).foregroundStyle(.secondary)
-                }
-                Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Text(L10n.text("任務"))
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(BombTheme.yellow, in: Capsule())
+
+                Text(task.title)
+                    .font(.title3.weight(.black))
+                    .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
+                    .strikethrough(task.isCompleted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
                 Text("\(task.progress)%")
                     .font(.title3.monospacedDigit().weight(.black))
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 9)
-                    .background(BombTheme.yellow)
-                    .clipShape(.capsule)
+                    .fixedSize()
+
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.black))
             }
-            ProgressView(value: Double(task.progress), total: 100)
-                .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
-                .scaleEffect(y: 1.6)
-            HStack {
+
+            HStack(spacing: 8) {
+                Label(groupName, systemImage: "folder.fill")
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
                 if task.deadline != .distantFuture {
-                    Label { Text(TaskRemainingTime(deadline: task.deadline).text) } icon: { Image(systemName: "clock.fill") }
+                    Label(TaskRemainingTime(deadline: task.deadline).text, systemImage: "clock")
+                        .foregroundStyle(isOverdue ? BombTheme.red : Color.secondary)
+                        .fixedSize()
                 }
-                Spacer()
-                Label(L10n.text("查看任務"), systemImage: "chevron.right")
             }
-            .font(.body.weight(.bold))
+            .font(.subheadline.bold())
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                ProgressView(value: Double(task.progress), total: 100)
+                    .tint(BombTheme.ink)
+
+                Text(L10n.format(
+                    "{0}/{1} 子任務",
+                    String(describing: task.subtasks.filter(\.isComplete).count),
+                    String(describing: task.subtasks.count)
+                ))
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            }
         }
-        .comicCard()
+        .foregroundStyle(BombTheme.ink)
+        .padding(14)
+        .background(BombTheme.paper.mix(with: .white, by: 0.22), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 3))
         .padding(.vertical, 2)
+    }
+
+    private var isOverdue: Bool {
+        !task.isCompleted && task.deadline < .now
     }
 }
 
@@ -406,36 +441,30 @@ private struct MyTaskDetailView: View {
     private var sectionDivider: some View {
         Divider()
             .overlay(BombTheme.ink.opacity(0.18))
-            .padding(.vertical, 18)
+            .padding(.vertical, 14)
     }
 
     private func taskOverview(_ task: ProjectTask) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(task.title)
-                        .font(.system(.title2, design: .rounded, weight: .black))
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Text(L10n.text("任務"))
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(BombTheme.yellow, in: Capsule())
 
-                    Text(task.status.title)
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(task.isCompleted ? BombTheme.green : BombTheme.ink)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(task.isCompleted ? BombTheme.green.opacity(0.12) : BombTheme.yellow)
-                        .clipShape(.capsule)
-                }
+                Text(task.title)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
+                    .strikethrough(task.isCompleted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 8)
 
                 Text("\(task.progress)%")
-                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .font(.title3.monospacedDigit().weight(.black))
                     .monospacedDigit()
-                    .foregroundStyle(BombTheme.yellow)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
             }
 
             if !task.detail.isEmpty {
@@ -445,60 +474,72 @@ private struct MyTaskDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ProgressView(value: Double(task.progress), total: 100)
-                .tint(task.isCompleted ? BombTheme.green : BombTheme.red)
-                .scaleEffect(y: 1.35)
+            HStack(spacing: 8) {
+                ProgressView(value: Double(task.progress), total: 100)
+                    .tint(BombTheme.ink)
 
-            Label(
-                L10n.format("{0} / {1} 項子任務完成", String(describing: task.subtasks.filter(\.isComplete).count), String(describing: task.subtasks.count)),
-                systemImage: "checkmark.circle.fill"
-            )
-            .font(.caption.weight(.bold))
-            .foregroundStyle(BombTheme.ink.opacity(0.62))
+                Text(L10n.format(
+                    "{0}/{1} 子任務",
+                    String(describing: task.subtasks.filter(\.isComplete).count),
+                    String(describing: task.subtasks.count)
+                ))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            }
         }
     }
 
     private func subtaskSection(_ task: ProjectTask) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(L10n.text("子任務"), systemImage: "checklist")
+                Label(L10n.text("子任務"), systemImage: "arrow.turn.down.right")
                     .font(.headline.weight(.black))
                 Spacer()
-                Text("\(task.subtasks.filter(\.isComplete).count) / \(task.subtasks.count)")
+                Text(L10n.format(
+                    "已完成 {0}/{1}",
+                    String(describing: task.subtasks.filter(\.isComplete).count),
+                    String(describing: task.subtasks.count)
+                ))
                     .font(.caption.monospacedDigit().weight(.black))
                     .foregroundStyle(.secondary)
             }
-            .padding(.bottom, 5)
 
-            ForEach(task.subtasks) { subtask in
-                Button {
-                    Task { await model.toggleSubtask(taskID: task.id, subtaskID: subtask.id) }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink.opacity(0.72))
-                        Text(subtask.title)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
-                            .strikethrough(subtask.isComplete)
-                        Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(task.subtasks) { subtask in
+                    Button {
+                        Task { await model.toggleSubtask(taskID: task.id, subtaskID: subtask.id) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: subtask.isComplete ? "checkmark.circle.fill" : "circle")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(subtask.isComplete ? BombTheme.green : BombTheme.ink.opacity(0.55))
+                            Text(subtask.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
+                                .strikethrough(subtask.isComplete)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(.rect)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(BombTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                     }
-                    .contentShape(.rect)
-                    .padding(.vertical, 11)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-
-                if subtask.id != task.subtasks.last?.id {
-                    Divider()
-                }
+            }
+            .padding(.leading, 14)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(BombTheme.yellow)
+                    .frame(width: 4)
             }
         }
     }
 
     private func deliverableSection(_ task: ProjectTask) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(L10n.text("成果交付"), systemImage: "shippingbox.fill")
+            Label(L10n.text("成果交付"), systemImage: "paperclip")
                 .font(.headline.weight(.black))
 
             if let deliverable = task.deliverable {
@@ -538,7 +579,7 @@ private struct MyTaskDetailView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.white)
             .background(BombTheme.ink)
-            .clipShape(.capsule)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 }
@@ -546,12 +587,12 @@ private struct MyTaskDetailView: View {
 private struct TaskDetailCard: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(18)
-            .background(BombTheme.paper)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(14)
+            .background(BombTheme.paper.mix(with: .white, by: 0.22))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(BombTheme.ink, lineWidth: 3)
             }
     }
 }
