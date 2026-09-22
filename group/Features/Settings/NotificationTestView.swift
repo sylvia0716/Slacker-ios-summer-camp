@@ -58,7 +58,7 @@ struct NotificationTestView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(BombHeaderButtonStyle())
-                .accessibilityLabel(L10n.text("返回通知設定"))
+                .accessibilityLabel(L10n.text("返回開發工具"))
             } trailing: {
                 EmptyView()
             }
