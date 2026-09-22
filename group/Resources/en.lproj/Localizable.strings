@@ -791,3 +791,16 @@
 "替換檔案" = "Replace file";
 
 "新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "The new file was uploaded, but the old attachment could not be removed. Please delete the old attachment again.";
+"修改任務" = "Edit Task";
+"刪除任務" = "Delete Task";
+"管理任務「{0}」" = "Manage task “{0}”";
+"收合任務" = "Collapse task";
+"展開任務" = "Expand task";
+"保留的子任務會維持目前完成狀態" = "Retained subtasks keep their current completion status";
+"儲存中…" = "Saving…";
+"儲存修改" = "Save Changes";
+"任務操作失敗" = "Task Action Failed";
+"確定刪除「{0}」？" = "Delete “{0}”?";
+"刪除後，這項任務的子任務、進度與成果附件都無法復原。" = "This task, its subtasks, progress, and deliverable attachments cannot be recovered.";
+"已修改任務「{0}」" = "Updated task “{0}”";
+"已刪除任務「{0}」" = "Deleted task “{0}”";

@@ -104,13 +104,52 @@ struct GroupListView: View {
             guard isSelected else { return }
             animationSequence += 1
         }
-        .bombDialog(L10n.text("加入群組"), isPresented: Binding(
-            get: { joinSuccessMessage != nil && !isAddGroupPresented },
-            set: { if !$0 { joinSuccessMessage = nil } }
-        )) {
-            Button(L10n.text("知道了")) { }
-        } message: {
-            Text(joinSuccessMessage ?? "")
+        .bombTabBarHidden(joinSuccessMessage != nil && !isAddGroupPresented)
+        .overlay {
+            if let joinSuccessMessage, !isAddGroupPresented {
+                joinSuccessOverlay(message: joinSuccessMessage)
+                    .transition(.opacity)
+                    .zIndex(200)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: joinSuccessMessage != nil && !isAddGroupPresented)
+    }
+
+    private func joinSuccessOverlay(message: String) -> some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(L10n.text("加入群組"), systemImage: "person.3.fill")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+
+                Text(message)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(L10n.text("知道了")) {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        joinSuccessMessage = nil
+                    }
+                }
+                .font(.subheadline.weight(.black))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(BombTheme.ink)
+                .clipShape(.capsule)
+                .contentShape(.capsule)
+                .buttonStyle(.plain)
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
         }
     }
 

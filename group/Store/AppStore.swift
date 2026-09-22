@@ -912,12 +912,11 @@ final class AppStore {
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
     }
 
-    /// 依目前可存取的所有群組任務計算成員整體進度。
+    /// 依目前可存取的所有群組任務，以每項任務等權計算成員整體進度。
     func overallMemberProgress(for memberID: UUID) -> Int {
         let tasks = projectTasks.filter { $0.ownerMemberID == memberID }
-        let totalWeight = tasks.reduce(0) { $0 + $1.weight }
-        guard totalWeight > 0 else { return 0 }
-        return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
+        guard !tasks.isEmpty else { return 0 }
+        return tasks.reduce(0) { $0 + $1.progress } / tasks.count
     }
 
     /// 取得指定群組已送出的匿名互評。
@@ -1273,6 +1272,104 @@ final class AppStore {
         groups[groupIndex].taskIDs.append(task.id)
         lastEvent = L10n.format("已發布新任務「{0}」", String(describing: trimmedTitle))
         return task
+    }
+
+    /// 由任務負責人修改自己的任務內容；雲端模式會先通過後端權限驗證。
+    func updateOwnedTask(
+        taskID: UUID,
+        title: String,
+        detail: String,
+        subtasks: [Subtask],
+        deadline: Date,
+        now: Date = .now
+    ) async throws {
+        guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
+              let groupIndex = groups.firstIndex(where: { $0.id == projectTasks[taskIndex].groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        guard projectTasks[taskIndex].ownerMemberID == currentUserID else {
+            throw TaskMutationError.permissionDenied
+        }
+
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
+        guard (1...10).contains(subtasks.count),
+              Set(subtasks.map(\.id)).count == subtasks.count,
+              subtasks.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            throw PublishTaskError.invalidSubtasks
+        }
+        guard deadline > now else { throw PublishTaskError.deadlineNotInFuture }
+        guard deadline <= groups[groupIndex].deadline else {
+            throw PublishTaskError.deadlineAfterGroupDeadline
+        }
+
+        let baseWeight = 100 / subtasks.count
+        let remainder = 100 % subtasks.count
+        let normalizedSubtasks = subtasks.enumerated().map { index, subtask in
+            Subtask(
+                id: subtask.id,
+                title: subtask.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                isComplete: subtask.isComplete,
+                weight: baseWeight + (index < remainder ? 1 : 0)
+            )
+        }
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let taskPath = projectTasks[taskIndex].firestoreDocumentID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.update(
+                expectedUserID: uid,
+                groupID: groupPath,
+                taskID: taskPath,
+                title: trimmedTitle,
+                detail: trimmedDetail,
+                subtasks: normalizedSubtasks,
+                deadline: deadline
+            )
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+        }
+
+        guard let refreshedIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
+        projectTasks[refreshedIndex].title = trimmedTitle
+        projectTasks[refreshedIndex].detail = trimmedDetail
+        projectTasks[refreshedIndex].subtasks = normalizedSubtasks
+        projectTasks[refreshedIndex].deadline = deadline
+        lastEvent = L10n.format("已修改任務「{0}」", String(describing: trimmedTitle))
+    }
+
+    /// 由任務負責人刪除自己的任務與其附件資料。
+    func deleteOwnedTask(taskID: UUID) async throws {
+        guard let task = projectTasks.first(where: { $0.id == taskID }),
+              let groupIndex = groups.firstIndex(where: { $0.id == task.groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        guard task.ownerMemberID == currentUserID else {
+            throw TaskMutationError.permissionDenied
+        }
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let taskPath = task.firestoreDocumentID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.remove(expectedUserID: uid, groupID: groupPath, taskID: taskPath)
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+        }
+
+        attachmentListeners[taskID]?.remove()
+        attachmentListeners[taskID] = nil
+        projectTasks.removeAll { $0.id == taskID }
+        groups[groupIndex].taskIDs.removeAll { $0 == taskID }
+        lastEvent = L10n.format("已刪除任務「{0}」", String(describing: task.title))
     }
 
     /// 建立一個只有目前使用者的新群組，供建立群組 sheet 呼叫。
