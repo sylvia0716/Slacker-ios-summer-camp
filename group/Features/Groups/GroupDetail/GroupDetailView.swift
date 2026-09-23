@@ -4,7 +4,6 @@ import UIKit
 /// Group detail backed by the app's shared Group, Member, and ProjectTask data.
 struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
     let group: Group
     let model: AppStore
     private let tutorialStep: Binding<TutorialStep?>?
@@ -38,7 +37,6 @@ struct GroupDetailView: View {
     @State private var nameError: String?
     @State private var pokeButtonEmoji: String?
     @State private var pokeButtonEmojiMemberID: String?
-    @State private var isPokeButtonEmojiShaking = false
 
     init(
         group: Group,
@@ -126,7 +124,7 @@ struct GroupDetailView: View {
                         )
                         .frame(height: proxy.size.height * 0.82)
                         .padding(.horizontal, 8)
-                        .padding(.bottom, 8 - safeAreaInsets.bottom)
+                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
@@ -187,19 +185,14 @@ struct GroupDetailView: View {
                    let pokeButtonEmojiMemberID,
                    let anchor = anchors[pokeButtonEmojiMemberID] {
                     let buttonFrame = proxy[anchor]
-                    Text(pokeButtonEmoji)
-                        .font(.system(size: 48))
-                        .position(x: buttonFrame.midX, y: buttonFrame.midY)
-                        .offset(y: -46)
-                        .rotationEffect(.degrees(isPokeButtonEmojiShaking ? 12 : -12))
-                        .scaleEffect(isPokeButtonEmojiShaking ? 1.16 : 0.72)
+                    PokeButtonFeedback(emoji: pokeButtonEmoji)
                         .id(pokeButtonEmoji)
+                        .position(x: buttonFrame.midX, y: buttonFrame.midY - 58)
                         .allowsHitTesting(false)
                 }
             }
             .zIndex(100)
         }
-        .animation(.bouncy, value: pokeButtonEmoji)
         .overlay {
             if shouldShowExplosionMeme(now: .now) {
                 ExplosionMemeOverlay(
@@ -1053,19 +1046,6 @@ struct GroupDetailView: View {
     private func showPokeButtonEmoji(for memberID: String, emoji: String?) {
         pokeButtonEmoji = emoji
         pokeButtonEmojiMemberID = emoji == nil ? nil : memberID
-
-        guard emoji != nil else {
-            isPokeButtonEmojiShaking = false
-            return
-        }
-
-        isPokeButtonEmojiShaking = false
-        Task {
-            await Task.yield()
-            withAnimation(.bouncy(duration: 0.14).repeatCount(7, autoreverses: true)) {
-                isPokeButtonEmojiShaking = true
-            }
-        }
     }
 
     private var currentGroup: Group {
@@ -1148,25 +1128,22 @@ private struct DeadlineEditorSheet: View {
     let onSave: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                DatePicker(
-                    L10n.text("截止時間"),
-                    selection: $deadline,
-                    in: Date.now...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-            }
-            .navigationTitle(L10n.text("修改截止時間"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("取消")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.text("儲存")) { onSave() }
-                }
-            }
+        BombFormSheet(title: L10n.text("修改截止時間")) {
+            DatePicker(
+                L10n.text("截止時間"),
+                selection: $deadline,
+                in: Date.now...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .datePickerStyle(.compact)
+            .bombFormField()
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text("儲存"),
+                isEnabled: deadline > .now,
+                onPrimary: onSave,
+                onSecondary: { dismiss() }
+            )
         }
         .presentationDetents([.medium])
     }
@@ -1178,20 +1155,20 @@ private struct GroupNameEditorSheet: View {
     let onSave: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
+        BombFormSheet(title: L10n.text("修改群組名稱")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.text("群組名稱"))
+                    .font(.subheadline.weight(.black))
                 TextField(L10n.text("群組名稱"), text: $name)
+                    .bombFormField()
             }
-            .navigationTitle(L10n.text("修改群組名稱"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("取消")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.text("儲存")) { onSave() }
-                }
-            }
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text("儲存"),
+                isEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                onPrimary: onSave,
+                onSecondary: { dismiss() }
+            )
         }
         .presentationDetents([.medium])
     }
@@ -1538,6 +1515,34 @@ private struct MemeCaption: View {
             .multilineTextAlignment(.center)
             .minimumScaleFactor(0.6)
             .lineLimit(2)
+    }
+}
+
+private struct PokeButtonFeedback: View {
+    let emoji: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPopped = false
+
+    var body: some View {
+        if emoji == "💣" {
+            Text(emoji)
+                .font(.system(size: 52))
+                .phaseAnimator(reduceMotion ? [0.0] : [-8.0, 8.0]) { content, angle in
+                    content.rotationEffect(.degrees(angle))
+                } animation: { _ in
+                    .easeInOut(duration: 0.09)
+                }
+        } else {
+            Text(emoji)
+                .font(.system(size: 62))
+                .scaleEffect(reduceMotion || hasPopped ? 1 : 0.2)
+                .opacity(hasPopped ? 1 : 0)
+                .onAppear {
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.3)) {
+                        hasPopped = true
+                    }
+                }
+        }
     }
 }
 

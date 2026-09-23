@@ -468,7 +468,8 @@ private struct PokeActionButton: View {
     let onPoke: (PokeStyle) -> Int?
     let onPokeEmoji: (String?) -> Void
 
-    @State private var isCharging = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var isCharging = false
     @State private var suppressNextTap = false
     @State private var hasChargedBomb = false
     @State private var isCoolingDown = false
@@ -488,37 +489,47 @@ private struct PokeActionButton: View {
                 .clipShape(Capsule())
                 .symbolEffect(.bounce, value: actionFeedbackID)
                 .scaleEffect(isCharging ? 0.92 : 1)
-                .rotationEffect(.degrees(isCharging ? 2 : 0))
-                .animation(
-                    isCharging ? .easeInOut(duration: 0.12).repeatForever(autoreverses: true) : .snappy,
-                    value: isCharging
-                )
+                .animation(reduceMotion ? nil : .snappy, value: isCharging)
                 .contentShape(Capsule())
                 .onTapGesture {
                     guard !suppressNextTap, !isCoolingDown else { return }
                     _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
-                .onLongPressGesture(minimumDuration: 0.6) {
-                    guard !isCoolingDown else { return }
-                    suppressNextTap = true
-                    guard sendPoke(style: .alarm, isBombPoke: true) else {
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.6)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
+                        .updating($isCharging) { _, isCharging, _ in
+                            isCharging = !isCoolingDown && (!suppressNextTap || hasChargedBomb)
+                        }
+                        .onChanged { value in
+                            guard case .second(true, _) = value,
+                                  !isCoolingDown, !suppressNextTap else { return }
+                            suppressNextTap = true
+                            hasChargedBomb = true
+                            onPokeEmoji("💣")
+                        }
+                        .onEnded { value in
+                            guard case .second(true, _) = value, hasChargedBomb else { return }
+                            hasChargedBomb = false
+                            guard sendPoke(style: .alarm, isBombPoke: true) else {
+                                onPokeEmoji(nil)
+                                suppressNextTap = false
+                                return
+                            }
+                            onPokeEmoji("💥")
+
+                            Task {
+                                try? await Task.sleep(for: .seconds(0.6))
+                                onPokeEmoji(nil)
+                                suppressNextTap = false
+                            }
+                        }
+                )
+                .onChange(of: isCharging) { _, isCharging in
+                    if !isCharging, hasChargedBomb {
+                        hasChargedBomb = false
                         suppressNextTap = false
-                        return
-                    }
-                    hasChargedBomb = true
-                    onPokeEmoji("💣")
-                } onPressingChanged: { isPressing in
-                    guard !isCoolingDown else { return }
-                    isCharging = isPressing
-
-                    guard !isPressing, hasChargedBomb else { return }
-                    hasChargedBomb = false
-                    onPokeEmoji("💥")
-
-                    Task {
-                        try? await Task.sleep(for: .seconds(0.6))
                         onPokeEmoji(nil)
-                        suppressNextTap = false
                     }
                 }
                 .accessibilityAddTraits(.isButton)

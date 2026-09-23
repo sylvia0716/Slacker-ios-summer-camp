@@ -314,50 +314,36 @@ private struct AddGroupSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            SwiftUI.Group {
-                switch flow {
-                case .entry:
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            entryModePicker
-
-                            if entryMode == .create {
-                                createGroupForm
-                            } else {
-                                joinGroupForm
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-                        .padding(.bottom, 24)
+        BombFormSheet(title: navigationTitle) {
+            switch flow {
+            case .entry:
+                VStack(spacing: 24) {
+                    entryModePicker
+                    if entryMode == .create {
+                        createGroupForm
+                    } else {
+                        joinGroupForm
                     }
-                    .scrollIndicators(.hidden)
-                    .disabled(isBusy)
-                case .shareCode:
-                    shareCodeView
                 }
+                .frame(maxWidth: .infinity)
+                .disabled(isBusy)
+            case .shareCode:
+                shareCodeView
             }
-            .background(BombTheme.paper)
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(flow == .entry ? L10n.text("取消") : L10n.text("上一步")) {
-                        if flow == .entry { dismiss() } else { flow = .entry }
-                    }
-                    .disabled(isBusy)
+        } actions: {
+            BombFormActions(
+                primaryTitle: primaryButtonTitle,
+                isEnabled: canAdvance,
+                isBusy: isBusy,
+                secondaryTitle: flow == .entry ? L10n.text("取消") : L10n.text("上一步"),
+                onPrimary: advance,
+                onSecondary: {
+                    if flow == .entry { dismiss() } else { flow = .entry }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(primaryButtonTitle, action: advance)
-                        .disabled(!canAdvance || isBusy)
-                }
-            }
+            )
         }
         .interactiveDismissDisabled(isBusy)
-        .presentationDetents([.fraction(0.62)])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(BombTheme.paper)
+        .presentationDetents([.fraction(0.82)])
         .bombDialog(L10n.text("無法加入群組"), isPresented: Binding(
             get: {
                 if joinError != nil { return true }
@@ -411,7 +397,7 @@ private struct AddGroupSheet: View {
         .padding(4)
         .background(BombTheme.ink)
         .clipShape(.capsule)
-        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+        .frame(maxWidth: .infinity)
     }
 
     private var createGroupForm: some View {
@@ -419,17 +405,13 @@ private struct AddGroupSheet: View {
             Text(L10n.text("建立者先暫任組長，成員加入後可更換"))
                 .font(.caption).foregroundStyle(.secondary)
             Text(L10n.text("群組名稱"))
-                .font(.headline.weight(.black))
+                .font(.subheadline.weight(.black))
 
             TextField(L10n.text("例如：期末報告拆彈小隊"), text: $groupName)
-                .font(.body.weight(.semibold))
-                .padding(.horizontal, 14)
-                .frame(height: 52)
-                .background(BombTheme.yellow.opacity(0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .bombFormField()
 
             Text(L10n.text("截止時間"))
-                .font(.headline.weight(.black))
+                .font(.subheadline.weight(.black))
                 .padding(.top, 10)
 
             DatePicker(
@@ -441,8 +423,9 @@ private struct AddGroupSheet: View {
             .labelsHidden()
             .datePickerStyle(.compact)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .bombFormField()
         }
-        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+        .frame(maxWidth: .infinity)
     }
 
     private var joinGroupForm: some View {
@@ -484,7 +467,7 @@ private struct AddGroupSheet: View {
                 .stroke(BombTheme.ink, lineWidth: 2)
                 .allowsHitTesting(false)
         }
-        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+        .frame(maxWidth: .infinity)
     }
 
     private var inviteCodeBoxes: some View {
@@ -578,7 +561,7 @@ private struct AddGroupSheet: View {
                     PostageTicketShape()
                         .stroke(BombTheme.ink, lineWidth: 2)
                 }
-                .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
+                .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
