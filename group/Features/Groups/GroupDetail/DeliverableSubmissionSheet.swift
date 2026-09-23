@@ -306,7 +306,7 @@ struct DeliverableSubmissionSheet: View {
         switch store.state {
         case .waiting:
             Label(
-                source == .link || store.preparedAttachment != nil ? L10n.text("等待送出") : L10n.text("等待選擇"),
+                source == .link || store.preparedAttachment != nil ? L10n.text("等待提交") : L10n.text("等待選擇"),
                 systemImage: "clock"
             )
             .foregroundStyle(.secondary)
@@ -316,7 +316,7 @@ struct DeliverableSubmissionSheet: View {
         case let .uploading(progress):
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(source == .link ? L10n.text("正在儲存連結…") : L10n.text("正在上傳…"))
+                    Text(source == .link ? L10n.text("正在儲存連結…") : L10n.text("上傳中"))
                     Spacer()
                     Text("\(Int((progress * 100).rounded()))%")
                         .monospacedDigit()
@@ -326,7 +326,7 @@ struct DeliverableSubmissionSheet: View {
                     .tint(BombTheme.red)
             }
         case .success:
-            Label(L10n.text("上傳成功"), systemImage: "checkmark.circle.fill")
+            Label(L10n.text("提交成功"), systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.green)
         case let .failure(message):
@@ -349,8 +349,8 @@ struct DeliverableSubmissionSheet: View {
 
     private var submitButtonTitle: String {
         switch store.state {
-        case .uploading: L10n.text("正在上傳")
-        case .success: L10n.text("已送出")
+        case .uploading: source == .link ? L10n.text("提交中") : L10n.text("上傳中")
+        case .success: L10n.text("已提交")
         case .failure: L10n.text("重新嘗試")
         default: L10n.text("提交成果")
         }

@@ -4,6 +4,7 @@ import UIKit
 /// Group detail backed by the app's shared Group, Member, and ProjectTask data.
 struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: Group
     let model: AppStore
     private let tutorialStep: Binding<TutorialStep?>?
@@ -105,12 +106,21 @@ struct GroupDetailView: View {
                         }
                         .scrollIndicators(.hidden)
                     }
+                    .overlay(alignment: .bottomTrailing) {
+                        if deadlineOutcome(now: context.date) == .active,
+                           !showsPublishTaskSheet, editingTask == nil {
+                            publishTaskButton
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 80)
+                        }
+                    }
 
                     if showsPublishTaskSheet {
                         BombTheme.ink.opacity(0.16)
                             .ignoresSafeArea(edges: .top)
                             .onTapGesture { closePublishTaskSheet() }
                             .transition(.opacity)
+                            .zIndex(1)
 
                         PublishTaskSheet(
                             group: currentGroup,
@@ -130,7 +140,8 @@ struct GroupDetailView: View {
                         .frame(height: proxy.size.height * 0.82)
                         .padding(.horizontal, 8)
                         .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(2)
                     }
 
                     if let editingTask {
@@ -206,7 +217,7 @@ struct GroupDetailView: View {
                    let anchor = anchors[pokeButtonEmojiMemberID] {
                     let buttonFrame = proxy[anchor]
                     PokeButtonFeedback(emoji: pokeButtonEmoji)
-                        .id(pokeButtonEmoji)
+                        .id(pokeButtonEmojiMemberID)
                         .position(x: buttonFrame.midX, y: buttonFrame.midY - 58)
                         .allowsHitTesting(false)
                 }
@@ -963,45 +974,45 @@ struct GroupDetailView: View {
     }
 
     private func countdownCard(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "timer")
+                Image(systemName: "hourglass")
                     .foregroundStyle(BombTheme.yellow)
                 Text(L10n.text("專案倒數"))
-                    .font(.headline.weight(.black))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.paper.opacity(0.75))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Spacer()
-                Text(L10n.text("LIVE"))
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(BombTheme.red)
             }
 
-            HStack(alignment: .lastTextBaseline, spacing: 12) {
-                Text(remainingTime(now: now))
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+            Text(remainingTime(now: now))
+                .font(.system(.title, design: .rounded, weight: .black))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
-                Spacer(minLength: 4)
-
+            HStack(spacing: 12) {
+                ProgressView(value: Double(groupProgress), total: 100)
+                    .tint(BombTheme.yellow)
                 Text("\(groupProgress)%")
-                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .font(.subheadline.monospacedDigit().weight(.bold))
+                    .foregroundStyle(BombTheme.paper.opacity(0.75))
             }
-
-            ProgressView(value: Double(groupProgress), total: 100)
-                .tint(BombTheme.yellow)
-                .scaleEffect(y: 1.8)
         }
         .foregroundStyle(.white)
-        .padding(18)
-        .background(BombTheme.ink)
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(alignment: .top) {
-            HazardStripe()
-                .clipShape(.capsule)
-                .padding(.horizontal, 22)
-                .offset(y: -5)
+        .padding(.leading, 34)
+        .padding(.trailing, 20)
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(BombTheme.yellow)
+                .frame(width: 4)
+            .padding(.vertical, 22)
+            .padding(.leading, 16)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
@@ -1014,37 +1025,30 @@ struct GroupDetailView: View {
                 memberProgressCard(for: currentUserMember)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(L10n.text("成員進度"))
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                    .layoutPriority(1)
-
-                Spacer(minLength: 4)
-
-                Button {
-                    withAnimation(.snappy) { showsPublishTaskSheet = true }
-                } label: {
-                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .tutorialTarget(
-                    .publishTask,
-                    enabled: tutorialStep?.wrappedValue == .publishTask
-                )
-                .disabled(isGroupDeadlinePassed)
-                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
-            }
+            Text(L10n.text("成員進度"))
+                .font(.system(.title2, design: .rounded, weight: .black))
 
             ForEach(otherGroupMembers) { member in
                 memberProgressCard(for: member)
             }
         }
+    }
+
+    private var publishTaskButton: some View {
+        Button {
+            withAnimation(.snappy) { showsPublishTaskSheet = true }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 28, weight: .black))
+                .foregroundStyle(BombTheme.yellow)
+                .frame(width: 60, height: 60)
+                .background(BombTheme.ink, in: Circle())
+                .shadow(color: BombTheme.ink.opacity(0.25), radius: 6, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.text("發布任務"))
+        .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
+        .disabled(isGroupDeadlinePassed)
     }
 
     private var leadershipSection: some View {
@@ -1056,75 +1060,73 @@ struct GroupDetailView: View {
                 && selectedElectionID == electionID
         } ?? false
         return VStack(alignment: .leading, spacing: 20) {
-            if showsLeaderPicker || electionID != nil {
-                if electionID != nil {
-                    Text(L10n.text("投票選組長")).font(.headline)
-                    Text(L10n.format("需 {0} 票當選，可更改投票", String(groupMembers.count / 2 + 1)))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 16, alignment: .top), count: 3), spacing: 20) {
-                    ForEach(groupMembers) { member in
-                        Button {
-                            selectedElectionID = electionID
-                            selectedLeader = member
-                            leaderError = nil
-                        } label: {
-                            VStack(spacing: 10) {
-                                MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
-                                    uid: member.firebaseUID, name: member.name, size: 64)
-                                    .overlay {
-                                        Circle().strokeBorder(selectedLeader?.id == member.id ? BombTheme.yellow : .clear, lineWidth: 3)
-                                    }
-                                    .overlay(alignment: .bottomTrailing) {
-                                        if member.role == .leader {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption.weight(.black))
-                                                .foregroundStyle(BombTheme.paper)
-                                                .frame(width: 24, height: 24)
-                                                .background(BombTheme.green, in: Circle())
-                                                .overlay(Circle().stroke(BombTheme.paper, lineWidth: 2))
-                                        }
-                                    }
-                                Text(member.name)
-                                    .font(.subheadline.weight(.bold))
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(3, reservesSpace: true)
-                                    .minimumScaleFactor(0.8)
-                                    .frame(maxWidth: .infinity)
-                                    .accessibilityLabel(member.name)
-                                if electionID != nil {
-                                    Text(L10n.format("{0} 票", String(currentGroup.leaderVotes.values.filter { $0 == member.id }.count)))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .top)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .allowsHitTesting(canChoose && !isChoosingLeader)
-                        .accessibilityValue(member.role == .leader ? MemberRole.leader.title : member.role.title)
-                        .accessibilityAddTraits(selectedLeader?.id == member.id ? .isSelected : [])
-                    }
-                }
-                if groupMembers.count == 1 {
-                    Text(L10n.text("其他成員加入後即可更換組長")).font(.caption)
-                }
-                if let leaderError { Text(leaderError).font(.caption).foregroundStyle(BombTheme.red) }
-                Button {
-                    if let selectedLeader { chooseLeader(selectedLeader, electionID: selectedElectionID) }
-                } label: {
-                    HStack {
-                        if isChoosingLeader { ProgressView().tint(BombTheme.paper) }
-                        Text(L10n.text("確認")).font(.headline.weight(.bold))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .foregroundStyle(BombTheme.paper)
-                    .background(BombTheme.ink, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(!canChoose || !validSelection || isChoosingLeader)
-                .opacity(canChoose && validSelection && !isChoosingLeader ? 1 : 0.45)
+            if electionID != nil {
+                Text(L10n.text("投票選組長")).font(.headline)
+                Text(L10n.format("需 {0} 票當選，可更改投票", String(groupMembers.count / 2 + 1)))
+                    .font(.caption).foregroundStyle(.secondary)
             }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 16, alignment: .top), count: 3), spacing: 20) {
+                ForEach(groupMembers) { member in
+                    Button {
+                        selectedElectionID = electionID
+                        selectedLeader = member
+                        leaderError = nil
+                    } label: {
+                        VStack(spacing: 10) {
+                            MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
+                                uid: member.firebaseUID, name: member.name, size: 64)
+                                .overlay {
+                                    Circle().strokeBorder(selectedLeader?.id == member.id ? BombTheme.green : .clear, lineWidth: 3)
+                                }
+                                .overlay(alignment: .bottomTrailing) {
+                                    if member.role == .leader {
+                                        Image(systemName: "checkmark")
+                                            .font(.caption.weight(.black))
+                                            .foregroundStyle(BombTheme.paper)
+                                            .frame(width: 24, height: 24)
+                                            .background(BombTheme.green, in: Circle())
+                                            .overlay(Circle().stroke(BombTheme.paper, lineWidth: 2))
+                                    }
+                                }
+                            Text(member.name)
+                                .font(.subheadline.weight(.bold))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3, reservesSpace: true)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity)
+                                .accessibilityLabel(member.name)
+                            if electionID != nil {
+                                Text(L10n.format("{0} 票", String(currentGroup.leaderVotes.values.filter { $0 == member.id }.count)))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(canChoose && !isChoosingLeader)
+                    .accessibilityValue(member.role == .leader ? MemberRole.leader.title : member.role.title)
+                    .accessibilityAddTraits(selectedLeader?.id == member.id ? .isSelected : [])
+                }
+            }
+            if groupMembers.count == 1 {
+                Text(L10n.text("其他成員加入後即可更換組長")).font(.caption)
+            }
+            if let leaderError { Text(leaderError).font(.caption).foregroundStyle(BombTheme.red) }
+            Button {
+                if let selectedLeader { chooseLeader(selectedLeader, electionID: selectedElectionID) }
+            } label: {
+                HStack {
+                    if isChoosingLeader { ProgressView().tint(BombTheme.paper) }
+                    Text(L10n.text("確認")).font(.headline.weight(.bold))
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundStyle(BombTheme.paper)
+                .background(BombTheme.ink, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canChoose || !validSelection || isChoosingLeader)
+            .opacity(canChoose && validSelection && !isChoosingLeader ? 1 : 0.45)
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 12)
@@ -1393,17 +1395,26 @@ struct GroupDetailView: View {
         currentGroup.deadline <= .now
     }
 
-    private func remainingTime(now: Date) -> String {
+    private func remainingTime(now: Date) -> AttributedString {
         let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(now)))
         let days = remaining / 86_400
         let hours = remaining % 86_400 / 3_600
         let minutes = remaining % 3_600 / 60
 
         if remaining == 0 {
-            return L10n.text("已截止")
+            return AttributedString(L10n.text("已截止"))
         }
 
-        return L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
+        let formatted = L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
+        var result = AttributedString()
+        for character in formatted {
+            var part = AttributedString(String(character))
+            if !character.isNumber {
+                part.font = .system(.subheadline, design: .rounded, weight: .black)
+            }
+            result.append(part)
+        }
+        return result
     }
 
     private func memberProgressItem(for member: Member) -> MemberProgressPreviewItem {
@@ -1433,7 +1444,9 @@ struct GroupDetailView: View {
     }
 
     private func closePublishTaskSheet() {
-        withAnimation(.snappy) { showsPublishTaskSheet = false }
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.2 : 0.3)) {
+            showsPublishTaskSheet = false
+        }
     }
 
     private func saveDeadline() {
@@ -1854,27 +1867,72 @@ private struct MemeCaption: View {
 private struct PokeButtonFeedback: View {
     let emoji: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasPopped = false
+    @State private var bombScale = 0.65
+    @State private var bombOpacity = 1.0
+    @State private var explosionScale = 0.35
+    @State private var explosionOpacity = 0.0
 
     var body: some View {
-        if emoji == "💣" {
-            Text(emoji)
+        ZStack {
+            Text("💣")
                 .font(.system(size: 52))
-                .phaseAnimator(reduceMotion ? [0.0] : [-8.0, 8.0]) { content, angle in
-                    content.rotationEffect(.degrees(angle))
+                .phaseAnimator(reduceMotion ? [0.0] : [-1.0, 1.0]) { content, phase in
+                    content
+                        .rotationEffect(.degrees(phase * max(0, bombScale - 0.65) * 5))
+                        .scaleEffect(x: 1 + phase * 0.012, y: 1 - phase * 0.012)
                 } animation: { _ in
                     .easeInOut(duration: 0.09)
                 }
-        } else {
-            Text(emoji)
+                .scaleEffect(reduceMotion ? 1 : bombScale)
+                .opacity(bombOpacity)
+
+            Text("💥")
                 .font(.system(size: 62))
-                .scaleEffect(reduceMotion || hasPopped ? 1 : 0.2)
-                .opacity(hasPopped ? 1 : 0)
-                .onAppear {
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.3)) {
-                        hasPopped = true
-                    }
+                .scaleEffect(reduceMotion ? 1 : explosionScale)
+                .opacity(explosionOpacity)
+        }
+        .frame(width: 76, height: 76)
+        .task(id: emoji) {
+            if emoji == "💣" {
+                guard !reduceMotion else { return }
+                // Inflate in springy beats instead of stretching a tiny icon in one sweep.
+                withAnimation(.spring(duration: 0.22, bounce: 0.22)) {
+                    bombScale = 0.82
                 }
+                do {
+                    try await Task.sleep(for: .seconds(0.24))
+                    withAnimation(.spring(duration: 0.46, bounce: 0.16)) {
+                        bombScale = 1.1
+                    }
+                    try await Task.sleep(for: .seconds(0.48))
+                    withAnimation(.spring(duration: 0.58, bounce: 0.12)) {
+                        bombScale = 1.42
+                    }
+                } catch {
+                    // Releasing cancels the remaining charge beats and starts the burst.
+                    return
+                }
+                return
+            }
+
+            // Keep both layers alive so the charged bomb flows into the burst.
+            withAnimation(.easeOut(duration: 0.12)) {
+                bombOpacity = 0
+                explosionOpacity = 1
+            }
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.24, bounce: 0.2)) {
+                explosionScale = 1.2
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(0.24))
+            } catch {
+                return
+            }
+            withAnimation(.easeOut(duration: 0.32)) {
+                explosionScale = 1.45
+                explosionOpacity = 0
+            }
         }
     }
 }

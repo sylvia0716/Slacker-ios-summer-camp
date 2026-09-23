@@ -87,9 +87,11 @@ struct BombFormPrimaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.headline.weight(.black))
             .foregroundStyle(BombTheme.paper)
-            .frame(maxWidth: .infinity, minHeight: 50)
             .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .background(BombTheme.ink.opacity(isEnabled ? 1 : 0.4), in: Capsule())
+            .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }

@@ -255,7 +255,7 @@ private struct RadarReportCard: View {
                         }
                         .padding(16)
                         .frame(maxWidth: 250)
-                        .background(BombTheme.paper.opacity(0.96), in: RoundedRectangle(cornerRadius: 18))
+                        .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(BombTheme.ink, lineWidth: 2))
                     }
                 }

@@ -74,8 +74,8 @@ struct PublishTaskSheet: View {
                 fieldLabel(L10n.text("子任務"), isRequired: true)
                 Spacer()
                 Text("\(subtaskDrafts.count) / 10")
-                    .font(.caption2.monospacedDigit().weight(.black))
-                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+                    .font(.footnote.monospacedDigit().weight(.bold))
+                    .foregroundStyle(BombTheme.secondaryText)
             }
 
             ForEach($subtaskDrafts) { $draft in
@@ -113,8 +113,8 @@ struct PublishTaskSheet: View {
             }
 
             Text(L10n.text("每項子任務會平均計入任務進度"))
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(BombTheme.ink.opacity(0.55))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BombTheme.secondaryText)
         }
     }
 
@@ -166,8 +166,8 @@ struct PublishTaskSheet: View {
                     Text(member.name)
                         .font(.subheadline.weight(.black))
                     Text(member.role.title)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.6))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(BombTheme.secondaryText)
                 }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -176,7 +176,7 @@ struct PublishTaskSheet: View {
             .foregroundStyle(BombTheme.ink)
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
-            .background(isSelected ? BombTheme.paper : BombTheme.paper.opacity(0.65))
+            .background(isSelected ? BombTheme.yellow : BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

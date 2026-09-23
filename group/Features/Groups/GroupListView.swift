@@ -7,7 +7,6 @@ struct GroupListView: View {
     let model: GroupBombModel
     let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
-    private let onReplayTutorial: (() -> Void)?
 
     @State private var isAddGroupPresented = false
     @State private var addGroupInitialMode = GroupEntryMode.create
@@ -18,13 +17,11 @@ struct GroupListView: View {
     init(
         model: GroupBombModel,
         isSelected: Bool = true,
-        tutorialStep: Binding<TutorialStep?>? = nil,
-        onReplayTutorial: (() -> Void)? = nil
+        tutorialStep: Binding<TutorialStep?>? = nil
     ) {
         self.model = model
         self.isSelected = isSelected
         self.tutorialStep = tutorialStep
-        self.onReplayTutorial = onReplayTutorial
     }
 
     var body: some View {
@@ -59,12 +56,7 @@ struct GroupListView: View {
         .refreshable { await model.reloadCloudGroups() }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("我的群組")) {
-#if DEBUG
-                debugMenu
-                    .buttonStyle(BombHeaderButtonStyle())
-#else
                 EmptyView()
-#endif
             } trailing: {
                 Button(L10n.text("新增"), systemImage: "plus") {
                     if tutorialStep?.wrappedValue == .createGroup {
@@ -255,61 +247,6 @@ struct GroupListView: View {
         }
     }
 
-#if DEBUG
-    private var debugMenu: some View {
-        Menu {
-            Button(L10n.text("重設 iOS Summer Camp 互評")) {
-                resetReviews(inviteCode: "IOS100")
-            }
-            Button(L10n.text("重設電子電路期末互評")) {
-                resetReviews(inviteCode: "EE0073")
-            }
-            Divider()
-            Button(L10n.text("完成 iOS Summer Camp 全部互評")) {
-                completeAllReviews(inviteCode: "IOS100")
-            }
-            Button(L10n.text("完成電子電路期末全部互評")) {
-                completeAllReviews(inviteCode: "EE0073")
-            }
-            if onReplayTutorial != nil {
-                Divider()
-                Button(L10n.text("重新播放新手教學"), systemImage: "arrow.counterclockwise") {
-                    onReplayTutorial?()
-                }
-            }
-        } label: {
-            Image(systemName: "wrench.and.screwdriver.fill")
-        }
-        .accessibilityLabel(L10n.text("測試工具"))
-    }
-
-    private func resetReviews(inviteCode: String) {
-        guard let group = model.groups.first(where: { $0.inviteCode == inviteCode }) else { return }
-        model.resetPeerReviews(for: group.id)
-    }
-
-    private func completeAllReviews(inviteCode: String) {
-        guard let group = model.groups.first(where: { $0.inviteCode == inviteCode }) else { return }
-        model.resetPeerReviews(for: group.id)
-
-        for reviewerID in group.memberIDs {
-            for revieweeID in group.memberIDs where reviewerID != revieweeID {
-                _ = try? model.submitPeerReview(
-                    groupID: group.id,
-                    reviewerID: reviewerID,
-                    revieweeID: revieweeID,
-                    taskCompletionScore: 4,
-                    discussionScore: 4,
-                    collaborationScore: 4,
-                    ideaScore: 4,
-                    reliabilityScore: 4,
-                    comment: "",
-                    now: group.deadline.addingTimeInterval(1)
-                )
-            }
-        }
-    }
-#endif
 }
 
 private struct AddGroupSheet: View {
@@ -908,64 +845,78 @@ private struct GroupRow: View {
 
     @State private var animatedProgress = 0
 
+    private var statusForegroundColor: Color {
+        switch status {
+        case .active: BombTheme.ink
+        case .awaitingReviewCompleted: status.accentColor
+        case .awaitingReviewExploded: BombTheme.red
+        case .closed: BombTheme.green
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: status.iconName)
-                    .foregroundStyle(status.accentColor)
-                Text(group.name)
-                    .font(.title3.weight(.black))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: status.iconName)
+                        .font(.title2.weight(.black))
+                        .foregroundStyle(statusForegroundColor)
+                    Text(group.name)
+                        .font(.title2.weight(.black))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
                 Text(status.badgeTitle)
-                    .font(.caption2.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(status == .active || status == .awaitingReviewCompleted ? BombTheme.ink : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(status.accentColor)
                     .clipShape(.capsule)
+                    .fixedSize()
             }
 
-            Text(status.title)
-                .font(.subheadline.weight(.black))
-                .foregroundStyle(status.accentColor)
-
-            if status == .active {
-                HStack {
-                    Label(remainingDays, systemImage: "timer")
-                    Spacer()
-                    Label(L10n.format("{0} 位特工", String(describing: group.memberIDs.count)), systemImage: "person.3.fill")
+            VStack(alignment: .leading, spacing: 10) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) {
+                        groupMetadata
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        groupMetadata
+                    }
                 }
-                .font(.caption.bold())
-            } else {
-                HStack {
-                    Text(L10n.format("最終進度 {0}%", String(describing: progress)))
-                    Spacer()
-                    Text(reviewProgressText)
-                }
-                .font(.caption.bold())
-            }
+                .font(.subheadline.weight(.heavy))
+                .foregroundStyle(BombTheme.ink)
 
-            ProgressView(value: Double(animatedProgress), total: 100)
-                .tint(status.accentColor)
-                .scaleEffect(y: 1.4)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 12) {
+                        ProgressView(value: Double(animatedProgress), total: 100)
+                            .tint(status == .active ? BombTheme.ink : status.accentColor)
+                            .scaleEffect(y: 1.4)
+                        Text(animatedProgress, format: .percent.scale(1))
+                            .font(.subheadline.monospacedDigit().weight(.black))
+                            .fixedSize()
+                    }
 
-            if status == .closed {
-                HStack(spacing: 5) {
-                    Text(L10n.text("查看專案結算"))
-                    Image(systemName: "chevron.right")
+                    if status == .closed {
+                        HStack(spacing: 6) {
+                            Text(L10n.text("查看專案結算"))
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.black))
+                        }
+                        .font(.subheadline.weight(.black))
+                    }
                 }
-                .font(.caption.weight(.black))
-                .foregroundStyle(BombTheme.paper)
             }
         }
-        .foregroundStyle(.white)
-        .padding(18)
-        .background(BombTheme.ink)
+        .foregroundStyle(BombTheme.ink)
+        .padding(20)
+        .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .overlay {
             RoundedRectangle(cornerRadius: 22)
-                .stroke(status == .awaitingReviewExploded ? BombTheme.red : BombTheme.ink, lineWidth: 3)
+                .stroke(BombTheme.ink, lineWidth: 3)
         }
         .task(id: animationSequence) {
             guard animationSequence > 0 else { return }
@@ -992,10 +943,35 @@ private struct GroupRow: View {
         }
     }
 
-    private var remainingDays: String {
+    @ViewBuilder
+    private var groupMetadata: some View {
+        if status == .active {
+            Label(remainingTime, systemImage: "hourglass")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                Image(systemName: "person.3.fill")
+                    .font(.caption.weight(.semibold))
+                Text(L10n.format("{0} 位特工", String(describing: group.memberIDs.count)))
+            }
+            .fixedSize()
+        } else {
+            Text(status.title)
+                .foregroundStyle(statusForegroundColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(reviewProgressText)
+                .fixedSize()
+        }
+    }
+
+    private var remainingTime: String {
         let seconds = max(0, group.deadline.timeIntervalSince(now))
-        let days = max(1, Int(ceil(seconds / 86_400)))
-        return L10n.format("剩 {0} 天", String(describing: days))
+        if seconds >= 86_400 {
+            return L10n.format("剩 {0} 天", String(Int(ceil(seconds / 86_400))))
+        }
+        if seconds >= 3_600 {
+            return L10n.format("剩 {0} 小時", String(Int(ceil(seconds / 3_600))))
+        }
+        return L10n.format("剩 {0} 分鐘", String(max(1, Int(ceil(seconds / 60)))))
     }
 
     private var reviewProgressText: String {

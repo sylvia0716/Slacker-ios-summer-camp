@@ -152,7 +152,7 @@ private struct TaskProgressDashboard: View {
                     .foregroundStyle(BombTheme.ink)
 
                 Text(L10n.text("待完成任務進度"))
-                    .font(.caption.weight(.bold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(BombTheme.ink)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 5)
@@ -296,22 +296,29 @@ private struct MyTaskCard: View {
     let groupName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
-                Text(L10n.text("任務"))
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(BombTheme.yellow, in: Capsule())
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(task.isCompleted ? BombTheme.green : (isOverdue ? BombTheme.red : BombTheme.yellow))
+                    .frame(width: 18, height: 18)
+                    .accessibilityHidden(true)
 
-                Text(task.title)
-                    .font(.title3.weight(.black))
-                    .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
-                    .strikethrough(task.isCompleted)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(task.title)
+                        .font(.title3.weight(.black))
+                        .foregroundStyle(task.isCompleted ? Color.secondary : BombTheme.ink)
+                        .strikethrough(task.isCompleted)
+                        .layoutPriority(1)
 
-                Spacer(minLength: 8)
+                    if !groupName.isEmpty {
+                        Text(groupName)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(BombTheme.secondaryText)
+                    }
+                }
+                .lineLimit(1)
+
+                Spacer(minLength: 0)
 
                 Text("\(task.progress)%")
                     .font(.title3.monospacedDigit().weight(.black))
@@ -319,41 +326,39 @@ private struct MyTaskCard: View {
 
                 Image(systemName: "chevron.right")
                     .font(.body.weight(.black))
+                    .accessibilityHidden(true)
             }
 
-            HStack(spacing: 8) {
-                Label(groupName, systemImage: "folder.fill")
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if task.deadline != .distantFuture {
+            VStack(alignment: .leading, spacing: 6) {
+                if task.isCompleted {
+                    Label(L10n.text("已完成"), systemImage: "checkmark.circle")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(BombTheme.green)
+                } else if task.deadline != .distantFuture {
                     Label(TaskRemainingTime(deadline: task.deadline).text, systemImage: "clock")
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(isOverdue ? BombTheme.red : Color.secondary)
-                        .fixedSize()
                 }
-            }
-            .font(.subheadline.bold())
-            .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                ProgressView(value: Double(task.progress), total: 100)
-                    .tint(BombTheme.ink)
+                HStack(spacing: 16) {
+                    ProgressView(value: Double(task.progress), total: 100)
+                        .tint(BombTheme.ink)
 
-                Text(L10n.format(
-                    "{0}/{1} 子任務",
-                    String(describing: task.subtasks.filter(\.isComplete).count),
-                    String(describing: task.subtasks.count)
-                ))
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.secondary)
-                .fixedSize()
+                    Text("\(task.subtasks.filter(\.isComplete).count)/\(task.subtasks.count)")
+                        .font(.subheadline.monospacedDigit().weight(.bold))
+                        .fixedSize()
+                        .accessibilityLabel(L10n.format(
+                            "{0}/{1} 子任務",
+                            String(task.subtasks.filter(\.isComplete).count),
+                            String(task.subtasks.count)
+                        ))
+                }
             }
         }
         .foregroundStyle(BombTheme.ink)
-        .padding(14)
-        .background(BombTheme.paper.mix(with: .white, by: 0.22), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 3))
+        .padding(16)
+        .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
         .padding(.vertical, 2)
     }
 
@@ -368,12 +373,12 @@ private struct TaskRemainingTime {
     var text: String {
         let remainingInterval = deadline.timeIntervalSinceNow
         guard remainingInterval > 0 else { return L10n.text("已逾期") }
-        let seconds = Int(remainingInterval)
-        let days = seconds / 86_400
-        let hours = seconds % 86_400 / 3_600
-        let minutes = seconds % 3_600 / 60
-        if days > 0 { return "\(days) day, \(hours) hr" }
-        return "\(hours) hr, \(minutes) min"
+        let days = Int(remainingInterval / 86_400)
+        let hours = Int(remainingInterval / 3_600)
+        let minutes = max(1, Int(ceil(remainingInterval / 60)))
+        if days > 0 { return L10n.format("剩 {0} 天", String(days)) }
+        if hours > 0 { return L10n.format("剩 {0} 小時", String(hours)) }
+        return L10n.format("剩 {0} 分鐘", String(minutes))
     }
 }
 
@@ -470,7 +475,7 @@ private struct MyTaskDetailView: View {
             if !task.detail.isEmpty {
                 Text(task.detail)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(BombTheme.ink.opacity(0.66))
+                    .foregroundStyle(BombTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -483,8 +488,8 @@ private struct MyTaskDetailView: View {
                     String(describing: task.subtasks.filter(\.isComplete).count),
                     String(describing: task.subtasks.count)
                 ))
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BombTheme.secondaryText)
                 .fixedSize()
             }
         }
@@ -502,7 +507,7 @@ private struct MyTaskDetailView: View {
                     String(describing: task.subtasks.count)
                 ))
                     .font(.caption.monospacedDigit().weight(.black))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(BombTheme.secondaryText)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -562,27 +567,21 @@ private struct MyTaskDetailView: View {
 
                         Text(deliverable.isApproved ? L10n.text("已驗收") : L10n.text("待驗收"))
                             .font(.caption.weight(.black))
-                            .foregroundStyle(deliverable.isApproved ? BombTheme.green : BombTheme.ink.opacity(0.56))
+                            .foregroundStyle(deliverable.isApproved ? BombTheme.green : BombTheme.secondaryText)
                     }
                 }
             } else {
                 Text(L10n.text("尚未提交成果"))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(BombTheme.secondaryText)
             }
 
             Button {
                 showsSubmissionSheet = true
             } label: {
                 Label(task.deliverable == nil ? L10n.text("提交成果") : L10n.text("更新成果"), systemImage: "paperclip")
-                    .font(.headline.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(BombTheme.ink)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .buttonStyle(BombFormPrimaryButtonStyle())
         }
     }
 }
@@ -591,7 +590,7 @@ private struct TaskDetailCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(14)
-            .background(BombTheme.paper.mix(with: .white, by: 0.22))
+            .background(BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)

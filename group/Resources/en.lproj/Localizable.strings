@@ -818,3 +818,22 @@
 "跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
 "取消置頂訊息" = "Unpin message";
 "已讀 {0}" = "Read by {0}";
+
+"剩 {0} 小時" = "{0} hours left";
+"剩 {0} 分鐘" = "{0} minutes left";
+
+"＋ 提交成果" = "＋ Submit deliverable";
+
+"請先登入再提交成果。" = "Sign in before submitting a deliverable.";
+
+"你不是這個群組的成員，無法提交成果。" = "Join this group before submitting a deliverable.";
+
+"等待提交" = "Ready to submit";
+
+"提交成功" = "Deliverable submitted";
+
+"提交中" = "Submitting";
+
+"上傳中" = "Uploading";
+
+"已提交" = "Submitted";

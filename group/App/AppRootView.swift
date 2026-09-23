@@ -188,8 +188,7 @@ struct AppRootView: View {
                 GroupListView(
                     model: store,
                     isSelected: tab == .groups,
-                    tutorialStep: $tutorialStep,
-                    onReplayTutorial: replayTutorial
+                    tutorialStep: $tutorialStep
                 )
                 .navigationDestination(for: ReviewNotificationRoute.self) { route in
                     if let group = store.groups.first(where: { $0.id == route.groupID }) {

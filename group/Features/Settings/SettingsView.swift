@@ -65,7 +65,7 @@ struct SettingsView: View {
 
 #if DEBUG
                     NavigationLink {
-                        DeveloperSettingsView(model: model)
+                        DeveloperSettingsView(model: model, onReplayTutorial: onReplayTutorial)
                     } label: {
                         SettingsRow(icon: "wrench.and.screwdriver.fill", title: L10n.text("開發工具"),
                                     subtitle: L10n.text("測試模式與通知測試"))
@@ -199,11 +199,16 @@ private struct AccountSettingsView: View {
 #if DEBUG
 private struct DeveloperSettingsView: View {
     let model: GroupBombModel
+    let onReplayTutorial: () -> Void
 
     var body: some View {
         SettingsPage(title: L10n.text("開發工具")) {
             VStack(spacing: 0) {
                 TestModeSettingsRow(model: model)
+                Divider()
+                debugMenu
+                    .buttonStyle(.plain)
+
                 Divider()
                 NavigationLink {
                     NotificationTestView(model: model)
@@ -216,6 +221,60 @@ private struct DeveloperSettingsView: View {
             .comicCard()
         }
     }
+    private var debugMenu: some View {
+        Menu {
+            SwiftUI.Group {
+                Button(L10n.text("重設 iOS Summer Camp 互評")) {
+                    resetReviews(inviteCode: "IOS100")
+                }
+                Button(L10n.text("重設電子電路期末互評")) {
+                    resetReviews(inviteCode: "EE0073")
+                }
+                Divider()
+                Button(L10n.text("完成 iOS Summer Camp 全部互評")) {
+                    completeAllReviews(inviteCode: "IOS100")
+                }
+                Button(L10n.text("完成電子電路期末全部互評")) {
+                    completeAllReviews(inviteCode: "EE0073")
+                }
+            }
+            .disabled(!model.isDemoMode)
+            Divider()
+            Button(L10n.text("重新播放新手教學"), systemImage: "arrow.counterclockwise", action: onReplayTutorial)
+        } label: {
+            SettingsRow(icon: "wrench.and.screwdriver.fill", title: L10n.text("測試工具"),
+                        subtitle: L10n.text("測試模式"))
+        }
+        .accessibilityLabel(L10n.text("測試工具"))
+    }
+
+    private func resetReviews(inviteCode: String) {
+        guard model.isDemoMode, let group = model.groups.first(where: { $0.inviteCode == inviteCode }) else { return }
+        model.resetPeerReviews(for: group.id)
+    }
+
+    private func completeAllReviews(inviteCode: String) {
+        guard model.isDemoMode, let group = model.groups.first(where: { $0.inviteCode == inviteCode }) else { return }
+        model.resetPeerReviews(for: group.id)
+
+        for reviewerID in group.memberIDs {
+            for revieweeID in group.memberIDs where reviewerID != revieweeID {
+                _ = try? model.submitPeerReview(
+                    groupID: group.id,
+                    reviewerID: reviewerID,
+                    revieweeID: revieweeID,
+                    taskCompletionScore: 4,
+                    discussionScore: 4,
+                    collaborationScore: 4,
+                    ideaScore: 4,
+                    reliabilityScore: 4,
+                    comment: "",
+                    now: group.deadline.addingTimeInterval(1)
+                )
+            }
+        }
+    }
+
 }
 #endif
 
