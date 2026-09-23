@@ -3,6 +3,7 @@ const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestor
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
 const { getAuth } = require("firebase-admin/auth");
+const { getStorage } = require("firebase-admin/storage");
 const { memberDisplayName } = require("./member-display-name");
 const { pokeNotification } = require("./poke-notification");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -154,6 +155,49 @@ function normalizedCreateTaskData(data) {
   }
 
   return { groupID, taskID, title, detail, assigneeUserID, subtasks, deadlineMillis };
+}
+
+function normalizedUpdateTaskData(data) {
+  requireExactKeys(data, ["deadlineMillis", "detail", "groupID", "subtasks", "taskID", "title"]);
+  const groupID = normalizedUUID(data.groupID, "invalid-group-id", true);
+  const taskID = normalizedUUID(data.taskID, "invalid-task-id", true);
+  const title = typeof data.title === "string" ? data.title.trim() : "";
+  const detail = typeof data.detail === "string" ? data.detail.trim() : "";
+  if (!title || title.length > 100) {
+    throw callableError("invalid-argument", "Invalid task title.", "invalid-task-title");
+  }
+  if (detail.length > 1000) {
+    throw callableError("invalid-argument", "Invalid task detail.", "invalid-task-detail");
+  }
+  if (!Array.isArray(data.subtasks) || data.subtasks.length < 1 || data.subtasks.length > 10) {
+    throw callableError("invalid-argument", "Invalid subtasks.", "invalid-subtasks");
+  }
+
+  const subtaskIDs = new Set();
+  const requestedSubtasks = data.subtasks.map(rawSubtask => {
+    requireExactKeys(rawSubtask, ["id", "title"]);
+    const id = normalizedUUID(rawSubtask.id, "invalid-subtask-id");
+    const subtaskTitle = typeof rawSubtask.title === "string" ? rawSubtask.title.trim() : "";
+    if (!subtaskTitle || subtaskTitle.length > 200 || subtaskIDs.has(id)) {
+      throw callableError("invalid-argument", "Invalid subtask.", "invalid-subtasks");
+    }
+    subtaskIDs.add(id);
+    return {id, title: subtaskTitle};
+  });
+
+  const deadlineMillis = data.deadlineMillis;
+  if (typeof deadlineMillis !== "number" || !Number.isFinite(deadlineMillis) || deadlineMillis <= Date.now()) {
+    throw callableError("invalid-argument", "Invalid task deadline.", "invalid-task-deadline");
+  }
+  return {groupID, taskID, title, detail, requestedSubtasks, deadlineMillis};
+}
+
+function normalizedDeleteTaskData(data) {
+  requireExactKeys(data, ["groupID", "taskID"]);
+  return {
+    groupID: normalizedUUID(data.groupID, "invalid-group-id", true),
+    taskID: normalizedUUID(data.taskID, "invalid-task-id", true),
+  };
 }
 
 function normalizedUpdateSubtaskData(data) {
@@ -465,6 +509,92 @@ exports.updateSubtask = onCall({ region }, async (request) => {
   });
 
   return { taskID: data.taskID, subtaskID: data.subtaskID, isComplete: data.isComplete, status };
+});
+
+exports.updateTask = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  const data = normalizedUpdateTaskData(request.data);
+  const groupRef = db.collection("groups").doc(data.groupID);
+  const callerRef = groupRef.collection("members").doc(userID);
+  const taskRef = groupRef.collection("tasks").doc(data.taskID);
+
+  await db.runTransaction(async transaction => {
+    const [groupSnapshot, callerSnapshot, taskSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(callerRef),
+      transaction.get(taskRef),
+    ]);
+    if (!groupSnapshot.exists) {
+      throw callableError("not-found", "Group not found.", "group-not-found");
+    }
+    if (!callerSnapshot.exists || callerSnapshot.data()?.userID !== userID) {
+      throw callableError("permission-denied", "Group membership required.", "permission-denied");
+    }
+    if (!taskSnapshot.exists) {
+      throw callableError("not-found", "Task not found.", "task-not-found");
+    }
+    const task = taskSnapshot.data();
+    if (task.ownerMemberID !== userID) {
+      throw callableError("permission-denied", "Only the assignee may edit this task.", "not-task-owner");
+    }
+    const groupDeadline = millis(groupSnapshot.data().deadline);
+    if (groupDeadline === null || data.deadlineMillis > groupDeadline) {
+      throw callableError("failed-precondition", "Task deadline exceeds group deadline.", "task-deadline-after-group");
+    }
+    if (!Array.isArray(task.subtasks)) {
+      throw callableError("failed-precondition", "Task subtasks are invalid.", "invalid-task-data");
+    }
+
+    const existingByID = new Map(task.subtasks.map(subtask => [String(subtask.id).toLowerCase(), subtask]));
+    const baseWeight = Math.floor(100 / data.requestedSubtasks.length);
+    const remainder = 100 % data.requestedSubtasks.length;
+    const subtasks = data.requestedSubtasks.map((subtask, index) => ({
+      id: subtask.id,
+      title: subtask.title,
+      isComplete: existingByID.get(subtask.id)?.isComplete === true,
+      weight: baseWeight + (index < remainder ? 1 : 0),
+    }));
+    const subtasksChanged = JSON.stringify(task.subtasks.map(({id, title}) => ({id, title})))
+      !== JSON.stringify(data.requestedSubtasks);
+    const status = subtasks.every(subtask => subtask.isComplete) ? "completed"
+      : subtasks.some(subtask => subtask.isComplete) ? "inProgress" : "pending";
+
+    transaction.update(taskRef, {
+      title: data.title,
+      detail: data.detail,
+      subtasks,
+      deadline: Timestamp.fromMillis(data.deadlineMillis),
+      status,
+      ...(subtasksChanged ? {confirmedMemberUIDs: []} : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return {taskID: data.taskID};
+});
+
+exports.deleteTask = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  const data = normalizedDeleteTaskData(request.data);
+  const groupRef = db.collection("groups").doc(data.groupID);
+  const callerRef = groupRef.collection("members").doc(userID);
+  const taskRef = groupRef.collection("tasks").doc(data.taskID);
+  const [callerSnapshot, taskSnapshot] = await Promise.all([callerRef.get(), taskRef.get()]);
+  if (!callerSnapshot.exists || callerSnapshot.data()?.userID !== userID) {
+    throw callableError("permission-denied", "Group membership required.", "permission-denied");
+  }
+  if (!taskSnapshot.exists) {
+    throw callableError("not-found", "Task not found.", "task-not-found");
+  }
+  if (taskSnapshot.data()?.ownerMemberID !== userID) {
+    throw callableError("permission-denied", "Only the assignee may delete this task.", "not-task-owner");
+  }
+
+  await getStorage().bucket().deleteFiles({
+    prefix: `groups/${data.groupID}/tasks/${data.taskID}/`,
+  });
+  await db.recursiveDelete(taskRef);
+  return {taskID: data.taskID};
 });
 
 exports.registerPokeDevice = onCall({ region }, async (request) => {

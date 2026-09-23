@@ -359,6 +359,8 @@
 "請問需要我幫忙查什麼？請在 @機器人 後面輸入問題。" = "What should I look up? Type your question after @bot.";
 "請問需要我幫忙查什麼？請先在聊天室描述問題，再點一次「幫我們查詢」。" = "What should I look up? Describe your question in the chat, then tap “Help us look this up” again.";
 "Apple Intelligence 暫時無法完成這次請求，請稍後再試。" = "Apple Intelligence could not complete this request. Please try again later.";
+"目前裝置上的 Apple Intelligence 模型尚未支援英文。" = "The Apple Intelligence model on this device does not currently support English.";
+"Apple Intelligence 無法辨識這段對話的語言，請改用繁體中文或英文再試一次。" = "Apple Intelligence could not identify the conversation language. Please try again in Traditional Chinese or English.";
 "@機器人 幫我們查詢" = "@bot Help us look this up";
 "@機器人 分析專案" = "@bot Analyze project";
 "拆彈 AI 通訊官" = "Bomb AI communications agent";
@@ -395,6 +397,7 @@
 "修改群組" = "Edit group";
 "群組代碼已複製" = "Group code copied";
 "成員進度" = "Member progress";
+"我的進度" = "My progress";
 "已截止" = "Deadline passed";
 "＋ 發布任務" = "＋ Publish task";
 "拆彈小隊" = "Defusing squad";
@@ -794,3 +797,24 @@
 "替換檔案" = "Replace file";
 
 "新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "The new file was uploaded, but the old attachment could not be removed. Please delete the old attachment again.";
+"修改任務" = "Edit Task";
+"刪除任務" = "Delete Task";
+"管理任務「{0}」" = "Manage task “{0}”";
+"收合任務" = "Collapse task";
+"展開任務" = "Expand task";
+"保留的子任務會維持目前完成狀態" = "Retained subtasks keep their current completion status";
+"儲存中…" = "Saving…";
+"儲存修改" = "Save Changes";
+"任務操作失敗" = "Task Action Failed";
+"確定刪除「{0}」？" = "Delete “{0}”?";
+"刪除後，這項任務的子任務、進度與成果附件都無法復原。" = "This task, its subtasks, progress, and deliverable attachments cannot be recovered.";
+"已修改任務「{0}」" = "Updated task “{0}”";
+"已刪除任務「{0}」" = "Deleted task “{0}”";
+"待完成任務進度" = "Pending task progress";
+"取消置頂" = "Unpin";
+"置頂訊息" = "Pin message";
+"已讀同步：{0}" = "Read receipt sync: {0}";
+"置頂同步：{0}" = "Pinned message sync: {0}";
+"跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
+"取消置頂訊息" = "Unpin message";
+"已讀 {0}" = "Read by {0}";

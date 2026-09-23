@@ -259,6 +259,39 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      match /readReceipts/{userID} {
+        allow read: if isGroupMember(groupID);
+        allow create, update: if isGroupMember(groupID)
+          && isCurrentUser(userID)
+          && request.resource.data.keys().hasAll(['messageID', 'readAt'])
+          && request.resource.data.keys().hasOnly(['messageID', 'readAt'])
+          && request.resource.data.messageID is string
+          && request.resource.data.messageID.size() > 0
+          && request.resource.data.messageID.size() <= 128
+          && request.resource.data.readAt == request.time
+          && exists(/databases/$(database)/documents/groups/$(groupID)/messages/$(request.resource.data.messageID));
+        allow delete: if false;
+      }
+
+      match /chatSettings/{settingID} {
+        allow read: if isGroupMember(groupID) && settingID == 'pin';
+        allow create, update: if isGroupMember(groupID)
+          && settingID == 'pin'
+          && request.resource.data.keys().hasAll(['messageID', 'senderName', 'text'])
+          && request.resource.data.keys().hasOnly(['messageID', 'senderName', 'text'])
+          && request.resource.data.messageID is string
+          && request.resource.data.messageID.size() > 0
+          && request.resource.data.messageID.size() <= 128
+          && exists(/databases/$(database)/documents/groups/$(groupID)/messages/$(request.resource.data.messageID))
+          && request.resource.data.senderName == get(
+            /databases/$(database)/documents/groups/$(groupID)/messages/$(request.resource.data.messageID)
+          ).data.senderName
+          && request.resource.data.text == get(
+            /databases/$(database)/documents/groups/$(groupID)/messages/$(request.resource.data.messageID)
+          ).data.text;
+        allow delete: if isGroupMember(groupID) && settingID == 'pin';
+      }
+
       match /presence/{userID} {
         allow read: if isGroupMember(groupID);
         allow create, update: if isGroupMember(groupID)

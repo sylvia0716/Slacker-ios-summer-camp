@@ -140,30 +140,36 @@ struct AppRootView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
-                    Button(L10n.text("關閉")) {
+                    Button {
                         withAnimation(.snappy) {
                             store.cloudErrorMessage = nil
                         }
+                    } label: {
+                        Text(L10n.text("關閉"))
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(BombTheme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .contentShape(Capsule())
+                            .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                     }
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                     .buttonStyle(.plain)
 
-                    Button(L10n.text("重試")) {
+                    Button {
                         withAnimation(.snappy) {
                             store.cloudErrorMessage = nil
                         }
                         Task { await store.reloadCloudGroups() }
+                    } label: {
+                        Text(L10n.text("重試"))
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(BombTheme.ink)
+                            .contentShape(Capsule())
+                            .clipShape(.capsule)
                     }
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
                     .buttonStyle(.plain)
                 }
             }
