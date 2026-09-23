@@ -46,7 +46,7 @@ struct ChatRoomView: View {
                                         .contextMenu {
                                             if let message = pinnableMessage(for: item) {
                                                 let isPinned = model.pinnedChatMessageByGroupID[group.id]?.id == item.id
-                                                Button(isPinned ? "取消置頂" : "置頂訊息",
+                                                Button(L10n.text(isPinned ? "取消置頂" : "置頂訊息"),
                                                        systemImage: isPinned ? "pin.slash" : "pin") {
                                                     model.setPinnedChatMessage(
                                                         isPinned ? nil : message, groupID: group.id
@@ -206,14 +206,14 @@ struct ChatRoomView: View {
             }
 
             if let syncError = model.chatReadSyncErrorsByGroupID[group.id] {
-                Label("已讀同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.format("已讀同步：{0}", String(describing: syncError)), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(BombTheme.red)
                     .lineLimit(2)
             }
 
             if let syncError = model.chatPinSyncErrorsByGroupID[group.id] {
-                Label("置頂同步：\(syncError)", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.format("置頂同步：{0}", String(describing: syncError)), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(BombTheme.red)
                     .lineLimit(2)
@@ -248,7 +248,7 @@ struct ChatRoomView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("跳到置頂訊息：\(message.text)")
+                .accessibilityLabel(L10n.format("跳到置頂訊息：{0}", String(describing: message.text)))
 
                 Button {
                     model.setPinnedChatMessage(nil, groupID: group.id)
@@ -259,7 +259,7 @@ struct ChatRoomView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("取消置頂訊息")
+                .accessibilityLabel(L10n.text("取消置頂訊息"))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -349,7 +349,7 @@ struct ChatRoomView: View {
                         Text(time)
                         if isCurrentUser {
                             let count = model.readCount(for: id, in: group.id)
-                            if count > 0 { Text("已讀 \(count)") }
+                            if count > 0 { Text(L10n.format("已讀 {0}", String(describing: count))) }
                         }
                     }
                     .font(.caption2.weight(.bold))
