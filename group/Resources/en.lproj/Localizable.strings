@@ -395,6 +395,9 @@
 "修改群組名稱" = "Rename group";
 "修改截止時間" = "Change deadline";
 "修改群組" = "Edit group";
+"移除成員" = "Remove member";
+"確定移除 {0}？" = "Remove {0} from the group?";
+"移除失敗，請確認網路後重試。" = "Could not remove the member. Check your connection and try again.";
 "群組代碼已複製" = "Group code copied";
 "成員進度" = "Member progress";
 "我的進度" = "My progress";
@@ -769,6 +772,12 @@
 "提前結算專案" = "Settle project early";
 "完成所有任務後可結算" = "Complete all tasks to settle";
 
+"通知設定尚未同步，背景通知可能仍依原設定送出。" = "Notification settings haven’t synced. Background notifications may still follow your previous settings.";
+
+"僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。" = "Only PNG, JPG, PDF, PPTX, DOCX, XLSX, and ZIP files are supported.";
+"請選擇 PNG 或 JPG 照片。" = "Please choose a PNG or JPG photo.";
+"檔案沒有可上傳的內容，請重新選擇。" = "This file is empty. Please choose another file.";
+"無法讀取檔案，請確認檔案已下載後重試。" = "Unable to read the file. Make sure it has finished downloading, then try again.";
 "{0} 的離開前任務" = "{0}’s tasks before leaving";
 
 "已計入專案進度" = "Included in project progress";
@@ -825,3 +834,22 @@
 "跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
 "取消置頂訊息" = "Unpin message";
 "已讀 {0}" = "Read by {0}";
+
+"剩 {0} 小時" = "{0} hours left";
+"剩 {0} 分鐘" = "{0} minutes left";
+
+"＋ 提交成果" = "＋ Submit deliverable";
+
+"請先登入再提交成果。" = "Sign in before submitting a deliverable.";
+
+"你不是這個群組的成員，無法提交成果。" = "Join this group before submitting a deliverable.";
+
+"等待提交" = "Ready to submit";
+
+"提交成功" = "Deliverable submitted";
+
+"提交中" = "Submitting";
+
+"上傳中" = "Uploading";
+
+"已提交" = "Submitted";

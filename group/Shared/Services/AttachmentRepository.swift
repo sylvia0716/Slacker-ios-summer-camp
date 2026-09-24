@@ -172,7 +172,7 @@ enum AttachmentRepositoryError: LocalizedError {
         case .uploaderMismatch:
             L10n.text("目前帳號與附件上傳者不一致。")
         case .notGroupMember:
-            L10n.text("你不是這個群組的成員，無法上傳成果。")
+            L10n.text("你不是這個群組的成員，無法提交成果。")
         case .membershipCheckFailed:
             L10n.text("目前無法確認群組資格，請檢查網路後再試一次。")
         }

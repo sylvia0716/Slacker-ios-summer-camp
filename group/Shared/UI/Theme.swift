@@ -4,6 +4,7 @@ import SwiftUI
 enum BombTheme {
     static let yellow = Color(red: 1, green: 0.79, blue: 0.05)
     static let ink = Color(red: 0.08, green: 0.08, blue: 0.07)
+    static let secondaryText = Color(red: 0.35, green: 0.34, blue: 0.30)
     static let paper = Color(red: 0.96, green: 0.92, blue: 0.79)
     static let red = Color(red: 196.0 / 255, green: 61.0 / 255, blue: 50.0 / 255) // #C43D32
     static let green = Color(red: 0.16, green: 0.55, blue: 0.32)

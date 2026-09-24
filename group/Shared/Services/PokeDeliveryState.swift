@@ -49,6 +49,11 @@ final class PokeDeliveryState {
 
     var receivesPokes: Bool { notificationsEnabled && categories.pokes }
 
+    nonisolated static func accepts(recipientUID: String?, currentUID: String?) -> Bool {
+        guard let recipientUID, !recipientUID.isEmpty, let currentUID else { return false }
+        return recipientUID == currentUID
+    }
+
     /// The first server snapshot establishes a baseline instead of replaying old history.
     func unseenCount(latestCount: Int, uid: String, groupID: String) -> Int {
         let counts = checkpoints(for: uid)

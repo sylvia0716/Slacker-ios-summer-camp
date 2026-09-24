@@ -171,7 +171,7 @@ enum AttachmentUploadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            L10n.text("請先登入再上傳成果。")
+            L10n.text("請先登入再提交成果。")
         case .fileTooLarge:
             L10n.text("檔案不可超過 20 MB。")
         case .invalidHTTPSURL:

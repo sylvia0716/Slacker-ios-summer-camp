@@ -11,6 +11,14 @@ struct PokeDeliveryStateTests {
         body(PokeDeliveryState(defaults: defaults), defaults)
     }
 
+    @Test func rejectsPokesForPreviousOrMissingAccount() {
+        #expect(PokeDeliveryState.accepts(recipientUID: "A", currentUID: "A"))
+        #expect(!PokeDeliveryState.accepts(recipientUID: "A", currentUID: "B"))
+        #expect(!PokeDeliveryState.accepts(recipientUID: "A", currentUID: nil))
+        #expect(!PokeDeliveryState.accepts(recipientUID: nil, currentUID: "B"))
+        #expect(!PokeDeliveryState.accepts(recipientUID: "", currentUID: ""))
+    }
+
     @Test func firstSnapshotDoesNotReplayHistory() {
         withState { state, _ in
             #expect(state.unseenCount(latestCount: 20, uid: "A", groupID: "one") == 0)

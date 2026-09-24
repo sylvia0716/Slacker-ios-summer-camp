@@ -15,6 +15,8 @@ final class AuthSessionStore {
         get { AppLanguageSettings.shared.language }
         set { AppLanguageSettings.shared.preference = AppLanguagePreference(rawValue: newValue.rawValue)! }
     }
+    private var signOutErrorKey: String?
+    var signOutErrorMessage: String? { signOutErrorKey.map { text($0) } }
     private var errorKey: String?
     var errorMessage: String? { errorKey.map { text($0) } }
 
@@ -92,6 +94,7 @@ final class AuthSessionStore {
     }
 
     func signIn(email: String, password: String) async {
+        guard !isWorking else { return }
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
             errorKey = "Firebase 尚未設定完成，請稍後再試。"
@@ -100,9 +103,13 @@ final class AuthSessionStore {
 
         isWorking = true
         errorKey = nil
-        defer { isWorking = false }
+        defer {
+            isWorking = false
+            PokeRepository.resumeDeviceRegistration()
+        }
 
         do {
+            try await PokeRepository().prepareForAccountChange()
             let result = try await Auth.auth().signIn(
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
@@ -114,6 +121,7 @@ final class AuthSessionStore {
     }
 
     func register(email: String, password: String) async {
+        guard !isWorking else { return }
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
             errorKey = "Firebase 尚未設定完成，請稍後再試。"
@@ -186,21 +194,27 @@ final class AuthSessionStore {
             return
         }
 #endif
-        guard FirebaseApp.app() != nil else { return }
-
-        do {
-            isStartingAnonymousSession = true
-            isCheckingSession = true
-            try Auth.auth().signOut()
-            errorKey = nil
-            Task {
-                isStartingAnonymousSession = false
-                await startAnonymousSession()
+        guard FirebaseApp.app() != nil, !isWorking else { return }
+        signOutErrorKey = nil
+        isWorking = true
+        Task {
+            defer {
+                isWorking = false
+                PokeRepository.resumeDeviceRegistration()
             }
-        } catch {
-            isStartingAnonymousSession = false
-            isCheckingSession = false
-            errorKey = Self.localizedMessage(for: error)
+            do {
+                try await PokeRepository().prepareForAccountChange()
+                isStartingAnonymousSession = true
+                isCheckingSession = true
+                try Auth.auth().signOut()
+                updateSession(user: nil)
+                errorKey = nil
+                await startAnonymousSession()
+            } catch {
+                isStartingAnonymousSession = false
+                isCheckingSession = false
+                signOutErrorKey = Self.localizedMessage(for: error)
+            }
         }
     }
 

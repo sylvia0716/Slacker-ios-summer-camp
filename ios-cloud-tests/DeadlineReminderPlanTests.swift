@@ -101,4 +101,44 @@ struct DeadlineReminderPlanTests {
         })
         #expect(result.allSatisfy { $0.fireDate < group.deadline })
     }
+
+    @Test(arguments: [0, 30, 59])
+    func midnightDeadlinesHaveOneReminderPerItem(minute: Int) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600)!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 9, day: 22))!
+        let deadline = calendar.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 0, minute: minute))!
+        let expected = calendar.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9))!
+        var group = group()
+        group.deadline = deadline
+        var first = task(in: group)
+        first.deadline = deadline
+        var second = task(in: group)
+        second.deadline = deadline
+        let result = DeadlineReminderPlan.make(groups: [group], tasks: [first, second],
+            memberID: memberID, uid: "A", now: start,
+            reminderTime: DateComponents(hour: 9, minute: 0), calendar: calendar)
+
+        #expect(result.count == 3)
+        #expect(result.filter { $0.taskID == nil }.count == 1)
+        #expect(result.filter { $0.taskID == first.id }.count == 1)
+        #expect(result.filter { $0.taskID == second.id }.count == 1)
+        #expect(result.allSatisfy { $0.fireDate == expected })
+        // Retain an existing identifier so reconciliation removes only the duplicate request.
+        #expect(result.allSatisfy { $0.id.hasSuffix(".24") })
+    }
+
+    @Test func configuredRemindersOnDifferentDaysArePreserved() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600)!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 9, day: 22))!
+        var group = group()
+        group.deadline = calendar.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18))!
+        let result = DeadlineReminderPlan.make(groups: [group], tasks: [], memberID: memberID,
+            uid: "A", now: start, reminderTime: DateComponents(hour: 9, minute: 0), calendar: calendar)
+        #expect(result.map(\.fireDate) == [23, 24].map {
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: $0, hour: 9))!
+        })
+    }
+
 }

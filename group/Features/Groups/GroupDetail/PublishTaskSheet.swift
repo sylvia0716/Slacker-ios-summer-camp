@@ -38,36 +38,26 @@ struct PublishTaskSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(BombTheme.ink.opacity(0.35))
-                .frame(width: 42, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+        BombFormSheet(title: L10n.text("發布任務"), showsHandle: true) {
+            taskFields
+            subtaskFields
+            assigneePicker
+            deadlinePicker
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.text("發布任務"))
-                        .font(.system(.title2, design: .rounded, weight: .black))
-
-                    taskFields
-                    subtaskFields
-                    assigneePicker
-                    deadlinePicker
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(BombTheme.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .scrollIndicators(.hidden)
-
-            actionBar
+        } actions: {
+            BombFormActions(
+                primaryTitle: isPublishing ? L10n.text("發布中…") : L10n.text("發布任務"),
+                isEnabled: canPublish,
+                isBusy: isPublishing,
+                onPrimary: publish,
+                onSecondary: onCancel
+            )
         }
         .background(BombTheme.yellow)
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
@@ -84,15 +74,15 @@ struct PublishTaskSheet: View {
                 fieldLabel(L10n.text("子任務"), isRequired: true)
                 Spacer()
                 Text("\(subtaskDrafts.count) / 10")
-                    .font(.caption2.monospacedDigit().weight(.black))
-                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+                    .font(.footnote.monospacedDigit().weight(.bold))
+                    .foregroundStyle(BombTheme.secondaryText)
             }
 
             ForEach($subtaskDrafts) { $draft in
                 HStack(spacing: 9) {
                     TextField(L10n.text("例如「整理簡報架構」"), text: $draft.title)
                         .textInputAutocapitalization(.never)
-                        .inputFieldStyle()
+                        .bombFormField()
 
                     if subtaskDrafts.count > 1 {
                         Button {
@@ -123,8 +113,8 @@ struct PublishTaskSheet: View {
             }
 
             Text(L10n.text("每項子任務會平均計入任務進度"))
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(BombTheme.ink.opacity(0.55))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BombTheme.secondaryText)
         }
     }
 
@@ -134,14 +124,14 @@ struct PublishTaskSheet: View {
                 fieldLabel(L10n.text("任務名稱"), isRequired: true)
                 TextField(L10n.text("例如「製作競品分析」"), text: $title)
                     .textInputAutocapitalization(.never)
-                    .inputFieldStyle()
+                    .bombFormField()
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 fieldLabel(L10n.text("任務說明"), isRequired: false)
                 TextField(L10n.text("例如「整理三個競品的功能與差異」"), text: $detail, axis: .vertical)
                     .lineLimit(2...4)
-                    .inputFieldStyle()
+                    .bombFormField()
             }
         }
     }
@@ -176,8 +166,8 @@ struct PublishTaskSheet: View {
                     Text(member.name)
                         .font(.subheadline.weight(.black))
                     Text(member.role.title)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.6))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(BombTheme.secondaryText)
                 }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -186,7 +176,7 @@ struct PublishTaskSheet: View {
             .foregroundStyle(BombTheme.ink)
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
-            .background(isSelected ? BombTheme.paper : BombTheme.paper.opacity(0.65))
+            .background(isSelected ? BombTheme.yellow : BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -206,15 +196,8 @@ struct PublishTaskSheet: View {
                 in: allowedDeadlineRange,
                 displayedComponents: [.date, .hourAndMinute]
             )
-            .font(.subheadline.weight(.bold))
-            .tint(BombTheme.ink)
-            .padding(12)
-            .background(BombTheme.paper)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: 2)
-            }
+            .datePickerStyle(.compact)
+            .bombFormField()
 
             if let deadlineError {
                 Text(deadlineError)
@@ -222,33 +205,6 @@ struct PublishTaskSheet: View {
                     .foregroundStyle(BombTheme.red)
             }
         }
-    }
-
-    private var actionBar: some View {
-        VStack(spacing: 6) {
-            Button(action: publish) {
-                Text(isPublishing ? L10n.text("發布中…") : L10n.text("發布任務"))
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canPublish || isPublishing)
-            .opacity(canPublish && !isPublishing ? 1 : 0.42)
-
-            Button(L10n.text("取消"), action: onCancel)
-                .font(.subheadline.weight(.black))
-                .foregroundStyle(BombTheme.ink)
-                .buttonStyle(.plain)
-                .padding(.vertical, 5)
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .safeAreaPadding(.bottom, 8)
-        .background(BombTheme.yellow)
     }
 
     private var trimmedTitle: String {
@@ -316,19 +272,5 @@ struct PublishTaskSheet: View {
     private func removeSubtask(_ id: UUID) {
         guard subtaskDrafts.count > 1 else { return }
         subtaskDrafts.removeAll { $0.id == id }
-    }
-}
-
-private extension View {
-    func inputFieldStyle() -> some View {
-        font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 13)
-            .padding(.vertical, 11)
-            .background(BombTheme.paper)
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: 2)
-            }
     }
 }

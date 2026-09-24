@@ -224,7 +224,11 @@ final class AppStore {
 
     var receivesPokes: Bool { notificationsEnabled && notificationCategories.pokes }
 
+    private(set) var pokeNotificationSyncFailed = false
+    private var pokeRegistrationID = UUID()
+
     private func notificationSettingsChanged() {
+        registerPokeDevice()
         refreshDeadlineReminders()
         if receivesPokes, dataMode == .live {
             PokeBackgroundRefresh.shared.schedule()
@@ -1636,6 +1640,8 @@ final class AppStore {
         lastMarkedChatMessageIDByGroupID = [:]
         communicationAnalyses = [:]
         pokeCounts = [:]
+        pokeNotificationSyncFailed = false
+        pokeRegistrationID = UUID()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         cloudErrorMessage = nil
@@ -1694,14 +1700,19 @@ final class AppStore {
     }
 
     func registerPokeDevice() {
-        guard dataMode == .live, firebaseUID != nil else { return }
+        guard dataMode == .live, let uid = firebaseUID else { return }
+        let registrationID = UUID()
+        pokeRegistrationID = registrationID
         Task { [weak self] in
             do {
                 let repository = self?.pokeRepository ?? PokeRepository()
                 self?.pokeRepository = repository
                 try await repository.registerCurrentDevice()
+                guard let self, self.firebaseUID == uid, self.pokeRegistrationID == registrationID else { return }
+                self.pokeNotificationSyncFailed = false
             } catch {
-                // Notification registration must not block cloud-group synchronization.
+                guard let self, self.firebaseUID == uid, self.pokeRegistrationID == registrationID else { return }
+                self.pokeNotificationSyncFailed = true
             }
         }
     }
@@ -1885,6 +1896,37 @@ final class AppStore {
         for index in projectTasks.indices where projectTasks[index].groupID == groupID && projectTasks[index].departureID == departureID {
             projectTasks[index].includedInProgress = included
             projectTasks[index].departureReviewed = true
+        }
+        publishWidgetSnapshot()
+    }
+
+    func removeGroupMember(groupID: UUID, memberID: UUID) async throws {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }),
+              groups[index].memberIDs.contains(memberID), memberID != currentUserID,
+              let leader = members.first(where: { $0.id == currentUserID }),
+              (groups[index].memberRoles[currentUserID] ?? leader.role) == .leader,
+              let member = members.first(where: { $0.id == memberID }) else {
+            throw GroupJoinError.permissionDenied
+        }
+        let account = firebaseUID
+        if !isDemoMode {
+            guard let path = groups[index].firestoreDocumentID,
+                  let uid = member.firebaseUID else { throw GroupJoinError.invalidGroupData }
+            try await GroupJoinRepository().removeMember(groupID: path, memberUID: uid)
+            guard firebaseUID == account else { throw GroupJoinError.notAuthenticated }
+        }
+        guard let currentIndex = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[currentIndex].memberIDs.removeAll { $0 == memberID }
+        groups[currentIndex].memberRoles[memberID] = nil
+        let departureID = UUID().uuidString.lowercased()
+        for taskIndex in projectTasks.indices where projectTasks[taskIndex].groupID == groupID
+            && projectTasks[taskIndex].ownerMemberID == memberID {
+            projectTasks[taskIndex].departedProgress = projectTasks[taskIndex].progress
+            projectTasks[taskIndex].departedMemberName = member.name
+            projectTasks[taskIndex].departureID = departureID
+            projectTasks[taskIndex].includedInProgress = true
+            projectTasks[taskIndex].departureReviewed = false
+            projectTasks[taskIndex].ownerMemberID = nil
         }
         publishWidgetSnapshot()
     }
