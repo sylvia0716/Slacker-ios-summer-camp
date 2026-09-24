@@ -1,40 +1,41 @@
 import SwiftUI
 
-private struct SubtaskDraft: Identifiable {
-    let id = UUID()
-    var title = ""
+private struct TaskEditSubtaskDraft: Identifiable {
+    let id: UUID
+    var title: String
+    let isComplete: Bool
 }
 
-/// Focused task-publishing flow: choose who should do what, and by when.
-struct PublishTaskSheet: View {
+/// Owner-only editor for an existing task. Identity and completion are preserved for retained subtasks.
+struct TaskEditorSheet: View {
     let group: Group
-    let members: [Member]
-    let onPublish: (String, String, [String], UUID, Date) async throws -> Void
+    let task: ProjectTask
+    let onSave: (String, String, [Subtask], Date) async throws -> Void
     let onCancel: () -> Void
 
-    @State private var title = ""
-    @State private var detail = ""
-    @State private var subtaskDrafts = [SubtaskDraft()]
-    @State private var selectedMemberID: UUID?
+    @State private var title: String
+    @State private var detail: String
+    @State private var subtaskDrafts: [TaskEditSubtaskDraft]
     @State private var deadline: Date
     @State private var submissionError: String?
-    @State private var isPublishing = false
+    @State private var isSaving = false
 
     init(
         group: Group,
-        members: [Member],
-        onPublish: @escaping (String, String, [String], UUID, Date) async throws -> Void,
+        task: ProjectTask,
+        onSave: @escaping (String, String, [Subtask], Date) async throws -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.group = group
-        self.members = members
-        self.onPublish = onPublish
+        self.task = task
+        self.onSave = onSave
         self.onCancel = onCancel
-
-        let now = Date.now
-        let preferredDeadline = now.addingTimeInterval(60 * 60)
-        let initialDeadline = max(now, min(preferredDeadline, group.deadline))
-        _deadline = State(initialValue: initialDeadline)
+        _title = State(initialValue: task.title)
+        _detail = State(initialValue: task.detail)
+        _subtaskDrafts = State(initialValue: task.subtasks.map {
+            TaskEditSubtaskDraft(id: $0.id, title: $0.title, isComplete: $0.isComplete)
+        })
+        _deadline = State(initialValue: max(Date.now, min(task.deadline, group.deadline)))
     }
 
     var body: some View {
@@ -47,16 +48,15 @@ struct PublishTaskSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.text("發布任務"))
+                    Text(L10n.text("修改任務"))
                         .font(.system(.title2, design: .rounded, weight: .black))
 
                     taskFields
                     subtaskFields
-                    assigneePicker
                     deadlinePicker
 
-                    if let errorMessage {
-                        Text(errorMessage)
+                    if let submissionError {
+                        Text(submissionError)
                             .font(.caption.weight(.black))
                             .foregroundStyle(BombTheme.red)
                             .fixedSize(horizontal: false, vertical: true)
@@ -66,6 +66,7 @@ struct PublishTaskSheet: View {
                 .padding(.bottom, 14)
             }
             .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
 
             actionBar
         }
@@ -76,6 +77,24 @@ struct PublishTaskSheet: View {
                 .stroke(BombTheme.ink, lineWidth: 3)
         }
         .shadow(color: BombTheme.ink.opacity(0.3), radius: 14, y: 4)
+    }
+
+    private var taskFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                fieldLabel(L10n.text("任務名稱"), isRequired: true)
+                TextField(L10n.text("例如「製作競品分析」"), text: $title)
+                    .textInputAutocapitalization(.never)
+                    .taskEditInputStyle()
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                fieldLabel(L10n.text("任務說明"), isRequired: false)
+                TextField(L10n.text("例如「整理三個競品的功能與差異」"), text: $detail, axis: .vertical)
+                    .lineLimit(2...4)
+                    .taskEditInputStyle()
+            }
+        }
     }
 
     private var subtaskFields: some View {
@@ -92,11 +111,11 @@ struct PublishTaskSheet: View {
                 HStack(spacing: 9) {
                     TextField(L10n.text("例如「整理簡報架構」"), text: $draft.title)
                         .textInputAutocapitalization(.never)
-                        .inputFieldStyle()
+                        .taskEditInputStyle()
 
                     if subtaskDrafts.count > 1 {
                         Button {
-                            removeSubtask(draft.id)
+                            subtaskDrafts.removeAll { $0.id == draft.id }
                         } label: {
                             Image(systemName: "minus")
                                 .font(.subheadline.weight(.black))
@@ -113,7 +132,7 @@ struct PublishTaskSheet: View {
 
             if subtaskDrafts.count < 10 {
                 Button {
-                    subtaskDrafts.append(SubtaskDraft())
+                    subtaskDrafts.append(TaskEditSubtaskDraft(id: UUID(), title: "", isComplete: false))
                 } label: {
                     Label(L10n.text("新增子任務"), systemImage: "plus.circle.fill")
                         .font(.subheadline.weight(.black))
@@ -122,88 +141,19 @@ struct PublishTaskSheet: View {
                 .foregroundStyle(BombTheme.ink)
             }
 
-            Text(L10n.text("每項子任務會平均計入任務進度"))
+            Text(L10n.text("保留的子任務會維持目前完成狀態"))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(BombTheme.ink.opacity(0.55))
         }
     }
 
-    private var taskFields: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                fieldLabel(L10n.text("任務名稱"), isRequired: true)
-                TextField(L10n.text("例如「製作競品分析」"), text: $title)
-                    .textInputAutocapitalization(.never)
-                    .inputFieldStyle()
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                fieldLabel(L10n.text("任務說明"), isRequired: false)
-                TextField(L10n.text("例如「整理三個競品的功能與差異」"), text: $detail, axis: .vertical)
-                    .lineLimit(2...4)
-                    .inputFieldStyle()
-            }
-        }
-    }
-
-    private var assigneePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            fieldLabel(L10n.text("負責人"), isRequired: true)
-
-            ScrollView(.horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(members) { member in
-                        assigneeButton(for: member)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    private func assigneeButton(for member: Member) -> some View {
-        let isSelected = selectedMemberID == member.id
-
-        return Button {
-            selectedMemberID = member.id
-            submissionError = nil
-        } label: {
-            HStack(spacing: 9) {
-                MemberPhotoAvatar(groupID: group.firestoreDocumentID, uid: member.firebaseUID, name: member.name, size: 34)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(member.name)
-                        .font(.subheadline.weight(.black))
-                    Text(member.role.title)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(BombTheme.ink.opacity(0.6))
-                }
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.headline.weight(.black))
-            }
-            .foregroundStyle(BombTheme.ink)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
-            .background(isSelected ? BombTheme.paper : BombTheme.paper.opacity(0.65))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: isSelected ? 4 : 2)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
     private var deadlinePicker: some View {
         VStack(alignment: .leading, spacing: 7) {
             fieldLabel(L10n.text("截止時間"), isRequired: true)
-
             DatePicker(
                 L10n.text("選擇日期與時間"),
                 selection: $deadline,
-                in: allowedDeadlineRange,
+                in: Date.now...max(Date.now, group.deadline),
                 displayedComponents: [.date, .hourAndMinute]
             )
             .font(.subheadline.weight(.bold))
@@ -215,19 +165,13 @@ struct PublishTaskSheet: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(BombTheme.ink, lineWidth: 2)
             }
-
-            if let deadlineError {
-                Text(deadlineError)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(BombTheme.red)
-            }
         }
     }
 
     private var actionBar: some View {
         VStack(spacing: 6) {
-            Button(action: publish) {
-                Text(isPublishing ? L10n.text("發布中…") : L10n.text("發布任務"))
+            Button(action: save) {
+                Text(isSaving ? L10n.text("儲存中…") : L10n.text("儲存修改"))
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -236,8 +180,8 @@ struct PublishTaskSheet: View {
                     .clipShape(.capsule)
             }
             .buttonStyle(.plain)
-            .disabled(!canPublish || isPublishing)
-            .opacity(canPublish && !isPublishing ? 1 : 0.42)
+            .disabled(!canSave || isSaving)
+            .opacity(canSave && !isSaving ? 1 : 0.42)
 
             Button(L10n.text("取消"), action: onCancel)
                 .font(.subheadline.weight(.black))
@@ -255,35 +199,22 @@ struct PublishTaskSheet: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var trimmedSubtaskTitles: [String] {
-        subtaskDrafts.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedDrafts: [TaskEditSubtaskDraft] {
+        subtaskDrafts.map {
+            TaskEditSubtaskDraft(
+                id: $0.id,
+                title: $0.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                isComplete: $0.isComplete
+            )
+        }
     }
 
-    private var selectedMember: Member? {
-        guard let selectedMemberID else { return nil }
-        return members.first(where: { $0.id == selectedMemberID })
-    }
-
-    private var allowedDeadlineRange: ClosedRange<Date> {
-        let now = Date.now
-        return now...max(now, group.deadline)
-    }
-
-    private var deadlineError: String? {
-        if deadline <= Date.now { return L10n.text("截止時間必須晚於目前時間") }
-        if deadline > group.deadline { return L10n.text("截止時間不可晚於群組總截止時間") }
-        return nil
-    }
-
-    private var errorMessage: String? {
-        submissionError
-    }
-
-    private var canPublish: Bool {
+    private var canSave: Bool {
         !trimmedTitle.isEmpty
-            && !trimmedSubtaskTitles.contains { $0.isEmpty }
-            && selectedMember != nil
-            && deadlineError == nil
+            && !trimmedDrafts.isEmpty
+            && !trimmedDrafts.contains { $0.title.isEmpty }
+            && deadline > Date.now
+            && deadline <= group.deadline
     }
 
     private func fieldLabel(_ title: String, isRequired: Bool) -> some View {
@@ -298,29 +229,27 @@ struct PublishTaskSheet: View {
         .font(.subheadline.weight(.black))
     }
 
-    private func publish() {
-        guard canPublish, !isPublishing, let selectedMemberID else { return }
-        isPublishing = true
+    private func save() {
+        guard canSave, !isSaving else { return }
+        isSaving = true
         submissionError = nil
+        let subtasks = trimmedDrafts.map {
+            Subtask(id: $0.id, title: $0.title, isComplete: $0.isComplete, weight: 1)
+        }
         Task {
             do {
-                try await onPublish(title, detail, trimmedSubtaskTitles, selectedMemberID, deadline)
+                try await onSave(trimmedTitle, detail, subtasks, deadline)
                 onCancel()
             } catch {
                 submissionError = error.localizedDescription
-                isPublishing = false
+                isSaving = false
             }
         }
-    }
-
-    private func removeSubtask(_ id: UUID) {
-        guard subtaskDrafts.count > 1 else { return }
-        subtaskDrafts.removeAll { $0.id == id }
     }
 }
 
 private extension View {
-    func inputFieldStyle() -> some View {
+    func taskEditInputStyle() -> some View {
         font(.subheadline.weight(.semibold))
             .padding(.horizontal, 13)
             .padding(.vertical, 11)

@@ -40,7 +40,7 @@ struct MyTasksView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if !pendingTasks.isEmpty {
+                    if !showCompleted && !pendingTasks.isEmpty {
                         TaskProgressDashboard(progress: personalProgress, isActive: isSelected)
                     }
 
@@ -130,7 +130,7 @@ struct MyTasksView: View {
     }
 
     private var personalProgress: Int {
-        model.overallMemberProgress(for: model.currentUserID)
+        model.pendingMemberProgress(for: model.currentUserID)
     }
 }
 
@@ -151,7 +151,7 @@ private struct TaskProgressDashboard: View {
                     .monospacedDigit()
                     .foregroundStyle(BombTheme.ink)
 
-                Text(L10n.text("整體任務進度"))
+                Text(L10n.text("待完成任務進度"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(BombTheme.ink)
                     .padding(.horizontal, 14)
@@ -519,6 +519,9 @@ private struct MyTaskDetailView: View {
                                 .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
                                 .strikethrough(subtask.isComplete)
                             Spacer(minLength: 0)
+                            if model.pendingSubtaskUpdates[task.id] == subtask.id {
+                                ProgressView().controlSize(.small)
+                            }
                         }
                         .contentShape(.rect)
                         .padding(.horizontal, 12)

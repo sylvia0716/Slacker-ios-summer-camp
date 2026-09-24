@@ -670,13 +670,7 @@ struct PeerReviewOverlay: View {
     }
 
     private func avatar(for member: Member, size: CGFloat) -> some View {
-        ZStack {
-            Circle().fill(BombTheme.ink)
-            Image(systemName: member.avatarSymbol)
-                .font(.system(size: size * 0.4, weight: .black))
-                .foregroundStyle(BombTheme.yellow)
-        }
-        .frame(width: size, height: size)
+        MemberPhotoAvatar(groupID: group.firestoreDocumentID, uid: member.firebaseUID, name: member.name, size: size)
         .accessibilityHidden(true)
     }
 

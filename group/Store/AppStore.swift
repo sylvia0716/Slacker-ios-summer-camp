@@ -142,6 +142,7 @@ final class AppStore {
     @ObservationIgnored private var attachmentRepository: AttachmentRepository?
     @ObservationIgnored private var progressSubscriptions: [UUID: GroupProgressSubscription] = [:]
     private(set) var pendingTaskUpdates: Set<UUID> = []
+    private(set) var pendingSubtaskUpdates: [UUID: UUID] = [:]
     private(set) var isSavingNickname = false
     @ObservationIgnored private var groupRepository: GroupRepository?
     @ObservationIgnored private var taskMutationRepository: TaskMutationRepository?
@@ -175,8 +176,11 @@ final class AppStore {
     /// 每個群組只保留一組聊天室與在線狀態監聽。
     @ObservationIgnored private var chatMessageListeners: [UUID: ListenerRegistration] = [:]
     @ObservationIgnored private var chatPresenceListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var chatReadListeners: [UUID: ListenerRegistration] = [:]
+    @ObservationIgnored private var chatPinListeners: [UUID: ListenerRegistration] = [:]
     @ObservationIgnored private var chatHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var chatRepository: ChatRepository?
+    @ObservationIgnored private var lastMarkedChatMessageIDByGroupID: [UUID: String] = [:]
 
     /// 舊版聊天室啟動時自動建立的示範訊息 ID；載入時只移除這些內容。
     private static let legacyMockChatItemIDs: Set<String> = [
@@ -268,6 +272,13 @@ final class AppStore {
 
     /// 每個群組的完整聊天時間軸；離開聊天室再進入時仍會讀取同一份記錄。
     var chatItemsByGroupID: [UUID: [ChatRoomItem]] = [:]
+    private(set) var chatSenderIDsByGroupID: [UUID: [String: String]] = [:]
+
+    var cloudChatMessageIDsByGroupID: [UUID: [String]] = [:]
+    var chatReadReceiptsByGroupID: [UUID: [ChatReadReceipt]] = [:]
+    var pinnedChatMessageByGroupID: [UUID: ChatPinnedMessage] = [:]
+    var chatReadSyncErrorsByGroupID: [UUID: String] = [:]
+    var chatPinSyncErrorsByGroupID: [UUID: String] = [:]
 
     /// 各群組目前仍有有效心跳的在線帳號。
     var onlineMembersByGroupID: [UUID: [ChatPresence]] = [:]
@@ -278,6 +289,7 @@ final class AppStore {
     var chatMessageSyncReadyGroupIDs: Set<UUID> = []
 
     /// 顯示在舊版畫面上的最新系統事件文字。
+    var groupLeaveMessage: String?
     var lastEvent = ""
 
     private(set) var dataMode: AppDataMode
@@ -411,6 +423,9 @@ final class AppStore {
             radar = []
             communicationAnalyses = [:]
             chatItemsByGroupID = [:]
+            cloudChatMessageIDsByGroupID = [:]
+            chatReadReceiptsByGroupID = [:]
+            pinnedChatMessageByGroupID = [:]
             cloudGroupSyncErrorMessage = nil
             lastEvent = ""
             dataMode = .live
@@ -471,6 +486,8 @@ final class AppStore {
         guard dataMode == .live else {
             chatMessageSyncErrorsByGroupID[groupID] = nil
             chatPresenceSyncErrorsByGroupID[groupID] = nil
+            chatReadSyncErrorsByGroupID[groupID] = nil
+            chatPinSyncErrorsByGroupID[groupID] = nil
             chatMessageSyncReadyGroupIDs.insert(groupID)
             return
         }
@@ -478,6 +495,8 @@ final class AppStore {
             let message = L10n.text("Firebase 尚未設定完成。")
             chatMessageSyncErrorsByGroupID[groupID] = message
             chatPresenceSyncErrorsByGroupID[groupID] = message
+            chatReadSyncErrorsByGroupID[groupID] = message
+            chatPinSyncErrorsByGroupID[groupID] = message
             return
         }
 
@@ -494,6 +513,8 @@ final class AppStore {
         } catch {
             chatMessageSyncErrorsByGroupID[groupID] = error.localizedDescription
             chatPresenceSyncErrorsByGroupID[groupID] = error.localizedDescription
+            chatReadSyncErrorsByGroupID[groupID] = error.localizedDescription
+            chatPinSyncErrorsByGroupID[groupID] = error.localizedDescription
             return
         }
         guard !Task.isCancelled else { return }
@@ -514,6 +535,38 @@ final class AppStore {
             ) { [weak self] result in
                 Task { @MainActor in
                     self?.applyChatPresence(result, to: groupID)
+                }
+            }
+        }
+
+        if chatReadListeners[groupID] == nil {
+            chatReadListeners[groupID] = repository.listenToReadReceipts(
+                groupID: cloudGroupID
+            ) { [weak self] result in
+                Task { @MainActor in
+                    switch result {
+                    case let .success(receipts):
+                        self?.chatReadReceiptsByGroupID[groupID] = receipts
+                        self?.chatReadSyncErrorsByGroupID[groupID] = nil
+                    case let .failure(error):
+                        self?.chatReadSyncErrorsByGroupID[groupID] = error.localizedDescription
+                    }
+                }
+            }
+        }
+
+        if chatPinListeners[groupID] == nil {
+            chatPinListeners[groupID] = repository.listenToPinnedMessage(
+                groupID: cloudGroupID
+            ) { [weak self] result in
+                Task { @MainActor in
+                    switch result {
+                    case let .success(message):
+                        self?.pinnedChatMessageByGroupID[groupID] = message
+                        self?.chatPinSyncErrorsByGroupID[groupID] = nil
+                    case let .failure(error):
+                        self?.chatPinSyncErrorsByGroupID[groupID] = error.localizedDescription
+                    }
                 }
             }
         }
@@ -643,6 +696,8 @@ final class AppStore {
     func stopChatSync(groupID: UUID, displayName: String) {
         chatMessageListeners.removeValue(forKey: groupID)?.remove()
         chatPresenceListeners.removeValue(forKey: groupID)?.remove()
+        chatReadListeners.removeValue(forKey: groupID)?.remove()
+        chatPinListeners.removeValue(forKey: groupID)?.remove()
         chatHeartbeatTasks.removeValue(forKey: groupID)?.cancel()
         onlineMembersByGroupID[groupID] = []
         updateChatPresence(groupID: groupID, displayName: displayName, isOnline: false)
@@ -664,13 +719,67 @@ final class AppStore {
         chatMessageSyncReadyGroupIDs.contains(groupID)
     }
 
+    func markLatestChatMessageRead(groupID: UUID) {
+        guard !isDemoMode, let repository = chatRepository,
+              let messageID = cloudChatMessageIDsByGroupID[groupID]?.last,
+              lastMarkedChatMessageIDByGroupID[groupID] != messageID else { return }
+        lastMarkedChatMessageIDByGroupID[groupID] = messageID
+        Task {
+            do {
+                try await repository.markRead(
+                    groupID: cloudGroupDocumentID(for: groupID), messageID: messageID
+                )
+                chatReadSyncErrorsByGroupID[groupID] = nil
+            } catch {
+                lastMarkedChatMessageIDByGroupID[groupID] = nil
+                chatReadSyncErrorsByGroupID[groupID] = error.localizedDescription
+            }
+        }
+    }
+
+    func readCount(for messageID: String, in groupID: UUID) -> Int {
+        guard let IDs = cloudChatMessageIDsByGroupID[groupID],
+              let messageIndex = IDs.firstIndex(of: messageID),
+              let group = groups.first(where: { $0.id == groupID }) else { return 0 }
+        let activeMemberUIDs = Set(members.filter { group.memberIDs.contains($0.id) }
+            .compactMap(\.firebaseUID))
+        return chatReadReceiptsByGroupID[groupID, default: []].filter { receipt in
+            guard receipt.userID != firebaseUID,
+                  activeMemberUIDs.contains(receipt.userID),
+                  let readIndex = IDs.firstIndex(of: receipt.messageID) else { return false }
+            return readIndex >= messageIndex
+        }.count
+    }
+
+    func setPinnedChatMessage(_ message: ChatPinnedMessage?, groupID: UUID) {
+        guard !isDemoMode else {
+            pinnedChatMessageByGroupID[groupID] = message
+            return
+        }
+        guard let repository = chatRepository else { return }
+        Task {
+            do {
+                try await repository.setPinnedMessage(
+                    groupID: cloudGroupDocumentID(for: groupID), message: message
+                )
+                chatPinSyncErrorsByGroupID[groupID] = nil
+            } catch {
+                chatPinSyncErrorsByGroupID[groupID] = error.localizedDescription
+            }
+        }
+    }
+
     private func applyChatMessages(
         _ result: Result<[CloudChatMessage], Error>,
         to groupID: UUID
     ) {
         switch result {
         case let .success(messages):
+            cloudChatMessageIDsByGroupID[groupID] = messages.map(\.id)
             let currentFirebaseUserID = Auth.auth().currentUser?.uid
+            chatSenderIDsByGroupID[groupID] = Dictionary(
+                messages.map { ($0.id, $0.senderID) }, uniquingKeysWith: { _, latest in latest }
+            )
             let cloudItems = messages.compactMap { message -> ChatRoomItem? in
                 switch message.kind {
                 case .message:
@@ -879,7 +988,7 @@ final class AppStore {
 
     /// 依子任務完成狀態計算群組總進度，不要在 View 手動設定百分比。
     func projectProgress(for groupID: UUID) -> Int {
-        let tasks = projectTasks.filter { $0.groupID == groupID }
+        let tasks = projectTasks.filter { $0.groupID == groupID && $0.includedInProgress }
         let totalWeight = tasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return 0 }
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
@@ -906,9 +1015,9 @@ final class AppStore {
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
     }
 
-    /// 依目前可存取的所有群組任務計算成員整體進度。
-    func overallMemberProgress(for memberID: UUID) -> Int {
-        let tasks = projectTasks.filter { $0.ownerMemberID == memberID }
+    /// 與「我的任務」待完成清單使用同一批任務，避免已完成項目拉高儀表板數字。
+    func pendingMemberProgress(for memberID: UUID) -> Int {
+        let tasks = projectTasks.filter { $0.ownerMemberID == memberID && !$0.isCompleted }
         let totalWeight = tasks.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return 0 }
         return tasks.reduce(0) { $0 + $1.progress * $1.weight } / totalWeight
@@ -1269,6 +1378,104 @@ final class AppStore {
         return task
     }
 
+    /// 由任務負責人修改自己的任務內容；雲端模式會先通過後端權限驗證。
+    func updateOwnedTask(
+        taskID: UUID,
+        title: String,
+        detail: String,
+        subtasks: [Subtask],
+        deadline: Date,
+        now: Date = .now
+    ) async throws {
+        guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
+              let groupIndex = groups.firstIndex(where: { $0.id == projectTasks[taskIndex].groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        guard projectTasks[taskIndex].ownerMemberID == currentUserID else {
+            throw TaskMutationError.permissionDenied
+        }
+
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw PublishTaskError.emptyTitle }
+        guard (1...10).contains(subtasks.count),
+              Set(subtasks.map(\.id)).count == subtasks.count,
+              subtasks.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            throw PublishTaskError.invalidSubtasks
+        }
+        guard deadline > now else { throw PublishTaskError.deadlineNotInFuture }
+        guard deadline <= groups[groupIndex].deadline else {
+            throw PublishTaskError.deadlineAfterGroupDeadline
+        }
+
+        let baseWeight = 100 / subtasks.count
+        let remainder = 100 % subtasks.count
+        let normalizedSubtasks = subtasks.enumerated().map { index, subtask in
+            Subtask(
+                id: subtask.id,
+                title: subtask.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                isComplete: subtask.isComplete,
+                weight: baseWeight + (index < remainder ? 1 : 0)
+            )
+        }
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let taskPath = projectTasks[taskIndex].firestoreDocumentID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.update(
+                expectedUserID: uid,
+                groupID: groupPath,
+                taskID: taskPath,
+                title: trimmedTitle,
+                detail: trimmedDetail,
+                subtasks: normalizedSubtasks,
+                deadline: deadline
+            )
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+        }
+
+        guard let refreshedIndex = projectTasks.firstIndex(where: { $0.id == taskID }) else { return }
+        projectTasks[refreshedIndex].title = trimmedTitle
+        projectTasks[refreshedIndex].detail = trimmedDetail
+        projectTasks[refreshedIndex].subtasks = normalizedSubtasks
+        projectTasks[refreshedIndex].deadline = deadline
+        lastEvent = L10n.format("已修改任務「{0}」", String(describing: trimmedTitle))
+    }
+
+    /// 由任務負責人刪除自己的任務與其附件資料。
+    func deleteOwnedTask(taskID: UUID) async throws {
+        guard let task = projectTasks.first(where: { $0.id == taskID }),
+              let groupIndex = groups.firstIndex(where: { $0.id == task.groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        guard task.ownerMemberID == currentUserID else {
+            throw TaskMutationError.permissionDenied
+        }
+
+        if dataMode == .live {
+            guard let uid = firebaseUID,
+                  let groupPath = groups[groupIndex].firestoreDocumentID,
+                  let taskPath = task.firestoreDocumentID else {
+                throw TaskMutationError.invalidData
+            }
+            let repository = taskMutationRepository ?? TaskMutationRepository()
+            taskMutationRepository = repository
+            try await repository.remove(expectedUserID: uid, groupID: groupPath, taskID: taskPath)
+            guard firebaseUID == uid else { throw TaskMutationError.notAuthenticated }
+        }
+
+        attachmentListeners[taskID]?.remove()
+        attachmentListeners[taskID] = nil
+        projectTasks.removeAll { $0.id == taskID }
+        groups[groupIndex].taskIDs.removeAll { $0 == taskID }
+        lastEvent = L10n.format("已刪除任務「{0}」", String(describing: task.title))
+    }
+
     /// 建立一個只有目前使用者的新群組，供建立群組 sheet 呼叫。
     func createGroup(name: String, deadline: Date) {
         var code = GroupInviteCode.generate()
@@ -1420,6 +1627,13 @@ final class AppStore {
         agents = []
         radar = []
         chatItemsByGroupID = [:]
+        chatSenderIDsByGroupID = [:]
+        cloudChatMessageIDsByGroupID = [:]
+        chatReadReceiptsByGroupID = [:]
+        pinnedChatMessageByGroupID = [:]
+        chatReadSyncErrorsByGroupID = [:]
+        chatPinSyncErrorsByGroupID = [:]
+        lastMarkedChatMessageIDByGroupID = [:]
         communicationAnalyses = [:]
         pokeCounts = [:]
         attachmentsByTaskID = [:]
@@ -1500,6 +1714,16 @@ final class AppStore {
         stopAttachmentSync()
         stopPokeSync()
         stopPeerReviewSync()
+        chatMessageListeners.values.forEach { $0.remove() }
+        chatPresenceListeners.values.forEach { $0.remove() }
+        chatReadListeners.values.forEach { $0.remove() }
+        chatPinListeners.values.forEach { $0.remove() }
+        chatMessageListeners.removeAll()
+        chatPresenceListeners.removeAll()
+        chatReadListeners.removeAll()
+        chatPinListeners.removeAll()
+        chatHeartbeatTasks.values.forEach { $0.cancel() }
+        chatHeartbeatTasks.removeAll()
         attachmentsByTaskID = [:]
         attachmentErrors = [:]
         for index in projectTasks.indices where projectTasks[index].firestoreDocumentID != nil {
@@ -1513,6 +1737,7 @@ final class AppStore {
         progressSubscriptions = [:]
         progressSyncErrorsByGroupID = [:]
         pendingTaskUpdates = []
+        pendingSubtaskUpdates = [:]
         attachmentListeners.values.forEach { $0.remove() }
         attachmentListeners.removeAll()
     }
@@ -1631,6 +1856,39 @@ final class AppStore {
     }
 #endif
 
+    func chooseGroupLeader(groupID: UUID, candidateID: UUID, electionID: String?) async throws {
+        guard let group = groups.first(where: { $0.id == groupID }),
+              group.memberIDs.contains(currentUserID), group.memberIDs.contains(candidateID),
+              let candidate = members.first(where: { $0.id == candidateID }) else { throw GroupJoinError.permissionDenied }
+        let account = firebaseUID
+        if !isDemoMode {
+            guard let path = group.firestoreDocumentID, let uid = candidate.firebaseUID else { throw GroupJoinError.invalidGroupData }
+            try await GroupJoinRepository().chooseLeader(groupID: path, candidateUID: uid, electionID: electionID)
+            guard firebaseUID == account else { return }
+        } else if let index = groups.firstIndex(where: { $0.id == groupID }),
+                  group.memberRoles[currentUserID] == .leader {
+            for memberID in group.memberIDs { groups[index].memberRoles[memberID] = memberID == candidateID ? .leader : .member }
+        }
+    }
+
+    func setDepartedTasksInclusion(groupID: UUID, departureID: String, included: Bool) async throws {
+        guard let group = groups.first(where: { $0.id == groupID }),
+              members.contains(where: { $0.id == currentUserID && group.memberIDs.contains($0.id) && (group.memberRoles[$0.id] ?? $0.role) == .leader }) else {
+            throw GroupJoinError.permissionDenied
+        }
+        let account = firebaseUID
+        if !isDemoMode {
+            guard let path = group.firestoreDocumentID else { throw GroupJoinError.invalidGroupData }
+            try await GroupJoinRepository().setDepartedTasksInclusion(groupID: path, departureID: departureID, included: included)
+            guard firebaseUID == account else { return }
+        }
+        for index in projectTasks.indices where projectTasks[index].groupID == groupID && projectTasks[index].departureID == departureID {
+            projectTasks[index].includedInProgress = included
+            projectTasks[index].departureReviewed = true
+        }
+        publishWidgetSnapshot()
+    }
+
     /// Only remove local data after the server confirms the caller has left.
     func leaveGroup(groupID: UUID) async throws {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
@@ -1648,10 +1906,18 @@ final class AppStore {
         }
         chatMessageListeners.removeValue(forKey: groupID)?.remove()
         chatPresenceListeners.removeValue(forKey: groupID)?.remove()
+        chatReadListeners.removeValue(forKey: groupID)?.remove()
+        chatPinListeners.removeValue(forKey: groupID)?.remove()
         chatHeartbeatTasks.removeValue(forKey: groupID)?.cancel()
         onlineMembersByGroupID[groupID] = nil
         chatMessageSyncErrorsByGroupID[groupID] = nil
         chatPresenceSyncErrorsByGroupID[groupID] = nil
+        chatReadSyncErrorsByGroupID[groupID] = nil
+        chatPinSyncErrorsByGroupID[groupID] = nil
+        chatReadReceiptsByGroupID[groupID] = nil
+        pinnedChatMessageByGroupID[groupID] = nil
+        cloudChatMessageIDsByGroupID[groupID] = nil
+        lastMarkedChatMessageIDByGroupID[groupID] = nil
         chatMessageSyncReadyGroupIDs.remove(groupID)
         groups.removeAll { $0.id == groupID }
         projectTasks.removeAll { $0.groupID == groupID }
@@ -1660,9 +1926,11 @@ final class AppStore {
         peerReviewCommentsByGroupID[groupID] = nil
         communicationAnalyses[groupID] = nil
         chatItemsByGroupID[groupID] = nil
+        chatSenderIDsByGroupID[groupID] = nil
         saveChatItems()
         publishWidgetSnapshot()
         lastEvent = L10n.format("已退出「{0}」", String(describing: group.name))
+        groupLeaveMessage = lastEvent
         if !isDemoMode { resumeCloudSync() }
     }
 
@@ -1715,16 +1983,27 @@ final class AppStore {
               let groupID = task.firestoreGroupID, let documentID = task.firestoreDocumentID else { return }
         let generation = cloudGeneration
         pendingTaskUpdates.insert(taskID)
+        let updatingSubtaskID = subtaskID.flatMap(UUID.init(uuidString:))
+        if action == "setSubtask", let updatingSubtaskID {
+            pendingSubtaskUpdates[taskID] = updatingSubtaskID
+        }
         Task { [weak self] in
             do {
                 try await TaskProgressRepository().update(groupID: groupID, taskID: documentID, action: action,
                     subtaskID: subtaskID, isComplete: isComplete, attachmentID: attachmentID)
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
+                if action == "setSubtask", let updatingSubtaskID, let isComplete,
+                   let taskIndex = self.projectTasks.firstIndex(where: { $0.id == taskID }),
+                   let subtaskIndex = self.projectTasks[taskIndex].subtasks.firstIndex(where: { $0.id == updatingSubtaskID }) {
+                    self.projectTasks[taskIndex].subtasks[subtaskIndex].isComplete = isComplete
+                }
                 self.pendingTaskUpdates.remove(taskID)
+                self.pendingSubtaskUpdates.removeValue(forKey: taskID)
                 self.lastEvent = action == "confirm" ? L10n.text("已送出成果確認") : L10n.text("已更新子任務")
             } catch {
                 guard let self, self.firebaseUID == uid, self.cloudGeneration == generation else { return }
                 self.pendingTaskUpdates.remove(taskID)
+                self.pendingSubtaskUpdates.removeValue(forKey: taskID)
                 self.cloudErrorMessage = (error as? LocalizedError)?.errorDescription ?? L10n.text("任務更新失敗，請重試。")
             }
         }
@@ -1751,6 +2030,8 @@ final class AppStore {
                 }
                 self.groups[index].memberIDs = loaded.group.memberIDs
                 self.groups[index].memberRoles = loaded.group.memberRoles
+                self.groups[index].leaderElectionID = loaded.group.leaderElectionID
+                self.groups[index].leaderVotes = loaded.group.leaderVotes
                 self.groups[index].taskIDs = loaded.group.taskIDs
                 self.groups[index].settledAt = loaded.group.settledAt
                 for member in loaded.members {
@@ -2012,6 +2293,24 @@ final class AppStore {
         return url
     }
 
+    func editAttachment(_ attachment: TaskAttachment, title: String, detail: String, taskID: UUID) async throws {
+        guard let uid = firebaseUID, Auth.auth().currentUser?.uid == uid else { throw AttachmentOperationError.signedOut }
+        guard attachment.uploaderID == uid else { throw GroupJoinError.permissionDenied }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title.count <= 100, detail.count <= 1000 else { throw AttachmentOperationError.invalidFile }
+        try await Firestore.firestore().collection("groups").document(attachment.groupID)
+            .collection("tasks").document(attachment.taskID).collection("attachments").document(attachment.id)
+            .updateData(["title": title, "detail": detail])
+        guard firebaseUID == uid else { throw AttachmentOperationError.accountChanged }
+        var items = attachmentsByTaskID[taskID] ?? []
+        if let index = items.firstIndex(where: { $0.id == attachment.id }) {
+            items[index].title = title
+            items[index].detail = detail
+            applyCloudAttachments(items, to: taskID)
+        }
+    }
+
     func deleteAttachment(_ attachment: TaskAttachment, taskID: UUID) async throws {
         guard let uid = firebaseUID, Auth.auth().currentUser?.uid == uid else {
             throw AttachmentOperationError.signedOut
@@ -2035,7 +2334,7 @@ final class AppStore {
                 result.confirmedMemberIDs = task.confirmedMemberUIDs.map(FirebaseMemberIdentity.uiID(for:))
                 let memberIDs = groups.first(where: { $0.id == task.groupID })?.memberIDs ?? []
                 result.isApproved = task.cloudStatus == .completed && !memberIDs.isEmpty
-                    && memberIDs.allSatisfy { result.confirmedMemberIDs.contains($0) }
+                    && memberIDs.filter { $0 != task.ownerMemberID }.allSatisfy { result.confirmedMemberIDs.contains($0) }
                     && task.subtasks.allSatisfy(\.isComplete)
             }
             return result
@@ -2046,13 +2345,15 @@ final class AppStore {
     /// 由群組成員確認已看到任務成果；同一位成員不可重複確認。
     func confirmDeliverable(taskID: UUID, memberID: UUID) {
         if let task = projectTasks.first(where: { $0.id == taskID }), task.firestoreDocumentID != nil {
-            guard memberID == currentUserID, let id = task.deliverable?.attachmentID else { return }
+            guard memberID == currentUserID, memberID != task.ownerMemberID,
+                  let id = task.deliverable?.attachmentID else { return }
             sendTaskUpdate(taskID: taskID, action: "confirm", attachmentID: id)
             return
         }
         guard let taskIndex = projectTasks.firstIndex(where: { $0.id == taskID }),
               let group = groups.first(where: { $0.id == projectTasks[taskIndex].groupID }),
               group.memberIDs.contains(memberID),
+              memberID != projectTasks[taskIndex].ownerMemberID,
               var deliverable = projectTasks[taskIndex].deliverable,
               !deliverable.confirmedMemberIDs.contains(memberID) else { return }
 

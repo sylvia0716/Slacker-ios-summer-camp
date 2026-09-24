@@ -27,6 +27,8 @@ struct CloudMemberDocument: Codable {
     let joinedAt: Date
     var displayName: String? = nil
     var avatarSymbol: String? = nil
+    var leaderElectionID: String? = nil
+    var leaderVoteUID: String? = nil
 }
 
 struct CloudTaskDocument: Codable {
@@ -41,6 +43,11 @@ struct CloudTaskDocument: Codable {
     var deadline: Date? = nil
     var createdAt: Date? = nil
     var status: ProjectTaskStatus? = nil
+    var departureID: String? = nil
+    var departedMemberName: String? = nil
+    var departedProgress: Int? = nil
+    var includedInProgress: Bool? = nil
+    var departureReviewed: Bool? = nil
     var confirmedAttachmentID: String? = nil
     var confirmedMemberUIDs: [String]? = nil
 }

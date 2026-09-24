@@ -768,3 +768,60 @@
 "結算中…" = "Settling…";
 "提前結算專案" = "Settle project early";
 "完成所有任務後可結算" = "Complete all tasks to settle";
+
+"{0} 的離開前任務" = "{0}’s tasks before leaving";
+
+"已計入專案進度" = "Included in project progress";
+
+"已排除專案進度" = "Excluded from project progress";
+
+"目前計入專案進度，等待組長決定" = "Included for now; awaiting leader decision";
+
+"保留計入" = "Keep included";
+
+"排除計算" = "Exclude from progress";
+
+"確認組長人選" = "Confirm leader selection";
+
+"選擇 {0} 擔任組長" = "Select {0} as leader";
+
+"投票選組長" = "Vote for a leader";
+
+"需 {0} 票當選，可更改投票" = "{0} votes required; you can change your vote";
+
+"更換組長" = "Change leader";
+
+"{0} 票" = "{0} votes";
+
+"其他成員加入後即可更換組長" = "You can change the leader after others join";
+
+"建立者先暫任組長，成員加入後可更換" = "The creator leads initially; you can change the leader after others join";
+
+"編輯附件" = "Edit attachments";
+
+"新增附件" = "Add attachment";
+
+"替換檔案" = "Replace file";
+
+"新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "The new file was uploaded, but the old attachment could not be removed. Please delete the old attachment again.";
+"修改任務" = "Edit Task";
+"刪除任務" = "Delete Task";
+"管理任務「{0}」" = "Manage task “{0}”";
+"收合任務" = "Collapse task";
+"展開任務" = "Expand task";
+"保留的子任務會維持目前完成狀態" = "Retained subtasks keep their current completion status";
+"儲存中…" = "Saving…";
+"儲存修改" = "Save Changes";
+"任務操作失敗" = "Task Action Failed";
+"確定刪除「{0}」？" = "Delete “{0}”?";
+"刪除後，這項任務的子任務、進度與成果附件都無法復原。" = "This task, its subtasks, progress, and deliverable attachments cannot be recovered.";
+"已修改任務「{0}」" = "Updated task “{0}”";
+"已刪除任務「{0}」" = "Deleted task “{0}”";
+"待完成任務進度" = "Pending task progress";
+"取消置頂" = "Unpin";
+"置頂訊息" = "Pin message";
+"已讀同步：{0}" = "Read receipt sync: {0}";
+"置頂同步：{0}" = "Pinned message sync: {0}";
+"跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
+"取消置頂訊息" = "Unpin message";
+"已讀 {0}" = "Read by {0}";

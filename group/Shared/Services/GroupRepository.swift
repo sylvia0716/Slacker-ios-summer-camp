@@ -63,6 +63,12 @@ final class GroupRepository {
                           settledAt: summary.settledAt,
                           memberIDs: members.map(\.id), taskIDs: tasks.map(\.id), inviteCode: summary.inviteCode,
                           firestoreDocumentID: summary.pathID,
+                          leaderElectionID: documents.compactMap { $0.value.leaderElectionID }.first,
+                          leaderVotes: Dictionary(uniqueKeysWithValues: documents.compactMap { document in
+                              guard let vote = document.value.leaderVoteUID,
+                                    documents.contains(where: { $0.id == vote }) else { return nil }
+                              return (FirebaseMemberIdentity.uiID(for: document.id), FirebaseMemberIdentity.uiID(for: vote))
+                          }),
                           memberRoles: Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0.role) }))
         return LoadedCloudGroup(group: group, members: members, tasks: tasks)
     }
@@ -95,6 +101,10 @@ final class GroupRepository {
                                createdByMemberID: try memberID(data.createdByMemberID),
                                createdAt: data.createdAt ?? .distantPast,
                                firestoreDocumentID: document.id, firestoreGroupID: pathID,
+                               departureID: data.departureID, departedMemberName: data.departedMemberName,
+                               departedProgress: data.departedProgress,
+                               includedInProgress: data.includedInProgress ?? true,
+                               departureReviewed: data.departureReviewed ?? false,
                                confirmedAttachmentID: data.confirmedAttachmentID,
                                confirmedMemberUIDs: data.confirmedMemberUIDs ?? [], cloudStatus: data.status)
         }

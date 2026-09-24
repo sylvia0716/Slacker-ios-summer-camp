@@ -20,12 +20,17 @@ async function reconcile(groupID, taskID, actor = null) {
       throw new HttpsError('failed-precondition', 'Group is already settled');
     }
     const data = task.data();
+    if (data.departureID) {
+      if (actor) throw new HttpsError('failed-precondition', 'Former member task is archived');
+      return;
+    }
     const uids = members.docs.filter(d => d.data().userID === d.id).map(d => d.id);
+    const reviewers = uids.filter(uid => uid !== data.ownerMemberID);
     if (actor && !uids.includes(actor.uid)) throw new HttpsError('permission-denied', 'Membership required');
     const latest = latestReady(attachments.docs);
     let subtasks = data.subtasks || [];
     let confirmed = data.confirmedAttachmentID === (latest?.id || null)
-      ? (data.confirmedMemberUIDs || []).filter(uid => uids.includes(uid)) : [];
+      ? (data.confirmedMemberUIDs || []).filter(uid => reviewers.includes(uid)) : [];
     if (actor?.action === 'setSubtask') {
       if (data.ownerMemberID !== actor.uid) throw new HttpsError('permission-denied', 'Owner required');
       if (!subtasks.some(s => s.id === actor.subtaskID)) throw new HttpsError('not-found', 'Subtask missing');
@@ -35,12 +40,13 @@ async function reconcile(groupID, taskID, actor = null) {
     }
     const allDone = subtasks.every(s => s.isComplete === true);
     if (actor?.action === 'confirm') {
+      if (actor.uid === data.ownerMemberID) throw new HttpsError('permission-denied', 'Owner does not review own task');
       if (!latest || latest.id !== actor.attachmentID) throw new HttpsError('failed-precondition', 'Result changed; reload');
       if (!allDone) throw new HttpsError('failed-precondition', 'Subtasks incomplete');
       confirmed = [...new Set([...confirmed, actor.uid])];
     }
     confirmed.sort();
-    const completed = !!latest && allDone && uids.length > 0 && uids.every(uid => confirmed.includes(uid));
+    const completed = !!latest && allDone && uids.length > 0 && reviewers.every(uid => confirmed.includes(uid));
     const status = completed ? 'completed' : latest ? 'submitted'
       : subtasks.some(s => s.isComplete) ? 'inProgress' : 'pending';
     const next = {status, confirmedAttachmentID: latest?.id || null, confirmedMemberUIDs: latest ? confirmed : []};

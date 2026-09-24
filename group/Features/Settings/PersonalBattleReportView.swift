@@ -170,6 +170,7 @@ struct PersonalBattleReportView: View {
         .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+        .compositingGroup()
         .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 
@@ -191,6 +192,7 @@ struct PersonalBattleReportView: View {
         .background(BombTheme.paper)
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(BombTheme.ink, lineWidth: 3))
+        .compositingGroup()
         .shadow(color: BombTheme.ink, radius: 0, x: 5, y: 5)
     }
 
