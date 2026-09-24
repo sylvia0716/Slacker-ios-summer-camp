@@ -1,3 +1,4 @@
+import FirebaseAuth
 import Foundation
 import UIKit
 import UserNotifications
@@ -6,6 +7,14 @@ struct PokeReception: Equatable {
     let groupName: String
     let pokeCount: Int
     let style: PokeStyle
+    let recipientUID: String?
+
+    init(groupName: String, pokeCount: Int, style: PokeStyle, recipientUID: String? = nil) {
+        self.recipientUID = recipientUID
+        self.groupName = groupName
+        self.pokeCount = pokeCount
+        self.style = pokeCount >= 15 ? .alarm : style
+    }
 }
 
 extension Notification.Name {
@@ -20,6 +29,7 @@ final class PokeNotificationService {
     private let center = UNUserNotificationCenter.current()
 
     private enum UserInfoKey {
+        static let recipientUID = "recipientUID"
         static let groupID = "groupID"
         static let groupName = "groupName"
         static let pokeCount = "pokeCount"
@@ -46,12 +56,14 @@ final class PokeNotificationService {
     }
 
     func deliver(group: Group, pokeCount: Int, style: PokeStyle) {
-        guard PokeDeliveryState.shared.receivesPokes else { return }
+        guard PokeDeliveryState.shared.receivesPokes,
+              let uid = Auth.auth().currentUser?.uid else { return }
         let content = UNMutableNotificationContent()
         content.title = L10n.text("有人在找你")
         content.body = message(for: group.name, pokeCount: pokeCount)
         content.sound = .default
         content.userInfo = [
+            UserInfoKey.recipientUID: uid,
             UserInfoKey.groupID: group.id.uuidString,
             UserInfoKey.groupName: group.name,
             UserInfoKey.pokeCount: pokeCount,
@@ -73,6 +85,7 @@ final class PokeNotificationService {
         content.body = L10n.format("你在「{0}」又被戳了 {1} 下！", String(describing: reception.groupName), String(describing: unseenCount))
         content.sound = .default
         content.userInfo = [
+            UserInfoKey.recipientUID: uid,
             UserInfoKey.groupID: groupID,
             UserInfoKey.groupName: reception.groupName,
             UserInfoKey.pokeCount: reception.pokeCount,
@@ -85,6 +98,16 @@ final class PokeNotificationService {
         ))
     }
 
+    func clearAccountNotifications() async {
+        let pending = await center.pendingNotificationRequests()
+        center.removePendingNotificationRequests(withIdentifiers:
+            pending.filter { $0.content.userInfo[UserInfoKey.pokeCount] != nil }.map(\.identifier))
+        let delivered = await center.deliveredNotifications()
+        center.removeDeliveredNotifications(withIdentifiers:
+            delivered.filter { $0.request.content.userInfo[UserInfoKey.pokeCount] != nil }
+                .map { $0.request.identifier })
+    }
+
     nonisolated static func reception(from notification: UNNotification) -> PokeReception? {
         let userInfo = notification.request.content.userInfo
         guard let groupName = userInfo[UserInfoKey.groupName] as? String,
@@ -94,7 +117,8 @@ final class PokeNotificationService {
               let styleRawValue = userInfo[UserInfoKey.style] as? String,
               let style = PokeStyle(rawValue: styleRawValue) else { return nil }
 
-        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style)
+        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style,
+                             recipientUID: userInfo[UserInfoKey.recipientUID] as? String)
     }
 
     private func message(for groupName: String, pokeCount: Int) -> String {

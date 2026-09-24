@@ -221,7 +221,7 @@ struct ChatRoomView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(BombTheme.paper.opacity(0.75))
+        .background(BombTheme.paper)
     }
 
     private var onlineMembers: [ChatPresence] {
@@ -300,7 +300,7 @@ struct ChatRoomView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
-                .background(BombTheme.paper.opacity(0.8))
+                .background(BombTheme.paper)
                 .clipShape(.capsule)
                 .frame(maxWidth: .infinity)
         case let .botAnalysis(_, analysis):

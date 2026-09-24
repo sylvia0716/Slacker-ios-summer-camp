@@ -64,7 +64,7 @@ struct MemberProgressCard: View {
                                 Image(systemName: "crown.fill")
                             }
                                 .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(BombTheme.secondaryText)
                                 .padding(.vertical, 6)
                                 .contentShape(Rectangle())
                         }
@@ -86,7 +86,7 @@ struct MemberProgressCard: View {
                     if onChangeLeader == nil { header }
                     Text(tasks.isEmpty ? L10n.text("尚未指派任務") : L10n.format("{0} 項任務 · 已完成 {1} 項", String(describing: tasks.count), String(describing: tasks.filter(\.isCompleted).count)))
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(BombTheme.secondaryText)
                     GeometryReader { geometry in
                         Capsule().fill(BombTheme.ink.opacity(0.12))
                             .overlay(alignment: .leading) {
@@ -226,8 +226,8 @@ struct MemberProgressCard: View {
                         String(describing: task.subtasks.filter(\.isComplete).count),
                         String(describing: task.subtasks.count)
                     ))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(BombTheme.secondaryText)
                         .fixedSize()
                     }
                     .contentShape(Rectangle())
@@ -251,7 +251,7 @@ struct MemberProgressCard: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(BombTheme.paper.mix(with: .white, by: 0.22), in: RoundedRectangle(cornerRadius: 14))
+        .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink.opacity(0.7), lineWidth: 1.5))
     }
 
@@ -268,7 +268,7 @@ struct MemberProgressCard: View {
             Text(L10n.text("目前沒有指派任務"))
                 .font(.subheadline.weight(.bold))
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(BombTheme.secondaryText)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
         .background(BombTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
@@ -312,8 +312,8 @@ struct MemberProgressCard: View {
                         String(describing: task.subtasks.filter(\.isComplete).count),
                         String(describing: task.subtasks.count)
                     ))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(BombTheme.secondaryText)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -372,7 +372,7 @@ struct MemberProgressCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(L10n.text("成果交付"), systemImage: "paperclip")
-                    .font(.subheadline.weight(.black))
+                    .font(.headline.weight(.black))
 
                 Spacer()
 
@@ -413,31 +413,26 @@ struct MemberProgressCard: View {
                                 .font(.subheadline.weight(.black))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(item.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
-                                .font(.footnote.weight(.bold)).foregroundStyle(.secondary)
+                                .font(.footnote.weight(.bold)).foregroundStyle(BombTheme.secondaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "arrow.down.to.line")
                             .font(.title3.weight(.bold))
                     }
                     .padding(10)
-                    .background(BombTheme.paper.mix(with: .white, by: 0.25), in: RoundedRectangle(cornerRadius: 10))
+                    .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(BombTheme.ink.opacity(0.12), lineWidth: 1))
                 }
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
-                Text(L10n.text("尚未上傳成果")).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                Text(L10n.text("尚未提交成果")).font(.subheadline.weight(.bold)).foregroundStyle(BombTheme.secondaryText)
             }
             if isCurrentUser, task.deliverable == nil {
                 Button { uploadTask = task } label: {
-                    Text(L10n.text("＋ 上傳成果"))
-                        .font(.subheadline.weight(.black))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 10))
+                    Label(L10n.text("提交成果"), systemImage: "paperclip")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BombFormPrimaryButtonStyle())
             }
         }
     }
@@ -452,7 +447,7 @@ struct MemberProgressCard: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text(L10n.text("成員確認")).foregroundStyle(BombTheme.ink)
-                Text("\(confirmedCount)/\(reviewers.count)").foregroundStyle(.secondary)
+                Text("\(confirmedCount)/\(reviewers.count)").foregroundStyle(BombTheme.secondaryText)
             }
             .font(.subheadline.weight(.black))
             ViewThatFits(in: .horizontal) {
@@ -491,7 +486,7 @@ struct MemberProgressCard: View {
             }
             if isFullyConfirmed && !reviewers.isEmpty {
                 Text(L10n.text("已全部確認"))
-                    .font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.bold)).foregroundStyle(BombTheme.secondaryText)
                     .fixedSize()
             }
         }
@@ -512,7 +507,8 @@ private struct PokeActionButton: View {
     let onPoke: (PokeStyle) -> Int?
     let onPokeEmoji: (String?) -> Void
 
-    @State private var isCharging = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var isCharging = false
     @State private var suppressNextTap = false
     @State private var hasChargedBomb = false
     @State private var isCoolingDown = false
@@ -532,37 +528,47 @@ private struct PokeActionButton: View {
                 .clipShape(Capsule())
                 .symbolEffect(.bounce, value: actionFeedbackID)
                 .scaleEffect(isCharging ? 0.92 : 1)
-                .rotationEffect(.degrees(isCharging ? 2 : 0))
-                .animation(
-                    isCharging ? .easeInOut(duration: 0.12).repeatForever(autoreverses: true) : .snappy,
-                    value: isCharging
-                )
+                .animation(reduceMotion ? nil : .snappy, value: isCharging)
                 .contentShape(Capsule())
                 .onTapGesture {
                     guard !suppressNextTap, !isCoolingDown else { return }
                     _ = sendPoke(style: .gentle, isBombPoke: false)
                 }
-                .onLongPressGesture(minimumDuration: 0.6) {
-                    guard !isCoolingDown else { return }
-                    suppressNextTap = true
-                    guard sendPoke(style: .alarm, isBombPoke: true) else {
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.6)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
+                        .updating($isCharging) { _, isCharging, _ in
+                            isCharging = !isCoolingDown && (!suppressNextTap || hasChargedBomb)
+                        }
+                        .onChanged { value in
+                            guard case .second(true, _) = value,
+                                  !isCoolingDown, !suppressNextTap else { return }
+                            suppressNextTap = true
+                            hasChargedBomb = true
+                            onPokeEmoji("💣")
+                        }
+                        .onEnded { value in
+                            guard case .second(true, _) = value, hasChargedBomb else { return }
+                            hasChargedBomb = false
+                            guard sendPoke(style: .alarm, isBombPoke: true) else {
+                                onPokeEmoji(nil)
+                                suppressNextTap = false
+                                return
+                            }
+                            onPokeEmoji("💥")
+
+                            Task {
+                                try? await Task.sleep(for: .seconds(0.7))
+                                onPokeEmoji(nil)
+                                suppressNextTap = false
+                            }
+                        }
+                )
+                .onChange(of: isCharging) { _, isCharging in
+                    if !isCharging, hasChargedBomb {
+                        hasChargedBomb = false
                         suppressNextTap = false
-                        return
-                    }
-                    hasChargedBomb = true
-                    onPokeEmoji("💣")
-                } onPressingChanged: { isPressing in
-                    guard !isCoolingDown else { return }
-                    isCharging = isPressing
-
-                    guard !isPressing, hasChargedBomb else { return }
-                    hasChargedBomb = false
-                    onPokeEmoji("💥")
-
-                    Task {
-                        try? await Task.sleep(for: .seconds(0.6))
                         onPokeEmoji(nil)
-                        suppressNextTap = false
                     }
                 }
                 .accessibilityAddTraits(.isButton)

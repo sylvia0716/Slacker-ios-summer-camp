@@ -225,8 +225,13 @@ function normalizedPokeData(data) {
 }
 
 function normalizedDeviceData(data) {
-  requireExactKeys(data, data?.languageCode === undefined
-    ? ["deviceID", "token"] : ["deviceID", "token", "languageCode"]);
+  const keys = ["deviceID", "token"];
+  if (data?.languageCode !== undefined) keys.push("languageCode");
+  if (data?.pokesEnabled !== undefined) keys.push("pokesEnabled");
+  requireExactKeys(data, keys);
+  if (data.pokesEnabled !== undefined && typeof data.pokesEnabled !== "boolean") {
+    throw callableError("invalid-argument", "Invalid notification preference.", "invalid-device");
+  }
   if (data.languageCode !== undefined && !["en", "zh-Hant"].includes(data.languageCode)) {
     throw callableError("invalid-argument", "Invalid language.", "invalid-device");
   }
@@ -235,7 +240,7 @@ function normalizedDeviceData(data) {
   if (!deviceID || deviceID.length > 128 || !token || token.length > 4096) {
     throw callableError("invalid-argument", "Invalid device.", "invalid-device");
   }
-  return { deviceID, token, languageCode: data.languageCode || "zh-Hant" };
+  return { deviceID, token, languageCode: data.languageCode || "zh-Hant", pokesEnabled: data.pokesEnabled };
 }
 
 function makeInviteCode() {
@@ -594,14 +599,27 @@ exports.deleteTask = onCall({ region }, async (request) => {
 
 exports.registerPokeDevice = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
-  const { deviceID, token, languageCode } = normalizedDeviceData(request.data);
+  const { deviceID, token, languageCode, pokesEnabled } = normalizedDeviceData(request.data);
   await db.collection("users").doc(userID).collection("devices").doc(deviceID).set({
     token,
     languageCode,
+    ...(pokesEnabled === undefined ? {} : { pokesEnabled }),
     platform: "ios",
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  }, { merge: true });
   return { registered: true };
+});
+
+// Remove only the authenticated account's registration on this device.
+exports.unregisterPokeDevice = onCall({ region }, async (request) => {
+  const userID = requireAuthenticatedUser(request);
+  requireExactKeys(request.data, ["deviceID"]);
+  const deviceID = request.data.deviceID;
+  if (typeof deviceID !== "string" || !deviceID || deviceID.length > 128 || deviceID.includes("/")) {
+    throw callableError("invalid-argument", "Invalid device.", "invalid-device");
+  }
+  await db.collection("users").doc(userID).collection("devices").doc(deviceID).delete();
+  return { unregistered: true };
 });
 
 exports.sendPoke = onCall({ region }, async (request) => {
@@ -647,14 +665,14 @@ exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID
   const devices = await db.collection("users").doc(poke.recipientID).collection("devices").get();
   const recipients = devices.docs.filter((device) => {
     const token = device.data().token;
-    return typeof token === "string" && token.length > 0;
+    return typeof token === "string" && token.length > 0 && device.data().pokesEnabled !== false;
   });
   for (let offset = 0; offset < recipients.length; offset += 500) {
     const batch = recipients.slice(offset, offset + 500);
     const response = await getMessaging().sendEach(batch.map((device) => ({
       token: device.data().token,
       notification: pokeNotification(poke, device.data().languageCode),
-      data: { groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
+      data: { recipientUID: poke.recipientID, groupName: poke.groupName, pokeCount: String(poke.pokeCount), style: poke.style },
       apns: { payload: { aps: { sound: "default" } } },
     })));
     await Promise.all(response.responses.map((result, index) => {

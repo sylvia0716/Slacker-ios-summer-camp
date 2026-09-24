@@ -25,6 +25,10 @@ enum PokeRepositoryError: LocalizedError {
 
 @MainActor
 final class PokeRepository {
+    private static let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    private static var registrationTask: Task<Void, Error>?
+    private static var registrationSuspended = false
+
     private let functions: Functions
     private let firestore: Firestore
 
@@ -50,25 +54,41 @@ final class PokeRepository {
     }
 
     func registerCurrentDevice() async throws {
-        guard Auth.auth().currentUser != nil else { throw PokeRepositoryError.notAuthenticated }
-        let token = try await Messaging.messaging().token()
-        let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-        do {
-            _ = try await functions.httpsCallable("registerPokeDevice").call([
-                "deviceID": deviceID,
+        guard !Self.registrationSuspended,
+              let uid = Auth.auth().currentUser?.uid else { return }
+        let previous = Self.registrationTask
+        let task = Task { @MainActor in
+            _ = await previous?.result
+            guard !Self.registrationSuspended, Auth.auth().currentUser?.uid == uid else { return }
+            let token = try await Messaging.messaging().token()
+            guard !Self.registrationSuspended, Auth.auth().currentUser?.uid == uid else { return }
+            _ = try await self.functions.httpsCallable("registerPokeDevice").call([
+                "deviceID": Self.deviceID,
                 "token": token,
                 "languageCode": AppLanguageSettings.shared.language.rawValue,
+                "pokesEnabled": PokeDeliveryState.shared.receivesPokes,
             ])
-        } catch {
-            if (error as NSError).domain == FunctionsErrorDomain,
-               (error as NSError).code == FunctionsErrorCode.invalidArgument.rawValue {
-                _ = try await functions.httpsCallable("registerPokeDevice").call([
-                    "deviceID": deviceID, "token": token,
-                ])
-            } else {
-                throw Self.map(error)
-            }
         }
+        Self.registrationTask = task
+        try await task.value
+    }
+
+    /// Finish any old registration before revoking it, while still authenticated as its owner.
+    func prepareForAccountChange() async throws {
+        Self.registrationSuspended = true
+        _ = await Self.registrationTask?.result
+        guard Auth.auth().currentUser != nil else { return }
+        _ = try await functions.httpsCallable("unregisterPokeDevice").call([
+            "deviceID": Self.deviceID
+        ])
+        // Rotate the token so legacy registrations under other accounts cannot reach this device.
+        try await Messaging.messaging().deleteToken()
+        await PokeNotificationService().clearAccountNotifications()
+    }
+
+    static func resumeDeviceRegistration() {
+        registrationSuspended = false
+        Task { try? await PokeRepository().registerCurrentDevice() }
     }
 
     @discardableResult
@@ -104,11 +124,12 @@ final class PokeRepository {
     }
 
     nonisolated private static func reception(from data: [String: Any]) -> PokeReception? {
-        guard let groupName = data["groupName"] as? String,
+        guard let recipientUID = data["recipientID"] as? String,
+              let groupName = data["groupName"] as? String,
               let pokeCount = data["pokeCount"] as? Int, pokeCount > 0,
               let styleRawValue = data["style"] as? String,
               let style = PokeStyle(rawValue: styleRawValue) else { return nil }
-        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style)
+        return PokeReception(groupName: groupName, pokeCount: pokeCount, style: style, recipientUID: recipientUID)
     }
 
     private static func map(_ error: Error) -> PokeRepositoryError {

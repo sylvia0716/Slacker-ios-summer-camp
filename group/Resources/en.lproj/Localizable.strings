@@ -756,6 +756,12 @@
 "綁定 Email" = "Link email";
 "保留目前資料並開啟跨裝置登入" = "Keep your data and enable cross-device sign-in";
 
+"通知設定尚未同步，背景通知可能仍依原設定送出。" = "Notification settings haven’t synced. Background notifications may still follow your previous settings.";
+
+"僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。" = "Only PNG, JPG, PDF, PPTX, DOCX, XLSX, and ZIP files are supported.";
+"請選擇 PNG 或 JPG 照片。" = "Please choose a PNG or JPG photo.";
+"檔案沒有可上傳的內容，請重新選擇。" = "This file is empty. Please choose another file.";
+"無法讀取檔案，請確認檔案已下載後重試。" = "Unable to read the file. Make sure it has finished downloading, then try again.";
 "{0} 的離開前任務" = "{0}’s tasks before leaving";
 
 "已計入專案進度" = "Included in project progress";
@@ -812,3 +818,22 @@
 "跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
 "取消置頂訊息" = "Unpin message";
 "已讀 {0}" = "Read by {0}";
+
+"剩 {0} 小時" = "{0} hours left";
+"剩 {0} 分鐘" = "{0} minutes left";
+
+"＋ 提交成果" = "＋ Submit deliverable";
+
+"請先登入再提交成果。" = "Sign in before submitting a deliverable.";
+
+"你不是這個群組的成員，無法提交成果。" = "Join this group before submitting a deliverable.";
+
+"等待提交" = "Ready to submit";
+
+"提交成功" = "Deliverable submitted";
+
+"提交中" = "Submitting";
+
+"上傳中" = "Uploading";
+
+"已提交" = "Submitted";

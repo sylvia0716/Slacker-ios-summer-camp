@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import FirebaseAuth
 import FirebaseAppCheck
 import FirebaseCore
 import FirebaseMessaging
@@ -57,8 +58,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        if PokeNotificationService.reception(from: notification) != nil,
-           !PokeDeliveryState.shared.receivesPokes {
+        if let reception = PokeNotificationService.reception(from: notification),
+           !PokeDeliveryState.shared.receivesPokes
+            || !PokeDeliveryState.accepts(recipientUID: reception.recipientUID,
+                                          currentUID: Auth.auth().currentUser?.uid) {
             completionHandler([])
             return
         }
@@ -81,7 +84,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     private func announcePokeReception(for notification: UNNotification) {
         guard PokeDeliveryState.shared.receivesPokes,
-              let reception = PokeNotificationService.reception(from: notification) else { return }
+              let reception = PokeNotificationService.reception(from: notification),
+              PokeDeliveryState.accepts(recipientUID: reception.recipientUID,
+                                        currentUID: Auth.auth().currentUser?.uid) else { return }
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .pokeReceived, object: reception)
         }

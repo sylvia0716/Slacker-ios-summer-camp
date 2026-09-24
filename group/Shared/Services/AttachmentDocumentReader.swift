@@ -71,11 +71,11 @@ enum DocumentReadError: LocalizedError {
     case unsupported, unsupportedPhoto, empty, tooLarge, unavailable
     var errorDescription: String? {
         switch self {
-        case .unsupported: "僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。"
-        case .unsupportedPhoto: "請選擇 PNG 或 JPG 照片。"
-        case .empty: "檔案沒有可上傳的內容，請重新選擇。"
-        case .tooLarge: "檔案不可超過 20 MB。"
-        case .unavailable: "無法讀取檔案，請確認檔案已下載後重試。"
+        case .unsupported: L10n.text("僅支援 PNG、JPG、PDF、PPTX、DOCX、XLSX 和 ZIP。")
+        case .unsupportedPhoto: L10n.text("請選擇 PNG 或 JPG 照片。")
+        case .empty: L10n.text("檔案沒有可上傳的內容，請重新選擇。")
+        case .tooLarge: L10n.text("檔案不可超過 20 MB。")
+        case .unavailable: L10n.text("無法讀取檔案，請確認檔案已下載後重試。")
         }
     }
 }
