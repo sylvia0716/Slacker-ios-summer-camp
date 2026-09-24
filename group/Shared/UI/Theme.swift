@@ -38,12 +38,101 @@ extension View {
 
 /// Reusable warning-stripe decoration for deadline and status surfaces.
 struct HazardStripe: View {
+    var height: CGFloat = 10
+
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(0..<12, id: \.self) { index in
-                Rectangle().fill(index.isMultiple(of: 2) ? BombTheme.yellow : BombTheme.ink)
+            ForEach(0..<9, id: \.self) { index in
+                Rectangle().fill(index.isMultiple(of: 2) ? BombTheme.ink : BombTheme.yellow)
             }
-        }.frame(height: 10)
+        }
+        .frame(height: height)
+    }
+}
+
+/// A scalable seven-segment digit used for countdown displays.
+struct SevenSegmentDigit: View {
+    let digit: Character
+    let height: CGFloat
+
+    private var activeSegments: Set<Int> {
+        switch digit {
+        case "0": [0, 1, 2, 4, 5, 6]
+        case "1": [2, 5]
+        case "2": [0, 2, 3, 4, 6]
+        case "3": [0, 2, 3, 5, 6]
+        case "4": [1, 2, 3, 5]
+        case "5": [0, 1, 3, 5, 6]
+        case "6": [0, 1, 3, 4, 5, 6]
+        case "7": [0, 2, 5]
+        case "8": [0, 1, 2, 3, 4, 5, 6]
+        case "9": [0, 1, 2, 3, 5, 6]
+        default: []
+        }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let segmentThickness = proxy.size.height * 0.105
+
+            ZStack {
+                segment(0, width: width * 0.72, height: segmentThickness)
+                    .position(x: width / 2, y: segmentThickness / 2)
+                segment(3, width: width * 0.72, height: segmentThickness)
+                    .position(x: width / 2, y: proxy.size.height / 2)
+                segment(6, width: width * 0.72, height: segmentThickness)
+                    .position(x: width / 2, y: proxy.size.height - segmentThickness / 2)
+
+                segment(1, width: segmentThickness, height: proxy.size.height * 0.39, isVertical: true)
+                    .position(x: segmentThickness / 2, y: proxy.size.height * 0.26)
+                segment(2, width: segmentThickness, height: proxy.size.height * 0.39, isVertical: true)
+                    .position(x: width - segmentThickness / 2, y: proxy.size.height * 0.26)
+                segment(4, width: segmentThickness, height: proxy.size.height * 0.39, isVertical: true)
+                    .position(x: segmentThickness / 2, y: proxy.size.height * 0.74)
+                segment(5, width: segmentThickness, height: proxy.size.height * 0.39, isVertical: true)
+                    .position(x: width - segmentThickness / 2, y: proxy.size.height * 0.74)
+            }
+        }
+        .frame(width: height * 0.56, height: height)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func segment(_ index: Int, width: CGFloat, height: CGFloat, isVertical: Bool = false) -> some View {
+        SevenSegmentBar(isVertical: isVertical)
+            .fill(.white)
+            .frame(width: width, height: height)
+            .opacity(activeSegments.contains(index) ? 1 : 0)
+    }
+}
+
+private struct SevenSegmentBar: Shape {
+    let isVertical: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        if isVertical {
+            let inset = rect.width / 2
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + inset))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - inset))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - inset))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + inset))
+        } else {
+            let inset = rect.height / 2
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
+        }
+
+        path.closeSubpath()
+        return path
     }
 }
 

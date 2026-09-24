@@ -1,6 +1,13 @@
 import SwiftUI
 import UIKit
 
+private struct CountdownTimeComponents {
+    let remaining: Int
+    let days: Int
+    let hours: Int
+    let minutes: Int
+}
+
 /// Group detail backed by the app's shared Group, Member, and ProjectTask data.
 struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
@@ -298,16 +305,29 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showsLeaderPicker) {
             NavigationStack {
                 ScrollView { leadershipSection.padding(16) }
-                    .background(BombTheme.yellow)
+                    .background(BombTheme.paper)
                     .navigationTitle(L10n.text("更換組長"))
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(BombTheme.paper, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(L10n.text("完成")) { showsLeaderPicker = false }
-                                .disabled(isChoosingLeader)
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button {
+                                showsLeaderPicker = false
+                            } label: {
+                                Text(L10n.text("完成"))
+                                    .font(.subheadline.weight(.black))
+                                    .foregroundStyle(BombTheme.ink)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(BombTheme.yellow, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isChoosingLeader)
                         }
                     }
             }
+            .presentationBackground(BombTheme.paper)
             .presentationDetents([.medium, .large])
             .interactiveDismissDisabled(isChoosingLeader)
         }
@@ -1093,45 +1113,42 @@ struct GroupDetailView: View {
     }
 
     private func countdownCard(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 8) {
-                Image(systemName: "hourglass")
+                Image(systemName: "timer")
                     .foregroundStyle(BombTheme.yellow)
                 Text(L10n.text("專案倒數"))
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(BombTheme.paper.opacity(0.75))
+                    .font(.system(.headline, design: .monospaced, weight: .black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                Spacer()
+                Text(L10n.text("LIVE"))
+                    .font(.system(.caption, design: .monospaced, weight: .black))
+                    .foregroundStyle(BombTheme.red)
             }
 
-            Text(remainingTime(now: now))
-                .font(.system(.title, design: .rounded, weight: .black))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+            HStack(alignment: .center, spacing: 12) {
+                countdownTimeDisplay(now: now)
 
-            HStack(spacing: 12) {
-                ProgressView(value: Double(groupProgress), total: 100)
-                    .tint(BombTheme.yellow)
-                Text("\(groupProgress)%")
-                    .font(.subheadline.monospacedDigit().weight(.bold))
-                    .foregroundStyle(BombTheme.paper.opacity(0.75))
+                Spacer(minLength: 4)
+
+                countdownProgressDisplay
             }
+
+            ProgressView(value: Double(groupProgress), total: 100)
+                .tint(BombTheme.yellow)
+                .scaleEffect(y: 1.8)
         }
         .foregroundStyle(.white)
-        .padding(.leading, 34)
-        .padding(.trailing, 20)
-        .padding(.vertical, 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 24))
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(BombTheme.yellow)
-                .frame(width: 4)
-            .padding(.vertical, 22)
-            .padding(.leading, 16)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 24)
+        .background(BombTheme.ink)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(alignment: .top) {
+            HazardStripe(height: 10)
+                .clipShape(.capsule)
+                .padding(.horizontal, 24)
+                .offset(y: -5)
         }
     }
 
@@ -1547,26 +1564,95 @@ struct GroupDetailView: View {
         currentGroup.settledAt != nil || currentGroup.deadline <= .now
     }
 
-    private func remainingTime(now: Date) -> AttributedString {
-        let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(now)))
-        let days = remaining / 86_400
-        let hours = remaining % 86_400 / 3_600
-        let minutes = remaining % 3_600 / 60
+    private func remainingTime(now: Date) -> String {
+        let components = remainingTimeComponents(now: now)
 
-        if remaining == 0 {
-            return AttributedString(L10n.text("已截止"))
+        if components.remaining == 0 {
+            return L10n.text("已截止")
         }
 
-        let formatted = L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
-        var result = AttributedString()
-        for character in formatted {
-            var part = AttributedString(String(character))
-            if !character.isNumber {
-                part.font = .system(.subheadline, design: .rounded, weight: .black)
+        return L10n.format(
+            "{0} 天 {1} 小時 {2} 分鐘",
+            String(describing: components.days),
+            String(describing: components.hours),
+            String(describing: components.minutes)
+        )
+    }
+
+    @ViewBuilder
+    private func countdownTimeDisplay(now: Date) -> some View {
+        let components = remainingTimeComponents(now: now)
+
+        if components.remaining == 0 {
+            Text(L10n.text("已截止"))
+                .font(.system(.title2, design: .rounded, weight: .black))
+        } else {
+            ViewThatFits(in: .horizontal) {
+                countdownDigits(components, digitHeight: 38)
+                countdownDigits(components, digitHeight: 30)
             }
-            result.append(part)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(remainingTime(now: now))
         }
-        return result
+    }
+
+    private func countdownDigits(_ components: CountdownTimeComponents, digitHeight: CGFloat) -> some View {
+        HStack(alignment: .bottom, spacing: digitHeight * 0.24) {
+            sevenSegmentNumber(String(components.days), height: digitHeight)
+            countdownUnit(L10n.text("天"), height: digitHeight)
+            countdownSeparator(height: digitHeight)
+            sevenSegmentNumber(String(format: "%02d", components.hours), height: digitHeight)
+            countdownUnit(L10n.text("時"), height: digitHeight)
+            countdownSeparator(height: digitHeight)
+            sevenSegmentNumber(String(format: "%02d", components.minutes), height: digitHeight)
+            countdownUnit(L10n.text("分"), height: digitHeight)
+        }
+        .fixedSize()
+    }
+
+    private func sevenSegmentNumber(_ value: String, height: CGFloat) -> some View {
+        HStack(spacing: height * 0.08) {
+            ForEach(Array(value.enumerated()), id: \.offset) { _, digit in
+                SevenSegmentDigit(digit: digit, height: height)
+            }
+        }
+    }
+
+    private func countdownUnit(_ unit: String, height: CGFloat) -> some View {
+        Text(unit)
+            .font(.system(size: height * 0.43, weight: .black, design: .monospaced))
+            .frame(height: height, alignment: .bottom)
+    }
+
+    private func countdownSeparator(height: CGFloat) -> some View {
+        VStack(spacing: height * 0.18) {
+            Circle()
+                .frame(width: height * 0.11, height: height * 0.11)
+            Circle()
+                .frame(width: height * 0.11, height: height * 0.11)
+        }
+        .frame(width: height * 0.11, height: height, alignment: .center)
+    }
+
+    private var countdownProgressDisplay: some View {
+        HStack(spacing: 3) {
+            sevenSegmentNumber(String(groupProgress), height: 26)
+            Text("%")
+                .font(.system(size: 18, weight: .black, design: .monospaced))
+        }
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(groupProgress)%")
+    }
+
+    private func remainingTimeComponents(now: Date) -> CountdownTimeComponents {
+        let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(now)))
+        return CountdownTimeComponents(
+            remaining: remaining,
+            days: remaining / 86_400,
+            hours: remaining % 86_400 / 3_600,
+            minutes: remaining % 3_600 / 60
+        )
     }
 
     private func memberProgressItem(for member: Member) -> MemberProgressPreviewItem {

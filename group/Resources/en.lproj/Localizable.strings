@@ -834,7 +834,6 @@
 "跳到置頂訊息：{0}" = "Jump to pinned message: {0}";
 "取消置頂訊息" = "Unpin message";
 "已讀 {0}" = "Read by {0}";
-
 "剩 {0} 小時" = "{0} hours left";
 "剩 {0} 分鐘" = "{0} minutes left";
 
@@ -853,3 +852,6 @@
 "上傳中" = "Uploading";
 
 "已提交" = "Submitted";
+"天" = "d";
+"時" = "h";
+"分" = "m";
