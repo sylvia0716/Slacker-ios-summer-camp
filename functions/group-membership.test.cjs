@@ -43,10 +43,29 @@ function setup(uids) {
   const joinContext = {...context, exports:{}};
   vm.runInNewContext(fs.readFileSync(__dirname+'/index.js','utf8'),joinContext);
   return {join: code => joinContext.exports.joinGroupByInviteCode({auth:{uid:'new'},data:{inviteCode:code}}), documents, removedPrefixes, failStorage:()=>storageFailures++, leave: uid => context.exports.leaveGroup({auth:{uid},data:{groupID:gid}}),
+    remove: (uid, memberUID) => context.exports.removeGroupMember({auth:{uid},data:{groupID:gid,memberUID}}),
     choose: (uid, candidateUID, action, electionID) => context.exports.chooseGroupLeader({auth:{uid},data:{groupID:gid,candidateUID,action,...(electionID ? {electionID} : {})}}),
     decide: (uid, departureID, included) => context.exports.setDepartedTasksInclusion({auth:{uid},data:{groupID:gid,departureID,included}}),
     call: context.exports.leaveGroup, clean:()=>context.exports.cleanupEmptyGroup({params:{groupID:gid},data:{after:{data:()=>({deleting:true})}}})};
 }
+test('leader removes a member and detaches their tasks without removing other members', async()=>{
+ const s=setup(['leader','member','other']);
+ const path=`groups/${gid}/tasks/assigned`;
+ s.documents.set(path,{ownerMemberID:'member',subtasks:[{weight:1,isComplete:true},{weight:1,isComplete:false}]});
+ await s.remove('leader','member');
+ assert(!s.documents.has(`groups/${gid}/members/member`));
+ assert(s.documents.has(`groups/${gid}/members/other`));
+ assert.equal(s.documents.get(path).ownerMemberID,null);
+ assert.equal(s.documents.get(path).departedProgress,50);
+});
+test('only the leader can remove another current member', async()=>{
+ const s=setup(['leader','member','other']);
+ await assert.rejects(s.remove('member','other'),e=>e.code==='permission-denied');
+ await assert.rejects(s.remove('outsider','member'),e=>e.code==='permission-denied');
+ await assert.rejects(s.remove('leader','leader'),e=>e.code==='invalid-argument');
+ await assert.rejects(s.remove('leader','missing'),e=>e.code==='failed-precondition');
+ assert(s.documents.has(`groups/${gid}/members/member`));
+});
 test('only caller leaves; another member and task remain; leadership transfers', async()=>{
  const s=setup(['a','b']); s.documents.set(`groups/${gid}/tasks/t`,{title:'Keep'});
  await s.leave('a'); assert(!s.documents.has(`groups/${gid}/members/a`));

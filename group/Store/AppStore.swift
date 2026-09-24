@@ -1868,6 +1868,37 @@ final class AppStore {
         publishWidgetSnapshot()
     }
 
+    func removeGroupMember(groupID: UUID, memberID: UUID) async throws {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }),
+              groups[index].memberIDs.contains(memberID), memberID != currentUserID,
+              let leader = members.first(where: { $0.id == currentUserID }),
+              (groups[index].memberRoles[currentUserID] ?? leader.role) == .leader,
+              let member = members.first(where: { $0.id == memberID }) else {
+            throw GroupJoinError.permissionDenied
+        }
+        let account = firebaseUID
+        if !isDemoMode {
+            guard let path = groups[index].firestoreDocumentID,
+                  let uid = member.firebaseUID else { throw GroupJoinError.invalidGroupData }
+            try await GroupJoinRepository().removeMember(groupID: path, memberUID: uid)
+            guard firebaseUID == account else { throw GroupJoinError.notAuthenticated }
+        }
+        guard let currentIndex = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[currentIndex].memberIDs.removeAll { $0 == memberID }
+        groups[currentIndex].memberRoles[memberID] = nil
+        let departureID = UUID().uuidString.lowercased()
+        for taskIndex in projectTasks.indices where projectTasks[taskIndex].groupID == groupID
+            && projectTasks[taskIndex].ownerMemberID == memberID {
+            projectTasks[taskIndex].departedProgress = projectTasks[taskIndex].progress
+            projectTasks[taskIndex].departedMemberName = member.name
+            projectTasks[taskIndex].departureID = departureID
+            projectTasks[taskIndex].includedInProgress = true
+            projectTasks[taskIndex].departureReviewed = false
+            projectTasks[taskIndex].ownerMemberID = nil
+        }
+        publishWidgetSnapshot()
+    }
+
     /// Only remove local data after the server confirms the caller has left.
     func leaveGroup(groupID: UUID) async throws {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
