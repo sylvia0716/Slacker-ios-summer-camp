@@ -395,6 +395,9 @@
 "修改群組名稱" = "Rename group";
 "修改截止時間" = "Change deadline";
 "修改群組" = "Edit group";
+"移除成員" = "Remove member";
+"確定移除 {0}？" = "Remove {0} from the group?";
+"移除失敗，請確認網路後重試。" = "Could not remove the member. Check your connection and try again.";
 "群組代碼已複製" = "Group code copied";
 "成員進度" = "Member progress";
 "我的進度" = "My progress";

@@ -39,6 +39,10 @@ struct GroupDetailView: View {
     @State private var deadlineError: String?
     @State private var showsNameSheet = false
     @State private var showsEditOptions = false
+    @State private var showsMemberSheet = false
+    @State private var memberPendingRemoval: Member?
+    @State private var isRemovingMember = false
+    @State private var memberRemovalError: String?
     @State private var nameDraft = ""
     @State private var nameError: String?
     @State private var pokeButtonEmoji: String?
@@ -280,6 +284,9 @@ struct GroupDetailView: View {
         }
         .sheet(isPresented: $showsNameSheet) {
             GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
+        }
+        .sheet(isPresented: $showsMemberSheet) {
+            memberRemovalSheet
         }
         .bombDialog(L10n.text("無法修改期限"), isPresented: Binding(
             get: { deadlineError != nil },
@@ -957,6 +964,23 @@ struct GroupDetailView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
+
+                if currentUserMember?.role == .leader && !otherGroupMembers.isEmpty {
+                    Button {
+                        dismissEditOptions()
+                        showsMemberSheet = true
+                    } label: {
+                        Label(L10n.text("移除成員"), systemImage: "person.badge.minus")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(BombTheme.red, in: RoundedRectangle(cornerRadius: 14))
+                            .contentShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .foregroundStyle(BombTheme.ink)
             .padding(20)
@@ -970,6 +994,68 @@ struct GroupDetailView: View {
     private func dismissEditOptions() {
         withAnimation(.easeOut(duration: 0.2)) {
             showsEditOptions = false
+        }
+    }
+
+    private var memberRemovalSheet: some View {
+        BombFormSheet(title: L10n.text("移除成員")) {
+            ForEach(otherGroupMembers) { member in
+                Button {
+                    memberPendingRemoval = member
+                } label: {
+                    HStack {
+                        Text(member.name)
+                            .font(.system(.title2, design: .rounded, weight: .black))
+                        Spacer()
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(BombTheme.red)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .padding(.horizontal, 14)
+                    .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(isRemovingMember)
+            }
+            if let memberRemovalError {
+                Text(memberRemovalError)
+                    .foregroundStyle(BombTheme.red)
+            }
+        } actions: {
+            Button(L10n.text("完成")) { showsMemberSheet = false }
+                .buttonStyle(BombFormPrimaryButtonStyle())
+                .disabled(isRemovingMember)
+        }
+        .confirmationDialog(
+            L10n.format("確定移除 {0}？", memberPendingRemoval?.name ?? ""),
+            isPresented: Binding(
+                get: { memberPendingRemoval != nil },
+                set: { if !$0 { memberPendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let member = memberPendingRemoval {
+                Button(L10n.text("移除成員"), role: .destructive) {
+                    memberPendingRemoval = nil
+                    removeMember(member)
+                }
+            }
+            Button(L10n.text("取消"), role: .cancel) { memberPendingRemoval = nil }
+        }
+        .interactiveDismissDisabled(isRemovingMember)
+    }
+
+    private func removeMember(_ member: Member) {
+        guard !isRemovingMember else { return }
+        memberRemovalError = nil
+        isRemovingMember = true
+        Task {
+            defer { isRemovingMember = false }
+            do {
+                try await model.removeGroupMember(groupID: group.id, memberID: member.id)
+            } catch {
+                memberRemovalError = L10n.text("移除失敗，請確認網路後重試。")
+            }
         }
     }
 

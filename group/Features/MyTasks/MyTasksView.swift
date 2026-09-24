@@ -40,7 +40,7 @@ struct MyTasksView: View {
             BombTheme.yellow.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if !showCompleted && !pendingTasks.isEmpty {
+                    if !pendingTasks.isEmpty || !completedTasks.isEmpty {
                         TaskProgressDashboard(progress: personalProgress, isActive: isSelected)
                     }
 
@@ -48,12 +48,7 @@ struct MyTasksView: View {
                         staleTasksBanner
                     }
 
-                    Picker(L10n.text("任務狀態"), selection: $showCompleted) {
-                        Text(L10n.text("待完成")).tag(false)
-                        Text(L10n.text("已完成")).tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(.white)
+                    taskStatusSwitch
 
                     if model.isLoadingCloudGroups && model.projectTasks.isEmpty {
                         ProgressView(L10n.text("正在同步任務…"))
@@ -110,6 +105,31 @@ struct MyTasksView: View {
                 model.startAttachmentSync(for: task.id)
             }
         }
+    }
+
+    private var taskStatusSwitch: some View {
+        HStack(spacing: 4) {
+            ForEach([false, true], id: \.self) { completed in
+                Button {
+                    showCompleted = completed
+                } label: {
+                    Text(L10n.text(completed ? "已完成" : "待完成"))
+                        .font(.subheadline.weight(.black))
+                        .foregroundStyle(showCompleted == completed ? BombTheme.ink : BombTheme.paper)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(showCompleted == completed ? BombTheme.yellow : .clear, in: Capsule())
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(showCompleted == completed ? [.isSelected] : [])
+            }
+        }
+        .padding(3)
+        .background(BombTheme.ink, in: Capsule())
+        .frame(maxWidth: 280)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.text("任務狀態"))
     }
 
     private var staleTasksBanner: some View {
