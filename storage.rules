@@ -83,6 +83,20 @@ service firebase.storage {
       allow delete: if isGroupMember(groupID) && request.auth.uid == userID;
     }
 
+    match /groups/{groupID}/agendaMaterials/{userID}/{fileID}/{filename} {
+      allow read: if isGroupMember(groupID);
+      allow create: if isGroupMember(groupID) && request.auth.uid == userID
+        && resource == null && fileID.matches('^[a-f0-9-]{36}$')
+        && request.resource.size > 0 && request.resource.size <= 20 * 1024 * 1024
+        && hasValidUploaderMetadata()
+        && filename.matches('^file\\.(png|jpg|jpeg|pdf|docx|pptx|xlsx|zip|mov|mp4)$')
+        && (hasMatchingContentType(filename)
+          || (filename == 'file.mov' && request.resource.contentType == 'video/quicktime')
+          || (filename == 'file.mp4' && request.resource.contentType == 'video/mp4'));
+      allow update: if false;
+      allow delete: if isGroupMember(groupID) && request.auth.uid == userID;
+    }
+
     match /avatars/{userID}/{filename} {
       allow read: if isSignedIn() && request.auth.uid == userID;
       allow create: if isSignedIn() && request.auth.uid == userID

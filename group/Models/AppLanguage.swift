@@ -26,7 +26,8 @@ enum AppLanguage: String, CaseIterable {
 #else
         let resources = Bundle.main
 #endif
-        guard let path = resources.path(forResource: rawValue, ofType: "lproj"),
+        let directory = resources.localizations.first { $0.caseInsensitiveCompare(rawValue) == .orderedSame } ?? rawValue
+        guard let path = resources.path(forResource: directory, ofType: "lproj"),
               let bundle = Bundle(path: path) else { return key }
         return bundle.localizedString(forKey: key, value: key, table: table)
     }

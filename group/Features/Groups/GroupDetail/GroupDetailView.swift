@@ -27,6 +27,7 @@ struct GroupDetailView: View {
     @State private var peerReviewRevision = 0
     @State private var showsPeerReviewPage = false
     @State private var showsBattleReport = false
+    @State private var showsAgendaDetails = false
     @State private var showsExplosionMeme = false
     @State private var showsSuccessMeme = false
     @State private var hasConfiguredOutcomePresentation = false
@@ -75,6 +76,13 @@ struct GroupDetailView: View {
                                     } else {
                                         settlementSection(outcome: deadlineOutcome(now: context.date))
                                     }
+                                }
+
+                                if let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID {
+                                    SmartAgendaSection(groupID: cloudID, uid: uid, members: groupMembers,
+                                                       isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader },
+                                                       onOpenDetails: { showsAgendaDetails = true })
+                                        .id("agenda/\(cloudID)/\(uid)")
                                 }
 
                                 if deadlineOutcome(now: context.date) == .active {
@@ -172,6 +180,13 @@ struct GroupDetailView: View {
         }
         .navigationDestination(isPresented: $showsBattleReport) {
             PeerReviewReportView(model: model, group: currentGroup)
+        }
+        .navigationDestination(isPresented: $showsAgendaDetails) {
+            if let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID {
+                SmartAgendaDetailView(groupID: cloudID, uid: uid, members: groupMembers,
+                                      isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader })
+                    .id("agenda-details/\(cloudID)/\(uid)")
+            }
         }
         .bombTabBarHidden(
             showsPublishTaskSheet
@@ -721,6 +736,11 @@ struct GroupDetailView: View {
                     .font(.caption.weight(.black))
                     .foregroundStyle(showsCopiedFeedback ? BombTheme.green : BombTheme.ink)
                     .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(BombTheme.yellow)
+                    .clipShape(.capsule)
+                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 1.5))
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -820,7 +840,32 @@ struct GroupDetailView: View {
     }
 
     private var memberSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let members = groupMembers
+        let ownMember = members.first { $0.id == model.currentUserID }
+        // Sort only this presentation, using the same live progress shown on each card.
+        // Preserve the group's original order when percentages are equal.
+        var rankedMembers: [(member: Member, position: Int, progress: Int)] = []
+        for (position, member) in members.enumerated() where member.id != model.currentUserID {
+            rankedMembers.append((member, position, model.memberProgress(for: member.id, in: group.id)))
+        }
+        rankedMembers.sort { left, right in
+            left.progress == right.progress ? left.position < right.position : left.progress < right.progress
+        }
+        let otherMembers = rankedMembers.map(\.member)
+        let tutorialMemberID = otherMembers.first?.id ?? ownMember?.id
+
+        return VStack(alignment: .leading, spacing: 16) {
+            if let ownMember {
+                HStack(spacing: 8) {
+                    Text(L10n.text("我的任務"))
+                    Image(systemName: "pin.fill")
+                        .accessibilityHidden(true)
+                }
+                .font(.system(.title2, design: .rounded, weight: .black))
+                .foregroundStyle(BombTheme.ink)
+                memberCard(for: ownMember, isTutorialTarget: ownMember.id == tutorialMemberID)
+            }
+
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(L10n.text("成員進度"))
                     .font(.system(.title2, design: .rounded, weight: .black))
@@ -848,44 +893,47 @@ struct GroupDetailView: View {
                 .opacity(isGroupDeadlinePassed ? 0.45 : 1)
             }
 
-            ForEach(groupMembers) { member in
-                MemberProgressCard(
-                    model: model,
-                    firestoreGroupID: currentGroup.firestoreDocumentID,
-                    member: memberProgressItem(for: member),
-                    tasks: model.tasks(for: member.id, in: group.id),
-                    groupMemberIDs: currentGroup.memberIDs,
-                    currentUserID: model.currentUserID,
-                    isCurrentUser: member.id == model.currentUserID,
-                    isExpanded: expandedMemberID == member.id,
-                    onToggleExpanded: {
-                        withAnimation(.snappy) {
-                            expandedMemberID = expandedMemberID == member.id ? nil : member.id
-                        }
-                    },
-                    onSubmitDeliverable: { taskID, deliverable in
-                        model.submitDeliverable(taskID: taskID, deliverable: deliverable)
-                    },
-                    onToggleSubtask: { taskID, subtaskID in
-                        Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
-                    },
-                    onConfirmDeliverable: { taskID in
-                        model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
-                    },
-                    onPoke: { style in
-                        model.poke(memberID: member.id, in: group.id, style: style)
-                    },
-                    onPokeEmoji: showPokeButtonEmoji,
-                    onChangeLeader: member.id == model.currentUserID && member.role == .leader
-                        ? { selectedLeader = nil; selectedElectionID = nil; leaderError = nil; showsLeaderPicker = true } : nil
-                )
-                .tutorialTarget(
-                    .memberProgress,
-                    enabled: tutorialStep?.wrappedValue == .memberProgress
-                        && member.id == groupMembers.first?.id
-                )
+            ForEach(otherMembers) { member in
+                memberCard(for: member, isTutorialTarget: member.id == tutorialMemberID)
             }
         }
+    }
+
+    private func memberCard(for member: Member, isTutorialTarget: Bool) -> some View {
+        MemberProgressCard(
+            model: model,
+            firestoreGroupID: currentGroup.firestoreDocumentID,
+            member: memberProgressItem(for: member),
+            tasks: model.tasks(for: member.id, in: group.id),
+            groupMemberIDs: currentGroup.memberIDs,
+            currentUserID: model.currentUserID,
+            isCurrentUser: member.id == model.currentUserID,
+            isExpanded: expandedMemberID == member.id,
+            onToggleExpanded: {
+                withAnimation(.snappy) {
+                    expandedMemberID = expandedMemberID == member.id ? nil : member.id
+                }
+            },
+            onSubmitDeliverable: { taskID, deliverable in
+                model.submitDeliverable(taskID: taskID, deliverable: deliverable)
+            },
+            onToggleSubtask: { taskID, subtaskID in
+                Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
+            },
+            onConfirmDeliverable: { taskID in
+                model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
+            },
+            onPoke: { style in
+                model.poke(memberID: member.id, in: group.id, style: style)
+            },
+            onPokeEmoji: showPokeButtonEmoji,
+            onChangeLeader: member.id == model.currentUserID && member.role == .leader
+                ? { selectedLeader = nil; selectedElectionID = nil; leaderError = nil; showsLeaderPicker = true } : nil
+        )
+        .tutorialTarget(
+            .memberProgress,
+            enabled: tutorialStep?.wrappedValue == .memberProgress && isTutorialTarget
+        )
     }
 
     private var leadershipSection: some View {

@@ -9,7 +9,7 @@ let package = Package(
     products: [],
     targets: [
         .target(name: "GroupCloudData", path: "group", sources: [
-            "Models/AppLanguage.swift", "Models/CloudGroupData.swift", "Models/CloudAttachmentCollection.swift", "Models/GroupInviteCode.swift",
+            "Models/AppLanguage.swift", "Models/SmartAgenda.swift", "Models/CloudGroupData.swift", "Models/CloudAttachmentCollection.swift", "Models/GroupInviteCode.swift",
             "Models/Member.swift", "Models/Group.swift", "Models/ProjectTask.swift",
             "Models/Subtask.swift", "Models/Deliverable.swift", "Models/TaskAttachment.swift",
             "Shared/Services/GroupRepository.swift", "Models/AttachmentOperationError.swift",

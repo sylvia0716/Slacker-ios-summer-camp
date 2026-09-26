@@ -536,6 +536,7 @@ exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID
 
 Object.assign(exports, require('./group-membership'));
 Object.assign(exports, require('./peer-review'));
+Object.assign(exports, require('./smart-agenda'));
 
 
 // Confirm only the current cloud attachment; progress remains driven by subtasks.
