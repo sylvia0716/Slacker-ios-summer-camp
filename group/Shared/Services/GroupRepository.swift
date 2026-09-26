@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// One boundary for listing and hydrating groups. Injected reads also permit offline tests.
 @MainActor
@@ -10,10 +11,37 @@ final class GroupRepository {
         var tasks: (String) async throws -> [CloudDocument<CloudTaskDocument>]
     }
     private let reads: Reads
-    init(reads: Reads) { self.reads = reads }
+    private let wait: (Duration) async throws -> Void
+    private static let logger = Logger(subsystem: "con.sylvia.group", category: "CloudGroups")
+
+    init(reads: Reads, wait: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        self.reads = reads
+        self.wait = wait
+    }
 
     func load() async throws -> [LoadedCloudGroup] {
         guard let uid = reads.currentUID() else { throw GroupLoadError.signedOut }
+        var retry = 0
+        while true {
+            try check(uid)
+            do {
+                let result = try await loadSnapshot(uid: uid)
+                if retry > 0 { Self.logger.info("Group load recovered after \(retry) retries") }
+                return result
+            } catch {
+                // Cancellation/account changes always win, including errors from an old request.
+                try check(uid)
+                guard CloudReadRetry.isTransient(error), retry < CloudReadRetry.delays.count else { throw error }
+                let delay = CloudReadRetry.delays[retry]
+                retry += 1
+                let code = error as NSError
+                Self.logger.notice("Retrying group load \(retry): \(code.domain, privacy: .public)/\(code.code)")
+                try await wait(delay)
+            }
+        }
+    }
+
+    private func loadSnapshot(uid: String) async throws -> [LoadedCloudGroup] {
         let summaries = try await reads.summaries()
         guard Set(summaries.map(\.id)).count == summaries.count else { throw GroupLoadError.invalidData }
         var result: [LoadedCloudGroup] = []

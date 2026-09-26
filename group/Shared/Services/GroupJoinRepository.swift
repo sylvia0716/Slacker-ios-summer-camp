@@ -142,18 +142,14 @@ final class GroupJoinRepository {
             throw GroupJoinError.notAuthenticated
         }
 
-        do {
-            let result = try await functions.httpsCallable("listMyGroups").call([:])
-            let payload = try Self.dictionary(from: result.data)
-            guard let rawGroups = payload["groups"] as? [Any] else {
-                throw GroupJoinError.invalidGroupData
-            }
-            return try rawGroups.map(Self.group(from:))
-        } catch let error as GroupJoinError {
-            throw error
-        } catch {
-            throw Self.map(error)
+        // Preserve SDK error domains/codes so read recovery can distinguish a timeout
+        // from a permission failure. Joining/creating groups keep their existing mapping.
+        let result = try await functions.httpsCallable("listMyGroups").call([:])
+        let payload = try Self.dictionary(from: result.data)
+        guard let rawGroups = payload["groups"] as? [Any] else {
+            throw GroupJoinError.invalidGroupData
         }
+        return try rawGroups.map(Self.group(from:))
     }
 
     nonisolated static func normalize(_ inviteCode: String) -> String {

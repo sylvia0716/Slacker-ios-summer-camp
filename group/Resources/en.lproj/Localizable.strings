@@ -710,6 +710,8 @@
 "你已經是「{0}」的成員" = "You’re already a member of “{0}”";
 "已加入「{0}」" = "Joined “{0}”";
 "雲端資料同步失敗，請確認網路後重新整理。" = "Cloud sync failed. Check your connection and refresh.";
+"正在載入群組…" = "Loading groups…";
+"網路連線暫時中斷，正在自動重新連線。" = "Connection interrupted. Reconnecting automatically.";
 "已退出「{0}」" = "Left “{0}”";
 "已送出成果確認" = "Deliverable confirmation sent";
 "已更新子任務" = "Subtask updated";
@@ -955,3 +957,9 @@
 "上傳中" = "Uploading";
 
 "已提交" = "Submitted";
+"會前提醒：「{0}」將於 {1} 開始，預計 {2} 分鐘。" = "Meeting reminder: “{0}” starts at {1} and lasts {2} minutes.";
+"會前資料已提交 {0}/{1} 人（{2}）。" = "{0}/{1} members have submitted their materials ({2}).";
+"全員已完成會前準備。" = "Everyone has completed their meeting preparation.";
+"尚未提交筆記或附件：{0}。" = "Still missing a note or attachment: {0}.";
+"討論重點：{0}。" = "Discussion focus: {0}.";
+"{0}等 {1} 人" = "{0} ({1} people in total)";

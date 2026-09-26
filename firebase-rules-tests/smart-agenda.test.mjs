@@ -188,10 +188,15 @@ test('clearing a preparation invalidates the plan and removes readiness',async()
 });
 
 test('membership changes refresh the denominator and rejoining never restores an old preparation',async()=>{
- const waitFor=async predicate=>{
-  for(let i=0;i<40;i++){ const value=await read(member); if(predicate(value)) return value; await new Promise(r=>setTimeout(r,100)); }
-  throw Error('Membership synchronization timed out');
- };
+ // Full-suite trigger queues can take longer than a fixed four-second polling window.
+ // Wait for the actual cross-account update; a missing synchronization still fails.
+ const waitFor=predicate=>new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>{stop();reject(Error('Membership synchronization timed out'));},15000);
+  const stop=onSnapshot(doc(member.db,path),snapshot=>{
+   const value=snapshot.data();
+   if(value && predicate(value)){clearTimeout(timeout);stop();resolve(value);}
+  },error=>{clearTimeout(timeout);stop();reject(error);});
+ });
  await seed(outsider.uid,'member');
  await waitFor(a=>a.memberUIDs.length===3);
  const {deleteDoc}=await import('firebase/firestore');

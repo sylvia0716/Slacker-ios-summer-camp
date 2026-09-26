@@ -32,6 +32,8 @@ struct GroupDetailView: View {
     @State private var showsPeerReviewPage = false
     @State private var showsBattleReport = false
     @State private var showsAgendaDetails = false
+    @State private var agendaStore: SmartAgendaStore?
+    @State private var showsAgendaCreation = false
     @State private var showsExplosionMeme = false
     @State private var showsSuccessMeme = false
     @State private var hasConfiguredOutcomePresentation = false
@@ -86,11 +88,11 @@ struct GroupDetailView: View {
                                     }
                                 }
 
-                                if let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID {
-                                    SmartAgendaSection(groupID: cloudID, uid: uid, members: groupMembers,
-                                                       isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader },
+                                if let agendaStore, agendaStore.agenda != nil {
+                                    SmartAgendaSection(store: agendaStore, members: groupMembers,
+                                                       isLeader: currentUserMember?.role == .leader,
                                                        onOpenDetails: { showsAgendaDetails = true })
-                                        .id("agenda/\(cloudID)/\(uid)")
+                                        .id("agenda/\(agendaStore.groupID)/\(agendaStore.uid)")
                                 }
 
                                 if deadlineOutcome(now: context.date) == .active {
@@ -269,6 +271,26 @@ struct GroupDetailView: View {
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
+        }
+        .task(id: "\(currentGroup.firestoreDocumentID ?? "")/\(model.firebaseUID ?? "")") {
+            guard let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID else {
+                agendaStore?.stop()
+                agendaStore = nil
+                showsAgendaCreation = false
+                return
+            }
+            if agendaStore?.groupID != cloudID || agendaStore?.uid != uid {
+                agendaStore?.stop()
+                agendaStore = SmartAgendaStore(groupID: cloudID, uid: uid)
+                showsAgendaCreation = false
+            }
+            agendaStore?.listen()
+        }
+        .onDisappear { agendaStore?.stop() }
+        .sheet(isPresented: $showsAgendaCreation) {
+            if let agendaStore {
+                SmartAgendaMeetingEditor(store: agendaStore)
+            }
         }
         .sheet(isPresented: $showsLeaderPicker) {
             NavigationStack {
@@ -880,6 +902,20 @@ struct GroupDetailView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 0) {
+                    if let agendaStore, !agendaStore.isLoading, agendaStore.agenda == nil,
+                       currentUserMember?.role == .leader {
+                        Button { showsAgendaCreation = true } label: {
+                            Image(systemName: "list.bullet.rectangle")
+                                .font(.caption2.weight(.black))
+                                .foregroundStyle(.white)
+                                .frame(width: 30, height: 30)
+                                .background(BombTheme.ink)
+                                .clipShape(.circle)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("設定會議"))
+                    }
                     ShareLink(
                         item: L10n.format(
                             "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}",

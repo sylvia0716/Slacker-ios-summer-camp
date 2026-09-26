@@ -3,8 +3,7 @@ import UniformTypeIdentifiers
 import QuickLook
 
 struct SmartAgendaSection: View {
-    let groupID: String
-    let uid: String
+    let store: SmartAgendaStore
     let members: [Member]
     let isLeader: Bool
     let onOpenDetails: () -> Void
@@ -14,7 +13,7 @@ struct SmartAgendaSection: View {
             Text(L10n.text("自動化議程"))
                 .font(.system(.title2, design: .rounded, weight: .black))
                 .foregroundStyle(BombTheme.ink)
-            SmartAgendaCard(groupID: groupID, uid: uid, members: members, isLeader: isLeader,
+            SmartAgendaCard(store: store, members: members, isLeader: isLeader,
                             onOpenDetails: onOpenDetails)
         }
     }
@@ -22,14 +21,21 @@ struct SmartAgendaSection: View {
 
 struct SmartAgendaDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    let groupID: String
-    let uid: String
+    @State private var store: SmartAgendaStore
+    @State private var linkDraft: SmartAgendaLinkDraft?
     let members: [Member]
     let isLeader: Bool
 
+    init(groupID: String, uid: String, members: [Member], isLeader: Bool) {
+        _store = State(initialValue: SmartAgendaStore(groupID: groupID, uid: uid))
+        self.members = members
+        self.isLeader = isLeader
+    }
+
     var body: some View {
         ScrollView {
-            SmartAgendaCard(groupID: groupID, uid: uid, members: members, isLeader: isLeader)
+            SmartAgendaCard(store: store, members: members, isLeader: isLeader,
+                            onEditLink: { linkDraft = $0 })
                 .padding(16)
                 .padding(.bottom, 24)
         }
@@ -37,6 +43,8 @@ struct SmartAgendaDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden()
+        .onAppear { store.listen() }
+        .onDisappear { store.stop() }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("自動化議程")) {
                 Button(action: dismiss.callAsFunction) {
@@ -48,20 +56,29 @@ struct SmartAgendaDetailView: View {
                 EmptyView()
             }
         }
+        .accessibilityHidden(linkDraft != nil)
+        .overlay {
+            if let draft = linkDraft {
+                SmartAgendaLinkEditor(store: store, draft: draft) { linkDraft = nil }
+                    .id(draft.id)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: linkDraft?.id)
     }
 }
 
 /// Both screens read the same cloud agenda; only the detail page shows preparation content.
 private struct SmartAgendaCard: View {
+    let store: SmartAgendaStore
     let members: [Member]
     let isLeader: Bool
     let onOpenDetails: (() -> Void)?
-    @State private var store: SmartAgendaStore
+    let onEditLink: ((SmartAgendaLinkDraft) -> Void)?
     @State private var showsMeetingEditor = false
     @State private var showsEditOptions = false
     @State private var pendingEditAction: EditAction?
     @State private var materialDraft: SmartAgendaMaterialDraft?
-    @State private var linkDraft: SmartAgendaLinkDraft?
     @State private var showsMeeting = false
     @State private var starting = false
 
@@ -70,15 +87,18 @@ private struct SmartAgendaCard: View {
         case meeting
     }
 
-    init(groupID: String, uid: String, members: [Member], isLeader: Bool,
-         onOpenDetails: (() -> Void)? = nil) {
+    init(store: SmartAgendaStore, members: [Member], isLeader: Bool,
+         onOpenDetails: (() -> Void)? = nil,
+         onEditLink: ((SmartAgendaLinkDraft) -> Void)? = nil) {
+        self.store = store
         self.members = members
         self.isLeader = isLeader
         self.onOpenDetails = onOpenDetails
-        _store = State(initialValue: SmartAgendaStore(groupID: groupID, uid: uid))
+        self.onEditLink = onEditLink
     }
 
     var body: some View {
+        @Bindable var store = store
         ZStack(alignment: .topTrailing) {
             if let onOpenDetails {
                 Button(action: onOpenDetails) { cardContent }
@@ -91,12 +111,9 @@ private struct SmartAgendaCard: View {
         }
         .foregroundStyle(SmartAgendaStyle.ink)
         .tint(SmartAgendaStyle.ink)
-        .onAppear { store.listen() }
-        .onDisappear { store.stop() }
-        .sheet(isPresented: $showsEditOptions, onDismiss: openSelectedEditor) { editOptions }
+        .fullScreenCover(isPresented: $showsEditOptions, onDismiss: openSelectedEditor) { editOptions }
         .sheet(isPresented: $showsMeetingEditor) { SmartAgendaMeetingEditor(store: store) }
         .sheet(item: $materialDraft) { draft in SmartAgendaMaterialEditor(store: store, draft: draft) }
-        .sheet(item: $linkDraft) { draft in SmartAgendaLinkEditor(store: store, draft: draft) }
         .sheet(isPresented: $showsMeeting) { SmartAgendaMeetingSession(store: store, isLeader: isLeader) }
         .quickLookPreview($store.previewURL)
     }
@@ -195,34 +212,77 @@ private struct SmartAgendaCard: View {
 
     private var editOptions: some View {
         let entries = store.agenda?.materials(for: store.uid) ?? []
-        return NavigationStack {
-            List {
-                ForEach(entries) { entry in
-                    Button(entries.count == 1 ? L10n.text("編輯我的資料") : materialTitle(entry), systemImage: "person.crop.circle") {
-                        pendingEditAction = .material(SmartAgendaMaterialDraft(entry: entry))
+        return ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture { showsEditOptions = false }
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label(L10n.text("編輯議程"), systemImage: "square.and.pencil")
+                        .font(.title2.weight(.black))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button {
                         showsEditOptions = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(BombTheme.ink, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("取消"))
+                }
+
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(entries) { entry in
+                            editOptionButton(entries.count == 1 ? L10n.text("編輯我的資料") : materialTitle(entry),
+                                             icon: "person.crop.circle", highlighted: true) {
+                                pendingEditAction = .material(SmartAgendaMaterialDraft(entry: entry))
+                                showsEditOptions = false
+                            }
+                        }
+                        editOptionButton(L10n.text("新增我的資料"), icon: "plus") {
+                            pendingEditAction = .material(SmartAgendaMaterialDraft())
+                            showsEditOptions = false
+                        }
+                        if isLeader {
+                            editOptionButton(L10n.text("編輯會議"), icon: "list.bullet.rectangle") {
+                                pendingEditAction = .meeting
+                                showsEditOptions = false
+                            }
+                        }
                     }
                 }
-                Button(L10n.text("新增我的資料"), systemImage: "plus") {
-                    pendingEditAction = .material(SmartAgendaMaterialDraft())
-                    showsEditOptions = false
-                }
-                if isLeader {
-                    Button(L10n.text("編輯會議"), systemImage: "calendar") {
-                        pendingEditAction = .meeting
-                        showsEditOptions = false
-                    }
-                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: CGFloat(min(entries.count + (isLeader ? 2 : 1), 4)) * 68)
             }
-            .scrollContentBackground(.hidden).background(BombTheme.paper)
-            .navigationTitle(L10n.text("編輯議程")).navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("取消")) { showsEditOptions = false }
-                }
-            }
+            .foregroundStyle(BombTheme.ink)
+            .padding(20)
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
         }
-        .presentationDetents([.height(CGFloat(min(entries.count + (isLeader ? 2 : 1), 4) * 48 + 120)), .large])
+        .presentationBackground(.clear)
+    }
+
+    private func editOptionButton(_ title: String, icon: String, highlighted: Bool = false,
+                                  action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.headline.weight(.black))
+                .foregroundStyle(highlighted ? BombTheme.ink : .white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(highlighted ? BombTheme.yellow : BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     private func openSelectedEditor() {
@@ -274,14 +334,14 @@ private struct SmartAgendaCard: View {
                         }
                     }
                     if entry.link.ownerUID == store.uid || isLeader {
-                        Button { linkDraft = SmartAgendaLinkDraft(entry: entry) } label: {
+                        Button { onEditLink?(SmartAgendaLinkDraft(entry: entry)) } label: {
                             Image(systemName: "square.and.pencil")
                                 .frame(width: 36, height: 36).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(L10n.text("編輯會議連結"))
                     }
                 }
             }
-            Button { linkDraft = SmartAgendaLinkDraft() } label: {
+            Button { onEditLink?(SmartAgendaLinkDraft()) } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "link")
                         .accessibilityHidden(true)
@@ -356,7 +416,7 @@ private struct SmartAgendaCard: View {
     }
 }
 
-private struct SmartAgendaMeetingEditor: View {
+struct SmartAgendaMeetingEditor: View {
     let store: SmartAgendaStore
     @Environment(\.dismiss) private var dismiss
     @State private var topic: String
@@ -381,7 +441,7 @@ private struct SmartAgendaMeetingEditor: View {
                 Section(L10n.text("會議長度")) { Stepper(L10n.format("{0} 分鐘", String(duration)), value: $duration, in: 5...180, step: 5) }
                 if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
             }.disabled(store.isSaving).scrollContentBackground(.hidden).background(SmartAgendaStyle.paper)
-                .navigationTitle(L10n.text("編輯會議")).navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(L10n.text(revision == nil ? "設定會議" : "編輯會議")).navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button(L10n.text("取消")) { dismiss() }.disabled(store.isSaving) }
                     ToolbarItem(placement: .confirmationAction) {

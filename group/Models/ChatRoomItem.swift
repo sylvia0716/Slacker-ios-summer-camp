@@ -24,13 +24,16 @@ enum ChatRoomItem: Identifiable, Codable {
     case botAnalysis(id: String, analysis: CommunicationAnalysis)
     /// AI 機器人的一般文字回覆。
     case botReply(id: String, text: String, createdAt: Date)
+    /// Server-authored meeting reminder; excluded from human conversation scoring.
+    case agendaReminder(id: String, summary: AgendaChatSummary, createdAt: Date)
 
     var id: String {
         switch self {
         case let .message(id, _, _, _, _, _, _),
              let .systemEvent(id, _, _, _),
              let .botAnalysis(id, _),
-             let .botReply(id, _, _):
+             let .botReply(id, _, _),
+             let .agendaReminder(id, _, _):
             id
         }
     }
@@ -40,7 +43,8 @@ enum ChatRoomItem: Identifiable, Codable {
         switch self {
         case let .message(_, _, _, _, _, createdAt, _),
              let .systemEvent(_, _, _, createdAt),
-             let .botReply(_, _, createdAt):
+             let .botReply(_, _, createdAt),
+             let .agendaReminder(_, _, createdAt):
             createdAt
         case let .botAnalysis(_, analysis):
             analysis.updatedAt
@@ -100,6 +104,7 @@ enum ChatRoomItem: Identifiable, Codable {
         case systemEvent
         case botAnalysis
         case botReply
+        case agendaReminder
     }
 
     private struct MessagePayload: Codable {
@@ -130,6 +135,12 @@ enum ChatRoomItem: Identifiable, Codable {
         let createdAt: Date?
     }
 
+    private struct AgendaReminderPayload: Codable {
+        let id: String
+        let summary: AgendaChatSummary
+        let createdAt: Date
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if container.contains(.message) {
@@ -154,6 +165,9 @@ enum ChatRoomItem: Identifiable, Codable {
         } else if container.contains(.botAnalysis) {
             let payload = try container.decode(BotAnalysisPayload.self, forKey: .botAnalysis)
             self = .botAnalysis(id: payload.id, analysis: payload.analysis)
+        } else if container.contains(.agendaReminder) {
+            let payload = try container.decode(AgendaReminderPayload.self, forKey: .agendaReminder)
+            self = .agendaReminder(id: payload.id, summary: payload.summary, createdAt: payload.createdAt)
         } else {
             let payload = try container.decode(BotReplyPayload.self, forKey: .botReply)
             self = .botReply(
@@ -195,6 +209,8 @@ enum ChatRoomItem: Identifiable, Codable {
                 BotReplyPayload(id: id, text: text, createdAt: createdAt),
                 forKey: .botReply
             )
+        case let .agendaReminder(id, summary, createdAt):
+            try container.encode(AgendaReminderPayload(id: id, summary: summary, createdAt: createdAt), forKey: .agendaReminder)
         }
     }
 }
