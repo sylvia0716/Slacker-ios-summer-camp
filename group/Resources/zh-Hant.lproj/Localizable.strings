@@ -710,6 +710,8 @@
 "你已經是「{0}」的成員" = "你已經是「{0}」的成員";
 "已加入「{0}」" = "已加入「{0}」";
 "雲端資料同步失敗，請確認網路後重新整理。" = "雲端資料同步失敗，請確認網路後重新整理。";
+"正在載入群組…" = "正在載入群組…";
+"網路連線暫時中斷，正在自動重新連線。" = "網路連線暫時中斷，正在自動重新連線。";
 "已退出「{0}」" = "已退出「{0}」";
 "已送出成果確認" = "已送出成果確認";
 "已更新子任務" = "已更新子任務";
@@ -800,6 +802,121 @@
 "替換檔案" = "替換檔案";
 
 "新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "新檔已上傳，舊附件未刪除，請重新刪除舊附件。";
+"略過動畫" = "略過動畫";
+
+// Smart Agenda
+"自動化議程" = "自動化議程";
+"團隊準備" = "團隊準備";
+"{0}/{1} 人已準備" = "{0}/{1} 人已準備";
+"新增我的資料" = "新增我的資料";
+"會議主題" = "會議主題";
+"設定會議" = "設定會議";
+"等待組長設定會議。" = "等待組長設定會議。";
+"編輯" = "編輯";
+"編輯會議" = "編輯會議";
+"編輯我的資料" = "編輯我的資料";
+"編輯議程" = "編輯議程";
+"收合議程" = "收合議程";
+"展開議程" = "展開議程";
+"範例會議議程" = "範例會議議程";
+"AI 建議議程" = "AI 建議議程";
+"正在產生會議議程…" = "正在產生會議議程…";
+"產生會議議程" = "產生會議議程";
+"正在開始…" = "正在開始…";
+"開始會議" = "開始會議";
+"開啟會議" = "開啟會議";
+"日期與時間" = "日期與時間";
+"會議" = "會議";
+"會議長度" = "會議長度";
+"{0} 分鐘" = "{0} 分鐘";
+"{0}–{1} 分鐘" = "{0}–{1} 分鐘";
+"準備內容" = "準備內容";
+"你想在會議中討論什麼？" = "你想在會議中討論什麼？";
+"附件" = "附件";
+"移除附件" = "移除附件";
+"選擇檔案" = "選擇檔案";
+"我的準備資料" = "我的準備資料";
+"會議已結束" = "會議已結束";
+"結束會議" = "結束會議";
+"會議尚未開始。" = "會議尚未開始。";
+"The app's AI service has insufficient credit. Please contact support." = "AI 服務額度不足，請聯絡 App 管理員。";
+"AI is unavailable. Please contact the group leader." = "AI 暫時無法使用，請聯絡組長。";
+"Could not generate the meeting plan. Please try again." = "無法產生會議議程，請再試一次。";
+"Please sign in again." = "請重新登入。";
+"Could not load the agenda. Please try again." = "無法載入議程，請再試一次。";
+"Choose a PNG, JPG, PDF, Word, PowerPoint, Excel, ZIP, MOV or MP4 file." = "請選擇 PNG、JPG、PDF、Word、PowerPoint、Excel、ZIP、MOV 或 MP4 檔案。";
+"Choose a non-empty file up to 20 MB." = "請選擇大小介於 1 位元組至 20 MB 的檔案。";
+"Please sign in." = "請先登入。";
+"Invalid agenda request." = "無法完成議程操作，請重新開啟後再試。";
+"Invalid attachment." = "附件無效，請重新選擇。";
+"Invalid attachment path." = "附件位置無效，請重新上傳。";
+"File type does not match." = "檔案類型不符，請重新選擇。";
+"Upload is incomplete." = "上傳尚未完成，請再試一次。";
+"Membership required." = "你已不在此群組中。";
+"Only the leader can edit the meeting." = "只有組長可以編輯會議。";
+"Enter a topic, meeting date and 5–180 minute duration." = "請填寫會議主題、日期及 5 至 180 分鐘的會議長度。";
+"Meeting changed. Reopen the editor." = "會議資料已變更，請重新開啟編輯視窗。";
+"The leader must set a meeting first." = "請先由組長設定會議。";
+"Note must be 1000 characters or less." = "準備內容不可超過 1000 個字。";
+"Your material changed. Reopen the editor." = "你的準備資料已變更，請重新開啟編輯視窗。";
+"Everyone must prepare first." = "請等待所有成員提交準備資料。";
+"Please wait a minute before trying again." = "請稍候一分鐘再試。";
+"The meeting plan is not ready." = "會議議程尚未準備完成。";
+"Only the leader can end the meeting." = "只有組長可以結束會議。";
+"[Test] Finalize Our Demo" = "[測試] 確認最終展示內容";
+"Check the opening and runtime." = "確認開場內容與展示片長。";
+"Choose the key features and demo order." = "選定重點功能與展示順序。";
+"Review the shorter narration script." = "檢視精簡後的旁白腳本。";
+"Confirm the visual references and title slides." = "確認視覺參考與標題投影片。";
+"Set the final decisions and revision owners." = "確認最終決議與修訂負責人。";
+"Check the demo login and upload flow." = "確認展示用的登入與上傳流程。";
+"Review the recording setup and audio." = "檢查錄影設定與音效。";
+"Prepare the backup files and final checklist." = "準備備份檔案與最終檢查清單。";
+"Review prepared materials" = "檢視會前資料";
+"Confirm the opening, runtime and missing files" = "確認開場、片長與缺少的檔案";
+"Decide feature order" = "決定功能展示順序";
+"Choose three key features and the demo sequence" = "選定三項重點功能與展示順序";
+"Align narration and visuals" = "確認旁白與視覺";
+"Approve the script and slide direction" = "確認腳本與簡報設計方向";
+"Finalize and assign" = "確認結論與分工";
+"Assign each revision an owner and a deadline" = "為每項修訂指定負責人與期限";
+
+"Add a note or attachment." = "請填寫準備內容或加入附件。";
+
+"Invalid material." = "資料無效，請重新開啟。";
+
+"You can only edit your own material." = "只能編輯自己的準備資料。";
+
+"議程產生逾時，請重試。" = "議程產生逾時，請重試。";
+
+"Attachment is no longer available. Choose the file again." = "附件已不存在，請重新選擇檔案。";
+
+"新增會議連結" = "新增會議連結";
+
+"編輯會議連結" = "編輯會議連結";
+
+"連結名稱（選填）" = "連結名稱（選填）";
+
+"連結名稱" = "連結名稱";
+
+"刪除連結" = "刪除連結";
+
+"刪除連結？" = "刪除連結？";
+
+"Enter a link title up to 120 characters and a valid HTTP or HTTPS URL." = "請輸入最多 120 字的名稱及有效的 HTTP 或 HTTPS 網址。";
+
+"Enter a valid HTTP or HTTPS URL." = "請輸入有效的 HTTP 或 HTTPS 網址。";
+
+"You can only edit your own meeting links." = "只能編輯自己新增的會議連結。";
+
+"Meeting link changed. Reopen the editor." = "會議連結已更新，請重新開啟編輯。";
+
+"A meeting can have up to 20 links." = "每場會議最多可新增 20 個連結。";
+
+"查看議程詳情" = "查看議程詳情";
+
+"返回" = "返回";
+
 "修改任務" = "修改任務";
 "刪除任務" = "刪除任務";
 "管理任務「{0}」" = "管理任務「{0}」";
@@ -840,3 +957,9 @@
 "上傳中" = "上傳中";
 
 "已提交" = "已提交";
+"會前提醒：「{0}」將於 {1} 開始，預計 {2} 分鐘。" = "會前提醒：「{0}」將於 {1} 開始，預計 {2} 分鐘。";
+"會前資料已提交 {0}/{1} 人（{2}）。" = "會前資料已提交 {0}/{1} 人（{2}）。";
+"全員已完成會前準備。" = "全員已完成會前準備。";
+"尚未提交筆記或附件：{0}。" = "尚未提交筆記或附件：{0}。";
+"討論重點：{0}。" = "討論重點：{0}。";
+"{0}等 {1} 人" = "{0}等 {1} 人";

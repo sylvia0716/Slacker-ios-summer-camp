@@ -132,27 +132,39 @@ after(async () => {
 });
 
 describe("雲端任務共識驗收", () => {
-  async function fixture() {
+  async function fixture(includeSecondReviewer = true) {
     const a = await callableClient(), b = await callableClient(), c = await callableClient();
+    const reviewer = await callableClient();
     await a.join({inviteCode: validCode});
     await b.join({inviteCode: validCode});
+    if (includeSecondReviewer) await reviewer.join({inviteCode: validCode});
     await testEnv.withSecurityRulesDisabled(async ctx => {
       await updateDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}`), {ownerMemberID: b.userID, subtasks: []});
       await setDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`), {
         status: 'ready', createdAt: Timestamp.now(), uploaderID: b.userID,
       });
     });
-    return {a,b,c,close: () => Promise.all([a.close(), b.close(), c.close()])};
+    return {a,b,c,reviewer,close: () => Promise.all([a.close(), b.close(), c.close(), reviewer.close()])};
   }
   const confirm = {groupID, taskID, action:'confirm', attachmentID};
-  test('全部成員確認才完成，重複確認不增加票數', async () => {
+  test('全部其他成員確認才完成，負責人不得自我確認，重複確認不增加票數', async () => {
     const f = await fixture();
     try {
       assert.equal((await f.a.progress(confirm)).data.status, 'submitted');
       assert.equal((await f.a.progress(confirm)).data.status, 'submitted');
-      assert.equal((await f.b.progress(confirm)).data.status, 'completed');
+      await expectCallableFailure(f.b.progress(confirm), 'functions/permission-denied');
+      assert.equal((await f.reviewer.progress(confirm)).data.status, 'completed');
       const task = await getDoc(doc(testEnv.authenticatedContext(f.a.userID).firestore(), `groups/${groupID}/tasks/${taskID}`));
-      assert.deepEqual(new Set(task.data().confirmedMemberUIDs), new Set([f.a.userID,f.b.userID]));
+      assert.deepEqual(new Set(task.data().confirmedMemberUIDs), new Set([f.a.userID,f.reviewer.userID]));
+    } finally { await f.close(); }
+  });
+  test('雙人群組只需另一位成員確認，不等待負責人', async () => {
+    const f = await fixture(false);
+    try {
+      assert.equal((await f.a.progress(confirm)).data.status, 'completed');
+      await expectCallableFailure(f.b.progress(confirm), 'functions/permission-denied');
+      const task = await getDoc(doc(testEnv.authenticatedContext(f.a.userID).firestore(), `groups/${groupID}/tasks/${taskID}`));
+      assert.deepEqual(task.data().confirmedMemberUIDs, [f.a.userID]);
     } finally { await f.close(); }
   });
   test('拒絕未登入、非成員、偽造 UID 或自行指定完成狀態', async () => {
@@ -172,7 +184,7 @@ describe("雲端任務共識驗收", () => {
       const update={groupID,taskID,action:'setSubtask',subtaskID,isComplete:true};
       await expectCallableFailure(f.a.progress(update), 'functions/permission-denied');
       await f.b.progress(update);
-      await f.a.progress(confirm); await f.b.progress(confirm);
+      await f.a.progress(confirm); await f.reviewer.progress(confirm);
       assert.equal((await f.b.progress({...update,isComplete:false})).data.status, 'submitted');
       const task=await getDoc(doc(testEnv.authenticatedContext(f.b.userID).firestore(),`groups/${groupID}/tasks/${taskID}`));
       assert.deepEqual(task.data().confirmedMemberUIDs, []);
@@ -181,12 +193,12 @@ describe("雲端任務共識驗收", () => {
   test('新成果不能沿用舊確認，舊成果確認被拒絕', async () => {
     const f=await fixture();
     try {
-      await f.a.progress(confirm); await f.b.progress(confirm);
+      await f.a.progress(confirm); await f.reviewer.progress(confirm);
       const next='55555555-5555-4555-8555-555555555555';
       await testEnv.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(),`groups/${groupID}/tasks/${taskID}/attachments/${next}`),{status:'ready',createdAt:Timestamp.fromMillis(Date.now()+1000),uploaderID:f.b.userID}));
       await expectCallableFailure(f.a.progress(confirm),'functions/failed-precondition');
       assert.equal((await f.a.progress({...confirm,attachmentID:next})).data.status,'submitted');
-      assert.equal((await f.b.progress({...confirm,attachmentID:next})).data.status,'completed');
+      assert.equal((await f.reviewer.progress({...confirm,attachmentID:next})).data.status,'completed');
     } finally { await f.close(); }
   });
   test('加入後成員名稱由後端建立', async () => {

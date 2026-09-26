@@ -3,9 +3,13 @@ import Combine
 
 /// App shell: owns the prototype's shared store and the primary app navigation.
 struct AppRootView: View {
+    var playsLaunchAnimation = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var store = GroupBombModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var authSession = AuthSessionStore()
+    @State private var launchAnimationID = 0
+    @State private var wasInBackground = false
     @State private var tab = AppTab.groups
     @State private var settingsNavigationID = UUID()
     @State private var tutorialStep: TutorialStep?
@@ -17,15 +21,21 @@ struct AppRootView: View {
     private let reviewRouter = ReviewNotificationRouter.shared
 
     var body: some View {
-        SwiftUI.Group {
-            if authSession.isCheckingSession {
-                authenticationLoadingView
-            } else if authSession.canEnterApp, store.firebaseUID == authSession.currentUserID {
-                authenticatedContent
-                    .id(authSession.currentUserID)
-            } else {
-                AuthenticationView(session: authSession)
+        BombLaunchView(playsAnimation: playsLaunchAnimation, replayID: launchAnimationID) {
+            ZStack {
+                if authSession.isCheckingSession {
+                    authenticationLoadingView
+                } else if authSession.canEnterApp, store.firebaseUID == authSession.currentUserID {
+                    authenticatedContent
+                        .id(authSession.currentUserID)
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+                } else {
+                    AuthenticationView(session: authSession)
+                        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity, removal: .move(edge: .leading)))
+                }
             }
+            .animation(reduceMotion ? .easeOut(duration: 0.18) : .smooth(duration: 0.55),
+                       value: !authSession.isCheckingSession && authSession.canEnterApp && store.firebaseUID == authSession.currentUserID)
         }
         .environment(\.locale, L10n.locale)
         .environment(\.bombSafeAreaInsets, safeAreaInsets)
@@ -40,7 +50,10 @@ struct AppRootView: View {
             store.changeCloudAccount(to: authSession.currentUserID)
             if scenePhase == .active { store.resumeCloudSync() }
         }
-        .onChange(of: authSession.currentUserID) { _, _ in
+        .onChange(of: authSession.currentUserID) { previousUserID, userID in
+            if previousUserID != nil, userID == nil {
+                launchAnimationID += 1
+            }
             activePokeReception = nil
             reviewNotificationPath = []
             if scenePhase == .active { store.resumeCloudSync() }
@@ -52,10 +65,16 @@ struct AppRootView: View {
         .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                if wasInBackground, !authSession.isAuthenticated, !authSession.isPreviewSession {
+                    authSession.returnToEntryIfUnauthenticated()
+                    launchAnimationID += 1
+                }
+                wasInBackground = false
                 AppLanguageSettings.shared.refreshSystemLanguage()
                 store.resumeCloudSync()
             }
             else if phase == .background {
+                wasInBackground = true
                 store.suspendCloudSync()
                 if !store.isDemoMode { PokeBackgroundRefresh.shared.schedule() }
             }
