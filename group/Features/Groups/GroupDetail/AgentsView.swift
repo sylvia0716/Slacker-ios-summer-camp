@@ -203,7 +203,7 @@ private struct PokeSheet: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? BombTheme.paper : BombTheme.paper.opacity(0.66))
+            .background(isSelected ? BombTheme.yellow : BombTheme.paper)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

@@ -4,7 +4,10 @@
 
 - Integrated project-page agenda summary and detail navigation, own-material editing, shared meeting links, bilingual labels, preparation counts, and member progress ordering.
 - The entrance animation has progressive sparks and pressure motion. Replay, early skip, immediate replay after skipping, and return to the login screen were verified through serve-sim. Timing uses a monotonic clock; stale completion work and zero-size drawing are guarded.
-- Simulator Debug build and 62 server tests passed before integrating the latest main branch. Subsequent merge validation is recorded in the pull request.
+- Integrated `origin/main` at `3083e75`, preserving its task management, member removal, chat read receipts/pinning and account-isolated notifications. The member/task card styling is unchanged from that main revision.
+- Post-merge validation passed: simulator Debug build, 70 server tests, 85 Swift tests and 43 local Firebase agenda/chat/storage integration tests. The agenda language tests now run on the main actor so parallel suites cannot change their shared language mid-assertion.
+- Removed the bottom replay/slide-preview controls and verified the login page through serve-sim. Also checked normal launch, the group list, and the project page with the agenda summary and pinned own-task section.
+- Existing test limitations remain: `firestore.rules.test.mjs` has an end-of-file syntax error; three `join-group.test.mjs` assertions still expect owners to confirm their own task, contrary to the existing owner-exclusion logic. Those files and that logic are unchanged from main. The 43 passing Firebase checks exclude these stale tests and disable the AI generation trigger in the temporary emulator copy; generation behavior is covered by server/adapter tests.
 - Live OpenAI generation remains unverified because API credits are exhausted; no new paid provider request was made during this review.
 - Sections below retain the findings and limitations from earlier development stages.
 

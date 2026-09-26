@@ -83,7 +83,7 @@ struct PersonalBattleReportView: View {
                     if let error = model.personalPeerReviewSyncError {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(BombTheme.red)
                             .padding(.horizontal, 4)
                     }
                 }
@@ -124,7 +124,7 @@ struct PersonalBattleReportView: View {
             .font(.caption.weight(.bold))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(BombTheme.paper.opacity(0.82), in: RoundedRectangle(cornerRadius: 16))
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var emptyState: some View {

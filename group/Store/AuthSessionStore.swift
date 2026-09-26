@@ -15,6 +15,8 @@ final class AuthSessionStore {
         get { AppLanguageSettings.shared.language }
         set { AppLanguageSettings.shared.preference = AppLanguagePreference(rawValue: newValue.rawValue)! }
     }
+    private var signOutErrorKey: String?
+    var signOutErrorMessage: String? { signOutErrorKey.map { text($0) } }
     private var errorKey: String?
     var errorMessage: String? { errorKey.map { text($0) } }
 
@@ -91,6 +93,7 @@ final class AuthSessionStore {
     }
 
     func signIn(email: String, password: String) async {
+        guard !isWorking else { return }
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
             errorKey = "Firebase 尚未設定完成，請稍後再試。"
@@ -99,9 +102,13 @@ final class AuthSessionStore {
 
         isWorking = true
         errorKey = nil
-        defer { isWorking = false }
+        defer {
+            isWorking = false
+            PokeRepository.resumeDeviceRegistration()
+        }
 
         do {
+            try await PokeRepository().prepareForAccountChange()
             let result = try await Auth.auth().signIn(
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
@@ -113,6 +120,7 @@ final class AuthSessionStore {
     }
 
     func register(email: String, password: String) async {
+        guard !isWorking else { return }
         guard validate(email: email, password: password) else { return }
         guard FirebaseApp.app() != nil else {
             errorKey = "Firebase 尚未設定完成，請稍後再試。"
@@ -184,14 +192,24 @@ final class AuthSessionStore {
             return
         }
 #endif
-        guard FirebaseApp.app() != nil else { return }
-
-        do {
-            try Auth.auth().signOut()
-            updateSession(user: nil)
-            errorKey = nil
-        } catch {
-            errorKey = Self.localizedMessage(for: error)
+        guard FirebaseApp.app() != nil, !isWorking else { return }
+        signOutErrorKey = nil
+        isWorking = true
+        Task {
+            defer {
+                isWorking = false
+                PokeRepository.resumeDeviceRegistration()
+            }
+            do {
+                try await PokeRepository().prepareForAccountChange()
+                try Auth.auth().signOut()
+                updateSession(user: nil)
+                errorKey = nil
+            } catch {
+                isStartingAnonymousSession = false
+                isCheckingSession = false
+                signOutErrorKey = Self.localizedMessage(for: error)
+            }
         }
     }
 

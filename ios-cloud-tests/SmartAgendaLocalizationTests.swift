@@ -3,6 +3,7 @@ import Testing
 @testable import GroupCloudData
 
 @Suite(.serialized)
+@MainActor
 struct SmartAgendaLocalizationTests {
     private func agenda(fixture: Bool = false, bilingual: Bool = false, materials: [String: Any] = [:], overrides: [String: Any] = [:]) throws -> SmartAgenda {
         var stage: [String: Any] = ["start": 0, "end": 4,

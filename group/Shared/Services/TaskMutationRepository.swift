@@ -80,6 +80,54 @@ final class TaskMutationRepository {
         }
     }
 
+    func update(
+        expectedUserID: String,
+        groupID: String,
+        taskID: String,
+        title: String,
+        detail: String,
+        subtasks: [Subtask],
+        deadline: Date
+    ) async throws {
+        try requireAuthenticatedUser(expectedUserID)
+        do {
+            _ = try await functions.httpsCallable("updateTask").call([
+                "groupID": groupID,
+                "taskID": taskID,
+                "title": title,
+                "detail": detail,
+                "subtasks": subtasks.map {
+                    ["id": $0.id.uuidString.lowercased(), "title": $0.title]
+                },
+                "deadlineMillis": deadline.timeIntervalSince1970 * 1_000,
+            ])
+            try requireAuthenticatedUser(expectedUserID)
+        } catch let error as TaskMutationError {
+            throw error
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    func remove(
+        expectedUserID: String,
+        groupID: String,
+        taskID: String
+    ) async throws {
+        try requireAuthenticatedUser(expectedUserID)
+        do {
+            _ = try await functions.httpsCallable("deleteTask").call([
+                "groupID": groupID,
+                "taskID": taskID,
+            ])
+            try requireAuthenticatedUser(expectedUserID)
+        } catch let error as TaskMutationError {
+            throw error
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
     private func requireAuthenticatedUser(_ expectedUserID: String) throws {
         guard Auth.auth().currentUser?.uid == expectedUserID else {
             throw TaskMutationError.notAuthenticated

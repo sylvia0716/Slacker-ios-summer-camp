@@ -4,7 +4,7 @@ import UIKit
 /// Group detail backed by the app's shared Group, Member, and ProjectTask data.
 struct GroupDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: Group
     let model: AppStore
     private let tutorialStep: Binding<TutorialStep?>?
@@ -21,6 +21,10 @@ struct GroupDetailView: View {
     @State private var departureError: String?
     @State private var leaveError: String?
     @State private var showsPublishTaskSheet = false
+    @State private var editingTask: ProjectTask?
+    @State private var taskPendingDeletion: ProjectTask?
+    @State private var taskMutationError: String?
+    @State private var isDeletingTask = false
     @State private var expandedMemberID: UUID?
     @State private var reviewDeferred = true
     @State private var peerReviewStartsAtOutcomeSummary = false
@@ -35,11 +39,15 @@ struct GroupDetailView: View {
     @State private var deadlineDraft = Date.now
     @State private var deadlineError: String?
     @State private var showsNameSheet = false
+    @State private var showsEditOptions = false
+    @State private var showsMemberSheet = false
+    @State private var memberPendingRemoval: Member?
+    @State private var isRemovingMember = false
+    @State private var memberRemovalError: String?
     @State private var nameDraft = ""
     @State private var nameError: String?
     @State private var pokeButtonEmoji: String?
     @State private var pokeButtonEmojiMemberID: String?
-    @State private var isPokeButtonEmojiShaking = false
 
     init(
         group: Group,
@@ -116,6 +124,7 @@ struct GroupDetailView: View {
                             .ignoresSafeArea(edges: .top)
                             .onTapGesture { closePublishTaskSheet() }
                             .transition(.opacity)
+                            .zIndex(1)
 
                         PublishTaskSheet(
                             group: currentGroup,
@@ -134,7 +143,34 @@ struct GroupDetailView: View {
                         )
                         .frame(height: proxy.size.height * 0.82)
                         .padding(.horizontal, 8)
-                        .padding(.bottom, 8 - safeAreaInsets.bottom)
+                        .padding(.bottom, 8)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(2)
+                    }
+
+                    if let editingTask {
+                        BombTheme.ink.opacity(0.16)
+                            .ignoresSafeArea(edges: .top)
+                            .onTapGesture { closeTaskEditor() }
+                            .transition(.opacity)
+
+                        TaskEditorSheet(
+                            group: currentGroup,
+                            task: editingTask,
+                            onSave: { title, detail, subtasks, deadline in
+                                try await model.updateOwnedTask(
+                                    taskID: editingTask.id,
+                                    title: title,
+                                    detail: detail,
+                                    subtasks: subtasks,
+                                    deadline: deadline
+                                )
+                            },
+                            onCancel: closeTaskEditor
+                        )
+                        .frame(height: proxy.size.height * 0.82)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
@@ -152,21 +188,6 @@ struct GroupDetailView: View {
                     }
                 }
             }
-        }
-        .bombDialog(L10n.format("確定退出「{0}」？", String(describing: currentGroup.name)), isPresented: $showsLeaveConfirmation, destructiveIsRed: true) {
-            Button(L10n.text("取消"), role: .cancel) { }
-            Button(L10n.text("退出群組"), role: .destructive) {
-                isLeaving = true
-                Task {
-                    defer { isLeaving = false }
-                    do {
-                        try await model.leaveGroup(groupID: group.id)
-                        dismiss()
-                    } catch { leaveError = L10n.text("退出失敗，請確認網路後重試。") }
-                }
-            }
-        } message: {
-            Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
         }
         .bombDialog(L10n.text("無法退出群組"), isPresented: Binding(
             get: { leaveError != nil }, set: { if !$0 { leaveError = nil } }
@@ -190,6 +211,10 @@ struct GroupDetailView: View {
         }
         .bombTabBarHidden(
             showsPublishTaskSheet
+                || showsEditOptions
+                || showsLeaveConfirmation
+                || editingTask != nil
+                || taskPendingDeletion != nil
                 || shouldShowExplosionMeme(now: .now)
                 || shouldShowSuccessMeme(now: .now)
         )
@@ -202,19 +227,14 @@ struct GroupDetailView: View {
                    let pokeButtonEmojiMemberID,
                    let anchor = anchors[pokeButtonEmojiMemberID] {
                     let buttonFrame = proxy[anchor]
-                    Text(pokeButtonEmoji)
-                        .font(.system(size: 48))
-                        .position(x: buttonFrame.midX, y: buttonFrame.midY)
-                        .offset(y: -46)
-                        .rotationEffect(.degrees(isPokeButtonEmojiShaking ? 12 : -12))
-                        .scaleEffect(isPokeButtonEmojiShaking ? 1.16 : 0.72)
-                        .id(pokeButtonEmoji)
+                    PokeButtonFeedback(emoji: pokeButtonEmoji)
+                        .id(pokeButtonEmojiMemberID)
+                        .position(x: buttonFrame.midX, y: buttonFrame.midY - 58)
                         .allowsHitTesting(false)
                 }
             }
             .zIndex(100)
         }
-        .animation(.bouncy, value: pokeButtonEmoji)
         .overlay {
             if shouldShowExplosionMeme(now: .now) {
                 ExplosionMemeOverlay(
@@ -238,6 +258,14 @@ struct GroupDetailView: View {
         }
         .animation(.easeOut(duration: 0.2), value: shouldShowExplosionMeme(now: .now))
         .animation(.easeOut(duration: 0.2), value: shouldShowSuccessMeme(now: .now))
+        .overlay {
+            if showsEditOptions {
+                editGroupOptionsOverlay
+                    .transition(.opacity)
+                    .zIndex(300)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsEditOptions)
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
@@ -264,6 +292,9 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showsNameSheet) {
             GroupNameEditorSheet(name: $nameDraft, onSave: saveName)
         }
+        .sheet(isPresented: $showsMemberSheet) {
+            memberRemovalSheet
+        }
         .bombDialog(L10n.text("無法修改期限"), isPresented: Binding(
             get: { deadlineError != nil },
             set: { if !$0 { deadlineError = nil } }
@@ -279,6 +310,102 @@ struct GroupDetailView: View {
             Button(L10n.text("知道了")) { }
         } message: {
             Text(nameError ?? "")
+        }
+        .bombDialog(L10n.text("任務操作失敗"), isPresented: Binding(
+            get: { taskMutationError != nil },
+            set: { if !$0 { taskMutationError = nil } }
+        )) {
+            Button(L10n.text("知道了")) { }
+        } message: {
+            Text(taskMutationError ?? "")
+        }
+        .overlay {
+            if let taskPendingDeletion {
+                deleteTaskConfirmationOverlay(task: taskPendingDeletion)
+                    .transition(.opacity)
+                    .zIndex(390)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: taskPendingDeletion?.id)
+        .overlay {
+            if showsLeaveConfirmation {
+                leaveGroupConfirmationOverlay
+                    .transition(.opacity)
+                    .zIndex(400)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsLeaveConfirmation)
+    }
+
+    private var leaveGroupConfirmationOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(
+                    L10n.format("確定退出「{0}」？", String(describing: currentGroup.name)),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.title2.weight(.black))
+                .foregroundStyle(BombTheme.red)
+
+                Text(L10n.text("退出後將無法查看此群組。最後一位成員退出後，群組資料會永久刪除。"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button(L10n.text("取消")) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showsLeaveConfirmation = false
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .contentShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button(L10n.text("退出群組"), role: .destructive) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showsLeaveConfirmation = false
+                        }
+                        leaveGroup()
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .contentShape(.capsule)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+    }
+
+    private func leaveGroup() {
+        guard !isLeaving else { return }
+        isLeaving = true
+        Task {
+            defer { isLeaving = false }
+            do {
+                try await model.leaveGroup(groupID: group.id)
+                dismiss()
+            } catch {
+                leaveError = L10n.text("退出失敗，請確認網路後重試。")
+            }
         }
     }
 
@@ -357,7 +484,8 @@ struct GroupDetailView: View {
                             object: PokeReception(
                                 groupName: currentGroup.name,
                                 pokeCount: 1,
-                                style: .alarm
+                                style: .alarm,
+                                recipientUID: model.firebaseUID
                             )
                         )
                     }
@@ -751,43 +879,40 @@ struct GroupDetailView: View {
 
                 Spacer(minLength: 0)
 
-                ShareLink(
-                    item: L10n.format(
-                        "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}",
-                        String(describing: currentGroup.name),
-                        String(describing: currentGroup.inviteCode)
-                    )
-                ) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(BombTheme.ink)
-                        .clipShape(.circle)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel(L10n.text("分享群組邀請"))
-
-                Menu {
-                    Button(L10n.text("修改群組名稱"), systemImage: "pencil") {
-                        nameDraft = currentGroup.name
-                        showsNameSheet = true
+                HStack(spacing: 0) {
+                    ShareLink(
+                        item: L10n.format(
+                            "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}",
+                            String(describing: currentGroup.name),
+                            String(describing: currentGroup.inviteCode)
+                        )
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(BombTheme.ink)
+                            .clipShape(.circle)
+                            .frame(width: 44, height: 44)
                     }
+                    .accessibilityLabel(L10n.text("分享群組邀請"))
 
-                    Button(L10n.text("修改截止時間"), systemImage: "calendar.badge.clock") {
-                        deadlineDraft = currentGroup.deadline
-                        showsDeadlineSheet = true
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showsEditOptions = true
+                        }
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(BombTheme.ink)
+                            .clipShape(.circle)
+                            .frame(width: 44, height: 44)
                     }
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(BombTheme.ink)
-                        .clipShape(.circle)
-                        .frame(width: 44, height: 44)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("修改群組"))
                 }
-                .accessibilityLabel(L10n.text("修改群組"))
             }
             .tutorialTarget(
                 .inviteCode,
@@ -796,66 +921,213 @@ struct GroupDetailView: View {
         }
     }
 
-    private func countdownCard(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "timer")
-                    .foregroundStyle(BombTheme.yellow)
-                Text(L10n.text("專案倒數"))
-                    .font(.headline.weight(.black))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer()
-                Text(L10n.text("LIVE"))
-                    .font(.caption.weight(.black))
+    private var editGroupOptionsOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture { dismissEditOptions() }
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label(L10n.text("修改群組"), systemImage: "pencil")
+                        .font(.title2.weight(.black))
+
+                    Spacer()
+
+                    Button(action: dismissEditOptions) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(BombTheme.ink, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("取消"))
+                }
+
+                Button {
+                    dismissEditOptions()
+                    nameDraft = currentGroup.name
+                    showsNameSheet = true
+                } label: {
+                    Label(L10n.text("修改群組名稱"), systemImage: "text.cursor")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(BombTheme.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(BombTheme.yellow, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    dismissEditOptions()
+                    deadlineDraft = currentGroup.deadline
+                    showsDeadlineSheet = true
+                } label: {
+                    Label(L10n.text("修改截止時間"), systemImage: "calendar.badge.clock")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+
+                if currentUserMember?.role == .leader && !otherGroupMembers.isEmpty {
+                    Button {
+                        dismissEditOptions()
+                        showsMemberSheet = true
+                    } label: {
+                        Label(L10n.text("移除成員"), systemImage: "person.badge.minus")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(BombTheme.red, in: RoundedRectangle(cornerRadius: 14))
+                            .contentShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .foregroundStyle(BombTheme.ink)
+            .padding(20)
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+    }
+
+    private func dismissEditOptions() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            showsEditOptions = false
+        }
+    }
+
+    private var memberRemovalSheet: some View {
+        BombFormSheet(title: L10n.text("移除成員")) {
+            ForEach(otherGroupMembers) { member in
+                Button {
+                    memberPendingRemoval = member
+                } label: {
+                    HStack {
+                        Text(member.name)
+                            .font(.system(.title2, design: .rounded, weight: .black))
+                        Spacer()
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(BombTheme.red)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .padding(.horizontal, 14)
+                    .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(isRemovingMember)
+            }
+            if let memberRemovalError {
+                Text(memberRemovalError)
                     .foregroundStyle(BombTheme.red)
             }
+        } actions: {
+            Button(L10n.text("完成")) { showsMemberSheet = false }
+                .buttonStyle(BombFormPrimaryButtonStyle())
+                .disabled(isRemovingMember)
+        }
+        .confirmationDialog(
+            L10n.format("確定移除 {0}？", memberPendingRemoval?.name ?? ""),
+            isPresented: Binding(
+                get: { memberPendingRemoval != nil },
+                set: { if !$0 { memberPendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let member = memberPendingRemoval {
+                Button(L10n.text("移除成員"), role: .destructive) {
+                    memberPendingRemoval = nil
+                    removeMember(member)
+                }
+            }
+            Button(L10n.text("取消"), role: .cancel) { memberPendingRemoval = nil }
+        }
+        .interactiveDismissDisabled(isRemovingMember)
+    }
 
-            HStack(alignment: .lastTextBaseline, spacing: 12) {
-                Text(remainingTime(now: now))
-                    .font(.system(.title2, design: .rounded, weight: .black))
+    private func removeMember(_ member: Member) {
+        guard !isRemovingMember else { return }
+        memberRemovalError = nil
+        isRemovingMember = true
+        Task {
+            defer { isRemovingMember = false }
+            do {
+                try await model.removeGroupMember(groupID: group.id, memberID: member.id)
+            } catch {
+                memberRemovalError = L10n.text("移除失敗，請確認網路後重試。")
+            }
+        }
+    }
+
+    private func countdownCard(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "hourglass")
+                    .foregroundStyle(BombTheme.yellow)
+                Text(L10n.text("專案倒數"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.paper.opacity(0.75))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-
-                Spacer(minLength: 4)
-
-                Text("\(groupProgress)%")
-                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .minimumScaleFactor(0.8)
             }
 
-            ProgressView(value: Double(groupProgress), total: 100)
-                .tint(BombTheme.yellow)
-                .scaleEffect(y: 1.8)
+            Text(remainingTime(now: now))
+                .font(.system(.title, design: .rounded, weight: .black))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            HStack(spacing: 12) {
+                ProgressView(value: Double(groupProgress), total: 100)
+                    .tint(BombTheme.yellow)
+                Text("\(groupProgress)%")
+                    .font(.subheadline.monospacedDigit().weight(.bold))
+                    .foregroundStyle(BombTheme.paper.opacity(0.75))
+            }
         }
         .foregroundStyle(.white)
-        .padding(18)
-        .background(BombTheme.ink)
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(alignment: .top) {
-            HazardStripe()
-                .clipShape(.capsule)
-                .padding(.horizontal, 22)
-                .offset(y: -5)
+        .padding(.leading, 34)
+        .padding(.trailing, 20)
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BombTheme.ink, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(BombTheme.yellow)
+                .frame(width: 4)
+            .padding(.vertical, 22)
+            .padding(.leading, 16)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
     private var memberSection: some View {
         let members = groupMembers
-        let ownMember = members.first { $0.id == model.currentUserID }
-        // Sort only this presentation, using the same live progress shown on each card.
-        // Preserve the group's original order when percentages are equal.
-        var rankedMembers: [(member: Member, position: Int, progress: Int)] = []
-        for (position, member) in members.enumerated() where member.id != model.currentUserID {
-            rankedMembers.append((member, position, model.memberProgress(for: member.id, in: group.id)))
-        }
-        rankedMembers.sort { left, right in
-            left.progress == right.progress ? left.position < right.position : left.progress < right.progress
-        }
-        let otherMembers = rankedMembers.map(\.member)
-        let tutorialMemberID = otherMembers.first?.id ?? ownMember?.id
+        // Match the displayed percentages, preserving group order for equal progress.
+        let otherMembers = members.enumerated()
+            .filter { $0.element.id != model.currentUserID }
+            .sorted { left, right in
+                let leftProgress = model.memberProgress(for: left.element.id, in: group.id)
+                let rightProgress = model.memberProgress(for: right.element.id, in: group.id)
+                return leftProgress == rightProgress ? left.offset < right.offset : leftProgress < rightProgress
+            }
+            .map(\.element)
 
         return VStack(alignment: .leading, spacing: 16) {
-            if let ownMember {
+            if let currentUserMember {
                 HStack(spacing: 8) {
                     Text(L10n.text("我的任務"))
                     Image(systemName: "pin.fill")
@@ -863,16 +1135,14 @@ struct GroupDetailView: View {
                 }
                 .font(.system(.title2, design: .rounded, weight: .black))
                 .foregroundStyle(BombTheme.ink)
-                memberCard(for: ownMember, isTutorialTarget: ownMember.id == tutorialMemberID)
+                memberProgressCard(for: currentUserMember)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(L10n.text("成員進度"))
                     .font(.system(.title2, design: .rounded, weight: .black))
                     .layoutPriority(1)
-
                 Spacer(minLength: 4)
-
                 Button {
                     withAnimation(.snappy) { showsPublishTaskSheet = true }
                 } label: {
@@ -885,55 +1155,14 @@ struct GroupDetailView: View {
                         .clipShape(.capsule)
                 }
                 .buttonStyle(.plain)
-                .tutorialTarget(
-                    .publishTask,
-                    enabled: tutorialStep?.wrappedValue == .publishTask
-                )
+                .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
                 .disabled(isGroupDeadlinePassed)
                 .opacity(isGroupDeadlinePassed ? 0.45 : 1)
             }
-
             ForEach(otherMembers) { member in
-                memberCard(for: member, isTutorialTarget: member.id == tutorialMemberID)
+                memberProgressCard(for: member)
             }
         }
-    }
-
-    private func memberCard(for member: Member, isTutorialTarget: Bool) -> some View {
-        MemberProgressCard(
-            model: model,
-            firestoreGroupID: currentGroup.firestoreDocumentID,
-            member: memberProgressItem(for: member),
-            tasks: model.tasks(for: member.id, in: group.id),
-            groupMemberIDs: currentGroup.memberIDs,
-            currentUserID: model.currentUserID,
-            isCurrentUser: member.id == model.currentUserID,
-            isExpanded: expandedMemberID == member.id,
-            onToggleExpanded: {
-                withAnimation(.snappy) {
-                    expandedMemberID = expandedMemberID == member.id ? nil : member.id
-                }
-            },
-            onSubmitDeliverable: { taskID, deliverable in
-                model.submitDeliverable(taskID: taskID, deliverable: deliverable)
-            },
-            onToggleSubtask: { taskID, subtaskID in
-                Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
-            },
-            onConfirmDeliverable: { taskID in
-                model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
-            },
-            onPoke: { style in
-                model.poke(memberID: member.id, in: group.id, style: style)
-            },
-            onPokeEmoji: showPokeButtonEmoji,
-            onChangeLeader: member.id == model.currentUserID && member.role == .leader
-                ? { selectedLeader = nil; selectedElectionID = nil; leaderError = nil; showsLeaderPicker = true } : nil
-        )
-        .tutorialTarget(
-            .memberProgress,
-            enabled: tutorialStep?.wrappedValue == .memberProgress && isTutorialTarget
-        )
     }
 
     private var leadershipSection: some View {
@@ -945,75 +1174,73 @@ struct GroupDetailView: View {
                 && selectedElectionID == electionID
         } ?? false
         return VStack(alignment: .leading, spacing: 20) {
-            if showsLeaderPicker || electionID != nil {
-                if electionID != nil {
-                    Text(L10n.text("投票選組長")).font(.headline)
-                    Text(L10n.format("需 {0} 票當選，可更改投票", String(groupMembers.count / 2 + 1)))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 16, alignment: .top), count: 3), spacing: 20) {
-                    ForEach(groupMembers) { member in
-                        Button {
-                            selectedElectionID = electionID
-                            selectedLeader = member
-                            leaderError = nil
-                        } label: {
-                            VStack(spacing: 10) {
-                                MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
-                                    uid: member.firebaseUID, name: member.name, size: 64)
-                                    .overlay {
-                                        Circle().strokeBorder(selectedLeader?.id == member.id ? BombTheme.yellow : .clear, lineWidth: 3)
-                                    }
-                                    .overlay(alignment: .bottomTrailing) {
-                                        if member.role == .leader {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption.weight(.black))
-                                                .foregroundStyle(BombTheme.paper)
-                                                .frame(width: 24, height: 24)
-                                                .background(BombTheme.green, in: Circle())
-                                                .overlay(Circle().stroke(BombTheme.paper, lineWidth: 2))
-                                        }
-                                    }
-                                Text(member.name)
-                                    .font(.subheadline.weight(.bold))
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(3, reservesSpace: true)
-                                    .minimumScaleFactor(0.8)
-                                    .frame(maxWidth: .infinity)
-                                    .accessibilityLabel(member.name)
-                                if electionID != nil {
-                                    Text(L10n.format("{0} 票", String(currentGroup.leaderVotes.values.filter { $0 == member.id }.count)))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .top)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .allowsHitTesting(canChoose && !isChoosingLeader)
-                        .accessibilityValue(member.role == .leader ? MemberRole.leader.title : member.role.title)
-                        .accessibilityAddTraits(selectedLeader?.id == member.id ? .isSelected : [])
-                    }
-                }
-                if groupMembers.count == 1 {
-                    Text(L10n.text("其他成員加入後即可更換組長")).font(.caption)
-                }
-                if let leaderError { Text(leaderError).font(.caption).foregroundStyle(BombTheme.red) }
-                Button {
-                    if let selectedLeader { chooseLeader(selectedLeader, electionID: selectedElectionID) }
-                } label: {
-                    HStack {
-                        if isChoosingLeader { ProgressView().tint(BombTheme.paper) }
-                        Text(L10n.text("確認")).font(.headline.weight(.bold))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .foregroundStyle(BombTheme.paper)
-                    .background(BombTheme.ink, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(!canChoose || !validSelection || isChoosingLeader)
-                .opacity(canChoose && validSelection && !isChoosingLeader ? 1 : 0.45)
+            if electionID != nil {
+                Text(L10n.text("投票選組長")).font(.headline)
+                Text(L10n.format("需 {0} 票當選，可更改投票", String(groupMembers.count / 2 + 1)))
+                    .font(.caption).foregroundStyle(.secondary)
             }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 16, alignment: .top), count: 3), spacing: 20) {
+                ForEach(groupMembers) { member in
+                    Button {
+                        selectedElectionID = electionID
+                        selectedLeader = member
+                        leaderError = nil
+                    } label: {
+                        VStack(spacing: 10) {
+                            MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
+                                uid: member.firebaseUID, name: member.name, size: 64)
+                                .overlay {
+                                    Circle().strokeBorder(selectedLeader?.id == member.id ? BombTheme.green : .clear, lineWidth: 3)
+                                }
+                                .overlay(alignment: .bottomTrailing) {
+                                    if member.role == .leader {
+                                        Image(systemName: "checkmark")
+                                            .font(.caption.weight(.black))
+                                            .foregroundStyle(BombTheme.paper)
+                                            .frame(width: 24, height: 24)
+                                            .background(BombTheme.green, in: Circle())
+                                            .overlay(Circle().stroke(BombTheme.paper, lineWidth: 2))
+                                    }
+                                }
+                            Text(member.name)
+                                .font(.subheadline.weight(.bold))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3, reservesSpace: true)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity)
+                                .accessibilityLabel(member.name)
+                            if electionID != nil {
+                                Text(L10n.format("{0} 票", String(currentGroup.leaderVotes.values.filter { $0 == member.id }.count)))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(canChoose && !isChoosingLeader)
+                    .accessibilityValue(member.role == .leader ? MemberRole.leader.title : member.role.title)
+                    .accessibilityAddTraits(selectedLeader?.id == member.id ? .isSelected : [])
+                }
+            }
+            if groupMembers.count == 1 {
+                Text(L10n.text("其他成員加入後即可更換組長")).font(.caption)
+            }
+            if let leaderError { Text(leaderError).font(.caption).foregroundStyle(BombTheme.red) }
+            Button {
+                if let selectedLeader { chooseLeader(selectedLeader, electionID: selectedElectionID) }
+            } label: {
+                HStack {
+                    if isChoosingLeader { ProgressView().tint(BombTheme.paper) }
+                    Text(L10n.text("確認")).font(.headline.weight(.bold))
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundStyle(BombTheme.paper)
+                .background(BombTheme.ink, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canChoose || !validSelection || isChoosingLeader)
+            .opacity(canChoose && validSelection && !isChoosingLeader ? 1 : 0.45)
         }
         .foregroundStyle(BombTheme.ink)
         .padding(.vertical, 12)
@@ -1089,6 +1316,132 @@ struct GroupDetailView: View {
         }
     }
 
+    private func memberProgressCard(for member: Member) -> some View {
+        MemberProgressCard(
+            model: model,
+            firestoreGroupID: currentGroup.firestoreDocumentID,
+            member: memberProgressItem(for: member),
+            tasks: model.tasks(for: member.id, in: group.id),
+            groupMemberIDs: currentGroup.memberIDs,
+            currentUserID: model.currentUserID,
+            isCurrentUser: member.id == model.currentUserID,
+            isExpanded: expandedMemberID == member.id,
+            onToggleExpanded: {
+                withAnimation(.snappy) {
+                    expandedMemberID = expandedMemberID == member.id ? nil : member.id
+                }
+            },
+            onSubmitDeliverable: { taskID, deliverable in
+                model.submitDeliverable(taskID: taskID, deliverable: deliverable)
+            },
+            onToggleSubtask: { taskID, subtaskID in
+                Task { await model.toggleSubtask(taskID: taskID, subtaskID: subtaskID) }
+            },
+            onConfirmDeliverable: { taskID in
+                model.confirmDeliverable(taskID: taskID, memberID: model.currentUserID)
+            },
+            onEditTask: { task in
+                withAnimation(.snappy) {
+                    editingTask = task
+                }
+            },
+            onDeleteTask: { task in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    taskPendingDeletion = task
+                }
+            },
+            onPoke: { style in
+                model.poke(memberID: member.id, in: group.id, style: style)
+            },
+            onPokeEmoji: showPokeButtonEmoji,
+            onChangeLeader: member.id == model.currentUserID && member.role == .leader
+                ? { selectedLeader = nil; selectedElectionID = nil; leaderError = nil; showsLeaderPicker = true }
+                : nil
+        )
+        .tutorialTarget(
+            .memberProgress,
+            enabled: tutorialStep?.wrappedValue == .memberProgress
+                && member.id == (currentUserMember?.id ?? otherGroupMembers.first?.id)
+        )
+    }
+
+    private func closeTaskEditor() {
+        withAnimation(.snappy) {
+            editingTask = nil
+        }
+    }
+
+    private func deleteTaskConfirmationOverlay(task: ProjectTask) -> some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label(
+                    L10n.format("確定刪除「{0}」？", String(describing: task.title)),
+                    systemImage: "trash.fill"
+                )
+                .font(.title2.weight(.black))
+                .foregroundStyle(BombTheme.red)
+
+                Text(L10n.text("刪除後，這項任務的子任務、進度與成果附件都無法復原。"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button(L10n.text("取消")) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            taskPendingDeletion = nil
+                        }
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.ink)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+
+                    Button(L10n.text("刪除任務"), role: .destructive) {
+                        deleteTask(task)
+                    }
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(BombTheme.red)
+                    .clipShape(.capsule)
+                    .buttonStyle(.plain)
+                    .disabled(isDeletingTask)
+                }
+            }
+            .padding(20)
+            .background(BombTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 480)
+        }
+    }
+
+    private func deleteTask(_ task: ProjectTask) {
+        guard !isDeletingTask else { return }
+        isDeletingTask = true
+        Task {
+            defer { isDeletingTask = false }
+            do {
+                try await model.deleteOwnedTask(taskID: task.id)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    taskPendingDeletion = nil
+                }
+            } catch {
+                taskPendingDeletion = nil
+                taskMutationError = error.localizedDescription
+            }
+        }
+    }
+
     private var groupMembers: [Member] {
         currentGroup.memberIDs.compactMap { memberID in
             guard var member = model.members.first(where: { $0.id == memberID }) else { return nil }
@@ -1097,22 +1450,51 @@ struct GroupDetailView: View {
         }
     }
 
+    private var currentUserMember: Member? {
+        groupMembers.first { $0.id == model.currentUserID }
+    }
+
+    private var otherGroupMembers: [Member] {
+        let now = Date.now
+        let members = groupMembers.filter { $0.id != model.currentUserID }
+
+        return members.enumerated().sorted { left, right in
+            let leftTasks = model.tasks(for: left.element.id, in: group.id)
+            let rightTasks = model.tasks(for: right.element.id, in: group.id)
+            let leftPriority = memberProgressPriority(tasks: leftTasks, now: now)
+            let rightPriority = memberProgressPriority(tasks: rightTasks, now: now)
+
+            if leftPriority != rightPriority {
+                return leftPriority < rightPriority
+            }
+
+            let leftProgress = model.memberProgress(for: left.element.id, in: group.id)
+            let rightProgress = model.memberProgress(for: right.element.id, in: group.id)
+            if leftProgress != rightProgress {
+                return leftProgress < rightProgress
+            }
+
+            let leftDeadline = leftTasks.filter { !$0.isCompleted }.map(\.deadline).min() ?? .distantFuture
+            let rightDeadline = rightTasks.filter { !$0.isCompleted }.map(\.deadline).min() ?? .distantFuture
+            if leftDeadline != rightDeadline {
+                return leftDeadline < rightDeadline
+            }
+
+            return left.offset < right.offset
+        }
+        .map(\.element)
+    }
+
+    private func memberProgressPriority(tasks: [ProjectTask], now: Date) -> Int {
+        if tasks.isEmpty { return 0 }
+        if tasks.contains(where: { !$0.isCompleted && $0.deadline < now }) { return 1 }
+        if tasks.allSatisfy(\.isCompleted) { return 3 }
+        return 2
+    }
+
     private func showPokeButtonEmoji(for memberID: String, emoji: String?) {
         pokeButtonEmoji = emoji
         pokeButtonEmojiMemberID = emoji == nil ? nil : memberID
-
-        guard emoji != nil else {
-            isPokeButtonEmojiShaking = false
-            return
-        }
-
-        isPokeButtonEmojiShaking = false
-        Task {
-            await Task.yield()
-            withAnimation(.bouncy(duration: 0.14).repeatCount(7, autoreverses: true)) {
-                isPokeButtonEmojiShaking = true
-            }
-        }
     }
 
     private var currentGroup: Group {
@@ -1127,17 +1509,26 @@ struct GroupDetailView: View {
         currentGroup.deadline <= .now
     }
 
-    private func remainingTime(now: Date) -> String {
+    private func remainingTime(now: Date) -> AttributedString {
         let remaining = max(0, Int(currentGroup.deadline.timeIntervalSince(now)))
         let days = remaining / 86_400
         let hours = remaining % 86_400 / 3_600
         let minutes = remaining % 3_600 / 60
 
         if remaining == 0 {
-            return L10n.text("已截止")
+            return AttributedString(L10n.text("已截止"))
         }
 
-        return L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
+        let formatted = L10n.format("{0} 天 {1} 小時 {2} 分鐘", String(describing: days), String(describing: hours), String(describing: minutes))
+        var result = AttributedString()
+        for character in formatted {
+            var part = AttributedString(String(character))
+            if !character.isNumber {
+                part.font = .system(.subheadline, design: .rounded, weight: .black)
+            }
+            result.append(part)
+        }
+        return result
     }
 
     private func memberProgressItem(for member: Member) -> MemberProgressPreviewItem {
@@ -1167,7 +1558,9 @@ struct GroupDetailView: View {
     }
 
     private func closePublishTaskSheet() {
-        withAnimation(.snappy) { showsPublishTaskSheet = false }
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.2 : 0.3)) {
+            showsPublishTaskSheet = false
+        }
     }
 
     private func saveDeadline() {
@@ -1195,25 +1588,22 @@ private struct DeadlineEditorSheet: View {
     let onSave: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                DatePicker(
-                    L10n.text("截止時間"),
-                    selection: $deadline,
-                    in: Date.now...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-            }
-            .navigationTitle(L10n.text("修改截止時間"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("取消")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.text("儲存")) { onSave() }
-                }
-            }
+        BombFormSheet(title: L10n.text("修改截止時間")) {
+            DatePicker(
+                L10n.text("截止時間"),
+                selection: $deadline,
+                in: Date.now...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .datePickerStyle(.compact)
+            .bombFormField()
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text("儲存"),
+                isEnabled: deadline > .now,
+                onPrimary: onSave,
+                onSecondary: { dismiss() }
+            )
         }
         .presentationDetents([.medium])
     }
@@ -1225,20 +1615,20 @@ private struct GroupNameEditorSheet: View {
     let onSave: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
+        BombFormSheet(title: L10n.text("修改群組名稱")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.text("群組名稱"))
+                    .font(.subheadline.weight(.black))
                 TextField(L10n.text("群組名稱"), text: $name)
+                    .bombFormField()
             }
-            .navigationTitle(L10n.text("修改群組名稱"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("取消")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.text("儲存")) { onSave() }
-                }
-            }
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text("儲存"),
+                isEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                onPrimary: onSave,
+                onSecondary: { dismiss() }
+            )
         }
         .presentationDetents([.medium])
     }
@@ -1397,16 +1787,23 @@ private struct FailureMemeImage: View {
 
                 VStack(spacing: 0) {
                     MemeCaption(text: groupName, fontSize: proxy.size.width * 0.08)
-                        .offset(x: 30, y: 30)
+                        .frame(width: proxy.size.width * 0.70)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .offset(y: 30)
                     Spacer()
                     MemeCaption(
                         text: L10n.text("已讀不回的組員"),
-                        fontSize: proxy.size.width * 0.06
+                        fontSize: proxy.size.width * 0.05
                     )
-                    .offset(x: 45, y: 15)
+                    // Keep this caption to the right of the person's face.
+                    .frame(width: proxy.size.width * 0.50)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .offset(y: 15)
                     Spacer()
                     MemeCaption(text: L10n.text("我要放暑假了！"), fontSize: proxy.size.width * 0.07)
-                        .offset(x: -60, y: -20)
+                        .frame(width: proxy.size.width * 0.64)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offset(y: -20)
                 }
                 .padding(.vertical, proxy.size.height * 0.08)
                 .padding(.horizontal, proxy.size.width * 0.06)
@@ -1578,6 +1975,79 @@ private struct MemeCaption: View {
             .multilineTextAlignment(.center)
             .minimumScaleFactor(0.6)
             .lineLimit(2)
+    }
+}
+
+private struct PokeButtonFeedback: View {
+    let emoji: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bombScale = 0.65
+    @State private var bombOpacity = 1.0
+    @State private var explosionScale = 0.35
+    @State private var explosionOpacity = 0.0
+
+    var body: some View {
+        ZStack {
+            Text("💣")
+                .font(.system(size: 52))
+                .phaseAnimator(reduceMotion ? [0.0] : [-1.0, 1.0]) { content, phase in
+                    content
+                        .rotationEffect(.degrees(phase * max(0, bombScale - 0.65) * 5))
+                        .scaleEffect(x: 1 + phase * 0.012, y: 1 - phase * 0.012)
+                } animation: { _ in
+                    .easeInOut(duration: 0.09)
+                }
+                .scaleEffect(reduceMotion ? 1 : bombScale)
+                .opacity(bombOpacity)
+
+            Text("💥")
+                .font(.system(size: 62))
+                .scaleEffect(reduceMotion ? 1 : explosionScale)
+                .opacity(explosionOpacity)
+        }
+        .frame(width: 76, height: 76)
+        .task(id: emoji) {
+            if emoji == "💣" {
+                guard !reduceMotion else { return }
+                // Inflate in springy beats instead of stretching a tiny icon in one sweep.
+                withAnimation(.spring(duration: 0.22, bounce: 0.22)) {
+                    bombScale = 0.82
+                }
+                do {
+                    try await Task.sleep(for: .seconds(0.24))
+                    withAnimation(.spring(duration: 0.46, bounce: 0.16)) {
+                        bombScale = 1.1
+                    }
+                    try await Task.sleep(for: .seconds(0.48))
+                    withAnimation(.spring(duration: 0.58, bounce: 0.12)) {
+                        bombScale = 1.42
+                    }
+                } catch {
+                    // Releasing cancels the remaining charge beats and starts the burst.
+                    return
+                }
+                return
+            }
+
+            // Keep both layers alive so the charged bomb flows into the burst.
+            withAnimation(.easeOut(duration: 0.12)) {
+                bombOpacity = 0
+                explosionOpacity = 1
+            }
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.24, bounce: 0.2)) {
+                explosionScale = 1.2
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(0.24))
+            } catch {
+                return
+            }
+            withAnimation(.easeOut(duration: 0.32)) {
+                explosionScale = 1.45
+                explosionOpacity = 0
+            }
+        }
     }
 }
 

@@ -177,78 +177,45 @@ struct DeliverableSubmissionSheet: View {
         .compactMap { UTType(filenameExtension: $0) }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(L10n.format("成果任務：{0}", String(describing: task.title)))
-                        .font(.subheadline.weight(.black))
-                        .foregroundStyle(.secondary)
+        BombFormSheet(title: L10n.text("提交成果")) {
+            Text(L10n.format("成果任務：{0}", String(describing: task.title)))
+                .font(.subheadline.weight(.black))
+                .foregroundStyle(.secondary)
 
-                    Picker(L10n.text("成果類型"), selection: $source) {
-                        ForEach(DeliverableSource.allCases) { option in
-                            Text(L10n.text(option.rawValue)).tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(store.isBusy)
-
-                    sourcePicker
-
-                    field(title: L10n.text("成果標題")) {
-                        TextField(L10n.text("例如：完成版簡報"), text: $title)
-                            .textFieldStyle(.plain)
-                    }
-
-                    field(title: L10n.text("成果說明")) {
-                        TextField(L10n.text("簡短說明這份成果"), text: $detail, axis: .vertical)
-                            .lineLimit(3...5)
-                            .textFieldStyle(.plain)
-                    }
-
-                    statusView
-
-                    Button(submitButtonTitle) {
-                        Task { await submit() }
-                    }
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(canSubmit ? BombTheme.ink : Color.gray)
-                    .clipShape(.capsule)
-                    .disabled(!canSubmit)
-
-                    if case .failure = store.state {
-                        Button(L10n.text("重新嘗試")) {
-                            Task { await submit() }
-                        }
-                        .font(.subheadline.weight(.black))
-                        .foregroundStyle(BombTheme.ink)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(BombTheme.yellow.opacity(0.6))
-                        .clipShape(.capsule)
-                        .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
-                        .disabled(store.isBusy)
-                    }
-
-                    Button(store.state == .success ? L10n.text("完成") : L10n.text("取消")) { dismiss() }
-                        .font(.subheadline.weight(.black))
-                        .foregroundStyle(BombTheme.ink)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+            Picker(L10n.text("成果類型"), selection: $source) {
+                ForEach(DeliverableSource.allCases) { option in
+                    Text(L10n.text(option.rawValue)).tag(option)
                 }
-                .padding(20)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(BombTheme.paper.ignoresSafeArea())
-            .navigationTitle(L10n.text("上傳成果"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.light, for: .navigationBar)
+            .pickerStyle(.segmented)
+            .disabled(store.isBusy)
+
+            sourcePicker
+
+            field(title: L10n.text("成果標題")) {
+                TextField(L10n.text("例如：完成版簡報"), text: $title)
+                    .textFieldStyle(.plain)
+            }
+
+            field(title: L10n.text("成果說明")) {
+                TextField(L10n.text("簡短說明這份成果"), text: $detail, axis: .vertical)
+                    .lineLimit(3...5)
+                    .textFieldStyle(.plain)
+            }
+
+            statusView
+
+        } actions: {
+            BombFormActions(
+                primaryTitle: submitButtonTitle,
+                isEnabled: canSubmit,
+                isBusy: store.isBusy,
+                secondaryTitle: store.state == .success ? L10n.text("完成") : L10n.text("取消"),
+                onPrimary: { Task { await submit() } },
+                onSecondary: { dismiss() }
+            )
         }
         .presentationDetents([.fraction(0.82)])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(28)
         .interactiveDismissDisabled(store.isBusy)
         .fileImporter(
             isPresented: $showsFileImporter,
@@ -339,7 +306,7 @@ struct DeliverableSubmissionSheet: View {
         switch store.state {
         case .waiting:
             Label(
-                source == .link || store.preparedAttachment != nil ? L10n.text("等待送出") : L10n.text("等待選擇"),
+                source == .link || store.preparedAttachment != nil ? L10n.text("等待提交") : L10n.text("等待選擇"),
                 systemImage: "clock"
             )
             .foregroundStyle(.secondary)
@@ -349,7 +316,7 @@ struct DeliverableSubmissionSheet: View {
         case let .uploading(progress):
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(source == .link ? L10n.text("正在儲存連結…") : L10n.text("正在上傳…"))
+                    Text(source == .link ? L10n.text("正在儲存連結…") : L10n.text("上傳中"))
                     Spacer()
                     Text("\(Int((progress * 100).rounded()))%")
                         .monospacedDigit()
@@ -359,7 +326,7 @@ struct DeliverableSubmissionSheet: View {
                     .tint(BombTheme.red)
             }
         case .success:
-            Label(L10n.text("上傳成功"), systemImage: "checkmark.circle.fill")
+            Label(L10n.text("提交成功"), systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.black))
                 .foregroundStyle(BombTheme.green)
         case let .failure(message):
@@ -382,20 +349,18 @@ struct DeliverableSubmissionSheet: View {
 
     private var submitButtonTitle: String {
         switch store.state {
-        case .uploading: L10n.text("正在上傳")
-        case .success: L10n.text("已送出")
-        default: L10n.text("送出成果")
+        case .uploading: source == .link ? L10n.text("提交中") : L10n.text("上傳中")
+        case .success: L10n.text("已提交")
+        case .failure: L10n.text("重新嘗試")
+        default: L10n.text("提交成果")
         }
     }
 
     private func field<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline.weight(.black))
+            Text(title).font(.subheadline.weight(.black))
             content()
-                .padding(13)
-                .background(.white.opacity(0.55))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink, lineWidth: 2))
+                .bombFormField()
         }
     }
 

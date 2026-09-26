@@ -54,6 +54,7 @@ struct AppRootView: View {
             if previousUserID != nil, userID == nil {
                 launchAnimationID += 1
             }
+            activePokeReception = nil
             reviewNotificationPath = []
             if scenePhase == .active { store.resumeCloudSync() }
             openPendingReview()
@@ -90,7 +91,9 @@ struct AppRootView: View {
         }
         .onDisappear { store.suspendCloudSync() }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
-            guard store.receivesPokes, let reception = notification.object as? PokeReception else { return }
+            guard store.receivesPokes, let reception = notification.object as? PokeReception,
+                  PokeDeliveryState.accepts(recipientUID: reception.recipientUID,
+                                            currentUID: authSession.currentUserID) else { return }
             pokePresentationID += 1
             activePokeReception = reception
         }
@@ -156,30 +159,36 @@ struct AppRootView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
-                    Button(L10n.text("關閉")) {
+                    Button {
                         withAnimation(.snappy) {
                             store.cloudErrorMessage = nil
                         }
+                    } label: {
+                        Text(L10n.text("關閉"))
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(BombTheme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .contentShape(Capsule())
+                            .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                     }
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(BombTheme.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
                     .buttonStyle(.plain)
 
-                    Button(L10n.text("重試")) {
+                    Button {
                         withAnimation(.snappy) {
                             store.cloudErrorMessage = nil
                         }
                         Task { await store.reloadCloudGroups() }
+                    } label: {
+                        Text(L10n.text("重試"))
+                            .font(.subheadline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(BombTheme.ink)
+                            .contentShape(Capsule())
+                            .clipShape(.capsule)
                     }
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
                     .buttonStyle(.plain)
                 }
             }
@@ -198,8 +207,7 @@ struct AppRootView: View {
                 GroupListView(
                     model: store,
                     isSelected: tab == .groups,
-                    tutorialStep: $tutorialStep,
-                    onReplayTutorial: replayTutorial
+                    tutorialStep: $tutorialStep
                 )
                 .navigationDestination(for: ReviewNotificationRoute.self) { route in
                     if let group = store.groups.first(where: { $0.id == route.groupID }) {

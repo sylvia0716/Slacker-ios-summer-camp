@@ -129,6 +129,14 @@ final class GroupJoinRepository {
         guard Auth.auth().currentUser?.uid == uid else { throw GroupJoinError.notAuthenticated }
     }
 
+    func removeMember(groupID: String, memberUID: String) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { throw GroupJoinError.notAuthenticated }
+        _ = try await functions.httpsCallable("removeGroupMember").call([
+            "groupID": groupID, "memberUID": memberUID,
+        ])
+        guard Auth.auth().currentUser?.uid == uid else { throw GroupJoinError.notAuthenticated }
+    }
+
     func fetchAccessibleGroups() async throws -> [CloudGroupSummary] {
         guard Auth.auth().currentUser?.uid != nil else {
             throw GroupJoinError.notAuthenticated

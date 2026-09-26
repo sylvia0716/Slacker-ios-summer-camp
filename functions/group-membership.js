@@ -14,15 +14,41 @@ exports.leaveGroup = onCall({region}, async request => {
       || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(data.groupID)) {
     throw new HttpsError('invalid-argument', 'Only groupID is accepted');
   }
-  const db = getFirestore(), group = db.collection('groups').doc(data.groupID);
-  const uid = request.auth.uid;
+  await removeMember(data.groupID, request.auth.uid);
+  return {left: true};
+});
+
+exports.removeGroupMember = onCall({region}, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const data = request.data;
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+  if (!data || Object.keys(data).length !== 2 || !uuid.test(data.groupID)
+      || typeof data.memberUID !== 'string' || !data.memberUID
+      || data.memberUID === request.auth.uid) {
+    throw new HttpsError('invalid-argument', 'Invalid member removal');
+  }
+  await removeMember(data.groupID, data.memberUID, request.auth.uid);
+  return {removed: true};
+});
+
+async function removeMember(groupID, uid, leaderUID) {
+  const db = getFirestore(), group = db.collection('groups').doc(groupID);
   const departureID = randomUUID();
   await db.runTransaction(async tx => {
     const snapshot = await tx.get(group);
     const members = await tx.get(group.collection('members'));
+    if (leaderUID) {
+      const leader = members.docs.find(member => member.id === leaderUID);
+      if (!snapshot.exists || snapshot.data().deleting || leader?.data().role !== 'leader') {
+        throw new HttpsError('permission-denied', 'Leader required');
+      }
+    }
     const caller = members.docs.find(member => member.id === uid);
     // Idempotent after a successful exit, including a lost network response.
-    if (!snapshot.exists || !caller) return;
+    if (!snapshot.exists || !caller) {
+      if (leaderUID) throw new HttpsError('failed-precondition', 'Member has left');
+      return;
+    }
     const remaining = members.docs.filter(member => member.id !== uid);
     const tasks = await tx.get(group.collection('tasks').where('ownerMemberID', '==', uid));
     for (const task of tasks.docs) {
@@ -58,8 +84,7 @@ exports.leaveGroup = onCall({region}, async request => {
       tx.update(group, {membershipUpdatedAt: FieldValue.serverTimestamp()});
     }
   });
-  return {left: true};
-});
+}
 
 // Retry failed cleanup. Keep the parent until every child and file has been removed.
 exports.cleanupEmptyGroup = onDocumentUpdated({region, document: 'groups/{groupID}', retry: true}, async event => {
