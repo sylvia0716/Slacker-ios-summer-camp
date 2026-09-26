@@ -6,7 +6,8 @@
     "test:firestore": "node --test --test-concurrency=1 firestore.rules.test.mjs firestore.chat.rules.test.mjs",
     "test:join": "node --test join-group.test.mjs",
     "test:storage": "node --test storage.rules.test.mjs",
-    "test:rules": "npm run test:firestore && npm run test:storage && npm run test:join"
+    "test:agenda": "node --test smart-agenda.test.mjs",
+    "test:rules": "npm run test:firestore && npm run test:storage && npm run test:join && npm run test:agenda"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

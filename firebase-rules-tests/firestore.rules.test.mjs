@@ -512,6 +512,8 @@ describe("匿名互評資料隔離", () => {
       `groups/${groupID}/peerReviewComments/${uploaderID}`,
     ), { comments: ["偽造評語"] }));
   });
+});
+
 test('profile photo metadata belongs to its account', async () => {
   const path = `profiles/${uploaderID}`;
   const value = {avatarPath: `avatars/${uploaderID}/12345678-1234-1234-1234-123456789abc.jpg`};
