@@ -6,7 +6,7 @@ extension View {
         _ title: String,
         isPresented: Binding<Bool>,
         titleVisibility: Visibility = .visible,
-        destructiveIsRed: Bool = false,
+        destructiveIsRed: Bool = true,
         @ViewBuilder actions: @escaping () -> Actions,
         @ViewBuilder message: @escaping () -> Message
     ) -> some View {
@@ -15,17 +15,25 @@ extension View {
                 BombTheme.ink.opacity(0.4).ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Text(title)
-                            .font(.title2.weight(.black))
-                            .accessibilityAddTraits(.isHeader)
+                        if titleVisibility != .hidden {
+                            Text(title)
+                                .font(.system(.title2, design: .rounded, weight: .black))
+                                .accessibilityAddTraits(.isHeader)
+                        }
                         message()
                             .font(.body)
                             .fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 12) { actions() }
-                            .buttonStyle(BombDialogButtonStyle(
-                                destructiveIsRed: destructiveIsRed,
-                                dismiss: { isPresented.wrappedValue = false }
-                            ))
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                actions().fixedSize(horizontal: true, vertical: false)
+                            }
+                            VStack(spacing: 12) { actions() }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(BombDialogButtonStyle(
+                            destructiveIsRed: destructiveIsRed,
+                            dismiss: { isPresented.wrappedValue = false }
+                        ))
                     }
                     .foregroundStyle(BombTheme.ink)
                     .padding(24)
@@ -47,10 +55,10 @@ extension View {
         _ title: String,
         isPresented: Binding<Bool>,
         titleVisibility: Visibility = .visible,
-        destructiveIsRed: Bool = false,
+        destructiveIsRed: Bool = true,
         @ViewBuilder actions: @escaping () -> Actions
     ) -> some View {
-        bombDialog(title, isPresented: isPresented, destructiveIsRed: destructiveIsRed,
+        bombDialog(title, isPresented: isPresented, titleVisibility: titleVisibility, destructiveIsRed: destructiveIsRed,
                    actions: actions, message: { EmptyView() })
     }
 }
@@ -67,7 +75,10 @@ private struct BombDialogButtonStyle: PrimitiveButtonStyle {
         } label: {
             configuration.label
                 .font(.headline.weight(.black))
-                .foregroundStyle(configuration.role == .destructive && destructiveIsRed ? BombTheme.paper : BombTheme.ink)
+                .foregroundStyle(configuration.role == .cancel ? BombTheme.ink : BombTheme.paper)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .padding(.horizontal, 12)
                 .background(background(for: configuration.role), in: Capsule())
@@ -80,6 +91,6 @@ private struct BombDialogButtonStyle: PrimitiveButtonStyle {
     private func background(for role: ButtonRole?) -> Color {
         if role == .cancel { return BombTheme.paper }
         if role == .destructive && destructiveIsRed { return BombTheme.red }
-        return BombTheme.yellow
+        return BombTheme.ink
     }
 }

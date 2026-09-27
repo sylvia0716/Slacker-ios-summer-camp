@@ -7,6 +7,7 @@ enum CloudChatItemKind: String {
     case message
     case botReply
     case botAnalysis
+    case agendaReminder
 }
 
 /// Firestore 聊天時間軸項目；一般訊息與 AI 結果共用伺服器時間排序。
@@ -25,6 +26,7 @@ struct CloudChatMessage: Identifiable {
     let collaborationScore: Int?
     let problemSolvingScore: Int?
     let reliabilityScore: Int?
+    var agendaSummary: AgendaChatSummary? = nil
 }
 
 /// 群組內一位成員的即時在線狀態。
@@ -220,7 +222,11 @@ final class ChatRepository {
                         discussionScore: data["discussionScore"] as? Int,
                         collaborationScore: data["collaborationScore"] as? Int,
                         problemSolvingScore: data["problemSolvingScore"] as? Int,
-                        reliabilityScore: data["reliabilityScore"] as? Int
+                        reliabilityScore: data["reliabilityScore"] as? Int,
+                        agendaSummary: (data["agendaSummary"] as? [String: Any]).flatMap { value in
+                            guard let json = try? JSONSerialization.data(withJSONObject: value) else { return nil }
+                            return try? JSONDecoder().decode(AgendaChatSummary.self, from: json)
+                        }
                     )
                 }
                 onChange(.success(messages))

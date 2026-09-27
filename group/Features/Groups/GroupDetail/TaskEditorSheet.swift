@@ -19,6 +19,7 @@ struct TaskEditorSheet: View {
     @State private var deadline: Date
     @State private var submissionError: String?
     @State private var isSaving = false
+    @State private var confirmsDiscard = false
 
     init(
         group: Group,
@@ -35,40 +36,32 @@ struct TaskEditorSheet: View {
         _subtaskDrafts = State(initialValue: task.subtasks.map {
             TaskEditSubtaskDraft(id: $0.id, title: $0.title, isComplete: $0.isComplete)
         })
-        _deadline = State(initialValue: max(Date.now, min(task.deadline, group.deadline)))
+        _deadline = State(initialValue: task.deadline)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(BombTheme.ink.opacity(0.35))
-                .frame(width: 42, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+        BombFormSheet(title: L10n.text("修改任務"), showsHandle: true) {
+            taskFields
+                .disabled(isSaving)
+            subtaskFields
+                .disabled(isSaving)
+            deadlinePicker
+                .disabled(isSaving)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.text("修改任務"))
-                        .font(.system(.title2, design: .rounded, weight: .black))
-
-                    taskFields
-                    subtaskFields
-                    deadlinePicker
-
-                    if let submissionError {
-                        Text(submissionError)
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(BombTheme.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
+            if let submissionError {
+                Text(submissionError)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-
-            actionBar
+        } actions: {
+            BombFormActions(
+                primaryTitle: isSaving ? L10n.text("儲存中…") : L10n.text("儲存修改"),
+                isEnabled: canSave,
+                isBusy: isSaving,
+                onPrimary: save,
+                onSecondary: requestCancel
+            )
         }
         .background(BombTheme.yellow)
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
@@ -77,6 +70,10 @@ struct TaskEditorSheet: View {
                 .stroke(BombTheme.ink, lineWidth: 3)
         }
         .shadow(color: BombTheme.ink.opacity(0.3), radius: 14, y: 4)
+        .bombDialog(L10n.text("捨棄未儲存的內容？"), isPresented: $confirmsDiscard, destructiveIsRed: true) {
+            Button(L10n.text("繼續編輯"), role: .cancel) { }
+            Button(L10n.text("捨棄"), role: .destructive, action: onCancel)
+        }
     }
 
     private var taskFields: some View {
@@ -85,14 +82,14 @@ struct TaskEditorSheet: View {
                 fieldLabel(L10n.text("任務名稱"), isRequired: true)
                 TextField(L10n.text("例如「製作競品分析」"), text: $title)
                     .textInputAutocapitalization(.never)
-                    .taskEditInputStyle()
+                    .bombFormField()
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 fieldLabel(L10n.text("任務說明"), isRequired: false)
                 TextField(L10n.text("例如「整理三個競品的功能與差異」"), text: $detail, axis: .vertical)
                     .lineLimit(2...4)
-                    .taskEditInputStyle()
+                    .bombFormField()
             }
         }
     }
@@ -103,15 +100,15 @@ struct TaskEditorSheet: View {
                 fieldLabel(L10n.text("子任務"), isRequired: true)
                 Spacer()
                 Text("\(subtaskDrafts.count) / 10")
-                    .font(.caption2.monospacedDigit().weight(.black))
-                    .foregroundStyle(BombTheme.ink.opacity(0.5))
+                    .font(.footnote.monospacedDigit().weight(.bold))
+                    .foregroundStyle(BombTheme.secondaryText)
             }
 
             ForEach($subtaskDrafts) { $draft in
                 HStack(spacing: 9) {
                     TextField(L10n.text("例如「整理簡報架構」"), text: $draft.title)
                         .textInputAutocapitalization(.never)
-                        .taskEditInputStyle()
+                        .bombFormField()
 
                     if subtaskDrafts.count > 1 {
                         Button {
@@ -119,8 +116,8 @@ struct TaskEditorSheet: View {
                         } label: {
                             Image(systemName: "minus")
                                 .font(.subheadline.weight(.black))
-                                .frame(width: 38, height: 38)
-                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .foregroundStyle(BombTheme.paper)
                                 .background(BombTheme.red)
                                 .clipShape(.circle)
                         }
@@ -142,8 +139,8 @@ struct TaskEditorSheet: View {
             }
 
             Text(L10n.text("保留的子任務會維持目前完成狀態"))
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(BombTheme.ink.opacity(0.55))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(BombTheme.secondaryText)
         }
     }
 
@@ -153,46 +150,18 @@ struct TaskEditorSheet: View {
             DatePicker(
                 L10n.text("選擇日期與時間"),
                 selection: $deadline,
-                in: Date.now...max(Date.now, group.deadline),
                 displayedComponents: [.date, .hourAndMinute]
             )
-            .font(.subheadline.weight(.bold))
-            .tint(BombTheme.ink)
-            .padding(12)
-            .background(BombTheme.paper)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: 2)
+            .datePickerStyle(.compact)
+            .bombFormField()
+
+            if let deadlineError {
+                Text(deadlineError)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(BombTheme.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    private var actionBar: some View {
-        VStack(spacing: 6) {
-            Button(action: save) {
-                Text(isSaving ? L10n.text("儲存中…") : L10n.text("儲存修改"))
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(BombTheme.ink)
-                    .clipShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSave || isSaving)
-            .opacity(canSave && !isSaving ? 1 : 0.42)
-
-            Button(L10n.text("取消"), action: onCancel)
-                .font(.subheadline.weight(.black))
-                .foregroundStyle(BombTheme.ink)
-                .buttonStyle(.plain)
-                .padding(.vertical, 5)
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .safeAreaPadding(.bottom, 8)
-        .background(BombTheme.yellow)
     }
 
     private var trimmedTitle: String {
@@ -213,8 +182,35 @@ struct TaskEditorSheet: View {
         !trimmedTitle.isEmpty
             && !trimmedDrafts.isEmpty
             && !trimmedDrafts.contains { $0.title.isEmpty }
-            && deadline > Date.now
-            && deadline <= group.deadline
+            && deadlineError == nil
+    }
+
+    private var deadlineError: String? {
+        if group.deadline <= Date.now {
+            return L10n.text("群組已截止，請先延長群組期限再修改任務。")
+        }
+        if deadline <= Date.now {
+            return L10n.text("截止時間已過，請選擇未來時間後儲存。")
+        }
+        if deadline > group.deadline {
+            return L10n.text("截止時間不可晚於群組總截止時間")
+        }
+        return nil
+    }
+
+    private func requestCancel() {
+        guard !isSaving else { return }
+        let sameSubtasks = subtaskDrafts.count == task.subtasks.count
+            && zip(subtaskDrafts, task.subtasks).allSatisfy { draft, original in
+                draft.id == original.id && draft.title == original.title
+            }
+        let hasChanges = title != task.title || detail != task.detail
+            || deadline != task.deadline || !sameSubtasks
+        if hasChanges {
+            confirmsDiscard = true
+        } else {
+            onCancel()
+        }
     }
 
     private func fieldLabel(_ title: String, isRequired: Bool) -> some View {
@@ -245,19 +241,5 @@ struct TaskEditorSheet: View {
                 isSaving = false
             }
         }
-    }
-}
-
-private extension View {
-    func taskEditInputStyle() -> some View {
-        font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 13)
-            .padding(.vertical, 11)
-            .background(BombTheme.paper)
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(BombTheme.ink, lineWidth: 2)
-            }
     }
 }

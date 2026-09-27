@@ -140,6 +140,8 @@ private struct SevenSegmentBar: Shape {
 struct BombHeader<Leading: View, Trailing: View>: View {
     @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
     @State private var headerHeight: CGFloat = 0
+    @State private var leadingWidth: CGFloat = 44
+    @State private var trailingWidth: CGFloat = 44
 
     let title: String
     let subtitle: String?
@@ -170,11 +172,13 @@ struct BombHeader<Leading: View, Trailing: View>: View {
             HStack(spacing: 12) {
                 leading
                     .frame(minWidth: 44, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
 
                 Spacer(minLength: 12)
 
                 trailing
                     .frame(minWidth: 44, alignment: .trailing)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { trailingWidth = $0 }
             }
 
             VStack(spacing: 1) {
@@ -191,7 +195,7 @@ struct BombHeader<Leading: View, Trailing: View>: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, wrapsTitle ? 60 : 112)
+            .padding(.horizontal, max(leadingWidth, trailingWidth) + 12)
             .allowsHitTesting(false)
         }
         .foregroundStyle(BombTheme.ink)
@@ -227,7 +231,7 @@ struct BombHeaderButtonStyle: ButtonStyle {
         configuration.label
             .font(.headline.weight(.black))
             .foregroundStyle(BombTheme.yellow)
-            .frame(width: 42, height: 42)
+            .frame(width: 44, height: 44)
             .background(BombTheme.ink)
             .clipShape(.circle)
             .scaleEffect(configuration.isPressed ? 0.9 : 1)

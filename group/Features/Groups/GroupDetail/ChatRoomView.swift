@@ -276,7 +276,7 @@ struct ChatRoomView: View {
             return ChatPinnedMessage(messageID: id, senderName: "拆彈 AI 通訊官", text: text)
         case let .botAnalysis(id, analysis):
             return ChatPinnedMessage(messageID: id, senderName: "拆彈 AI 通訊官", text: analysis.summary)
-        case .systemEvent:
+        case .agendaReminder, .systemEvent:
             return nil
         }
     }
@@ -307,6 +307,9 @@ struct ChatRoomView: View {
             ChatBotAnalysisCard(analysis: analysis)
         case let .botReply(_, text, createdAt):
             ChatBotReplyBubble(text: text, createdAt: createdAt)
+        case let .agendaReminder(_, summary, createdAt):
+            ChatBotReplyBubble(text: summary.localizedText, createdAt: createdAt,
+                               title: L10n.text("自動化議程"), icon: "list.bullet.rectangle")
         }
     }
 
@@ -772,10 +775,12 @@ private struct ChatBotAnalysisCard: View {
 private struct ChatBotReplyBubble: View {
     let text: String
     let createdAt: Date
+    var title: String? = nil
+    var icon = "sparkles"
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "sparkles")
+            Image(systemName: icon)
                 .font(.caption.weight(.black))
                 .foregroundStyle(BombTheme.yellow)
                 .frame(width: 32, height: 32)
@@ -783,7 +788,7 @@ private struct ChatBotReplyBubble: View {
                 .clipShape(.circle)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(L10n.text("拆彈 AI 通訊官"))
+                Text(title ?? L10n.text("拆彈 AI 通訊官"))
                     .font(.caption2.weight(.black))
                     .foregroundStyle(BombTheme.ink.opacity(0.62))
 

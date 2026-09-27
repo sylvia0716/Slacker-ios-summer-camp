@@ -60,8 +60,8 @@ struct ProfileDetailView: View {
             }
         }
         .interactiveDismissDisabled(isSavingProfile || model.isSavingNickname)
-        .alert(L10n.text("儲存失敗"), isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
-            Button(L10n.text("確定"), role: .cancel) { saveError = nil }
+        .bombDialog(L10n.text("儲存失敗"), isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button(L10n.text("確定")) { saveError = nil }
         } message: { Text(saveError ?? "") }
         .task {
             guard let uid = model.firebaseUID else { return }

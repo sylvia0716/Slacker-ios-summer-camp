@@ -119,7 +119,7 @@ struct GroupRepositoryTests {
         await #expect(throws: GroupLoadError.self) { try await repository.load() }
     }
     @Test func networkFailureDoesNotProduceFakeTasks() async {
-        let repository = GroupRepository(reads: .init(currentUID: { "firebase-A" }, summaries: { [summary] }, members: { _ in [member("firebase-A")] }, tasks: { _ in throw GroupLoadError.network }))
+        let repository = GroupRepository(reads: .init(currentUID: { "firebase-A" }, summaries: { [summary] }, members: { _ in [member("firebase-A")] }, tasks: { _ in throw GroupLoadError.network }), wait: { _ in })
         await #expect(throws: GroupLoadError.self) { try await repository.load() }
     }
     @Test func emptyAccessibleListIsEmpty() async throws {

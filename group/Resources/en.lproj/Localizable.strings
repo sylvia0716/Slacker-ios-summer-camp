@@ -710,6 +710,8 @@
 "你已經是「{0}」的成員" = "You’re already a member of “{0}”";
 "已加入「{0}」" = "Joined “{0}”";
 "雲端資料同步失敗，請確認網路後重新整理。" = "Cloud sync failed. Check your connection and refresh.";
+"正在載入群組…" = "Loading groups…";
+"網路連線暫時中斷，正在自動重新連線。" = "Connection interrupted. Reconnecting automatically.";
 "已退出「{0}」" = "Left “{0}”";
 "已送出成果確認" = "Deliverable confirmation sent";
 "已更新子任務" = "Subtask updated";
@@ -813,6 +815,128 @@
 "替換檔案" = "Replace file";
 
 "新檔已上傳，舊附件未刪除，請重新刪除舊附件。" = "The new file was uploaded, but the old attachment could not be removed. Please delete the old attachment again.";
+"略過動畫" = "Skip intro";
+
+// Smart Agenda
+"自動化議程" = "Smart Agenda";
+"團隊準備" = "Team prep";
+"{0}/{1} 人已準備" = "{0}/{1} prepared";
+"尚未準備：{0}" = "Not ready: {0}";
+"、" = ", ";
+"新增我的資料" = "Add my material";
+"會議主題" = "Meeting topic";
+"設定會議" = "Set a meeting";
+"等待組長設定會議。" = "Waiting for the leader to set a meeting.";
+"編輯" = "Edit";
+"編輯會議" = "Edit meeting";
+"編輯我的資料" = "Edit my material";
+"編輯議程" = "Edit agenda";
+"收合議程" = "Collapse agenda";
+"展開議程" = "Expand agenda";
+"範例會議議程" = "Sample meeting plan";
+"AI 建議議程" = "AI suggested plan";
+"正在產生會議議程…" = "Generating meeting plan…";
+"議程尚未產生" = "Meeting plan not ready";
+"請由支援 Apple Intelligence 的成員開啟專案以產生議程。" = "A member with Apple Intelligence needs to open this project to generate the plan.";
+"產生會議議程" = "Generate meeting plan";
+"正在開始…" = "Starting…";
+"開始會議" = "Start meeting";
+"開啟會議" = "Open meeting";
+"日期與時間" = "Date & time";
+"會議" = "Meeting";
+"會議長度" = "Duration";
+"{0} 分鐘" = "{0} min";
+"{0}–{1} 分鐘" = "{0}–{1} min";
+"準備內容" = "Note";
+"你想在會議中討論什麼？" = "What would you like to discuss?";
+"附件" = "Attachment";
+"移除附件" = "Remove attachment";
+"選擇檔案" = "Choose file";
+"我的準備資料" = "My material";
+"會議已結束" = "Meeting complete";
+"結束會議" = "End meeting";
+"會議尚未開始。" = "Meeting is not running.";
+"The app's AI service has insufficient credit. Please contact support." = "The app's AI service has insufficient credit. Please contact support.";
+"AI is unavailable. Please contact the group leader." = "AI is unavailable. Please contact the group leader.";
+"Could not generate the meeting plan. Please try again." = "Could not generate the meeting plan. Please try again.";
+"Please sign in again." = "Please sign in again.";
+"Could not load the agenda. Please try again." = "Could not load the agenda. Please try again.";
+"Choose a PNG, JPG, PDF, Word, PowerPoint, Excel, ZIP, MOV or MP4 file." = "Choose a PNG, JPG, PDF, Word, PowerPoint, Excel, ZIP, MOV or MP4 file.";
+"Choose a non-empty file up to 20 MB." = "Choose a non-empty file up to 20 MB.";
+"Please sign in." = "Please sign in.";
+"Invalid agenda request." = "Invalid agenda request.";
+"Invalid attachment." = "Invalid attachment.";
+"Invalid attachment path." = "Invalid attachment path.";
+"File type does not match." = "File type does not match.";
+"Upload is incomplete." = "Upload is incomplete.";
+"Membership required." = "Membership required.";
+"Only the leader can edit the meeting." = "Only the leader can edit the meeting.";
+"Only the leader can start the meeting." = "Only the leader can start the meeting.";
+"End the meeting before editing its settings." = "End the meeting before editing its settings.";
+"Enter a topic, meeting date and 5–180 minute duration." = "Enter a topic, meeting date and 5–180 minute duration.";
+"Meeting changed. Reopen the editor." = "Meeting changed. Reopen the editor.";
+"The leader must set a meeting first." = "The leader must set a meeting first.";
+"Note must be 1000 characters or less." = "Note must be 1000 characters or less.";
+"Your material changed. Reopen the editor." = "Your material changed. Reopen the editor.";
+"Everyone must prepare first." = "Everyone must prepare first.";
+"等待組長開始會議。" = "Waiting for the leader to start the meeting.";
+"Please wait a minute before trying again." = "Please wait a minute before trying again.";
+"The meeting plan is not ready." = "The meeting plan is not ready.";
+"Only the leader can end the meeting." = "Only the leader can end the meeting.";
+"[Test] Finalize Our Demo" = "[Test] Finalize Our Demo";
+"Check the opening and runtime." = "Check the opening and runtime.";
+"Choose the key features and demo order." = "Choose the key features and demo order.";
+"Review the shorter narration script." = "Review the shorter narration script.";
+"Confirm the visual references and title slides." = "Confirm the visual references and title slides.";
+"Set the final decisions and revision owners." = "Set the final decisions and revision owners.";
+"Check the demo login and upload flow." = "Check the demo login and upload flow.";
+"Review the recording setup and audio." = "Review the recording setup and audio.";
+"Prepare the backup files and final checklist." = "Prepare the backup files and final checklist.";
+"Review prepared materials" = "Review prepared materials";
+"Confirm the opening, runtime and missing files" = "Confirm the opening, runtime and missing files";
+"Decide feature order" = "Decide feature order";
+"Choose three key features and the demo sequence" = "Choose three key features and the demo sequence";
+"Align narration and visuals" = "Align narration and visuals";
+"Approve the script and slide direction" = "Approve the script and slide direction";
+"Finalize and assign" = "Finalize and assign";
+"Assign each revision an owner and a deadline" = "Assign each revision an owner and a deadline";
+
+"Add a note or attachment." = "Add a note or attachment.";
+
+"Invalid material." = "Invalid material.";
+
+"You can only edit your own material." = "You can only edit your own material.";
+
+"議程產生逾時，請重試。" = "Meeting plan generation timed out. Please try again.";
+
+"Attachment is no longer available. Choose the file again." = "Attachment is no longer available. Choose the file again.";
+
+"新增會議連結" = "Add meeting link";
+
+"編輯會議連結" = "Edit meeting link";
+
+"連結名稱（選填）" = "Link name (optional)";
+
+"連結名稱" = "Link name";
+
+"刪除連結" = "Delete link";
+
+"刪除連結？" = "Delete link?";
+
+"Enter a link title up to 120 characters and a valid HTTP or HTTPS URL." = "Enter a link title up to 120 characters and a valid HTTP or HTTPS URL.";
+
+"Enter a valid HTTP or HTTPS URL." = "Enter a valid HTTP or HTTPS URL.";
+
+"You can only edit your own meeting links." = "You can only edit your own meeting links.";
+
+"Meeting link changed. Reopen the editor." = "Meeting link changed. Reopen the editor.";
+
+"A meeting can have up to 20 links." = "A meeting can have up to 20 links.";
+
+"查看議程詳情" = "View agenda details";
+
+"返回" = "Back";
+
 "修改任務" = "Edit Task";
 "刪除任務" = "Delete Task";
 "管理任務「{0}」" = "Manage task “{0}”";
@@ -855,3 +979,26 @@
 "天" = "d";
 "時" = "h";
 "分" = "m";
+"會前提醒：「{0}」將於 {1} 開始，預計 {2} 分鐘。" = "Meeting reminder: “{0}” starts at {1} and lasts {2} minutes.";
+"會前資料已提交 {0}/{1} 人（{2}）。" = "{0}/{1} members have submitted their materials ({2}).";
+"全員已完成會前準備。" = "Everyone has completed their meeting preparation.";
+"尚未提交筆記或附件：{0}。" = "Still missing a note or attachment: {0}.";
+"討論重點：{0}。" = "Discussion focus: {0}.";
+"{0}等 {1} 人" = "{0} ({1} people in total)";
+
+"會前資料過長，請精簡備註後再產生議程。" = "The preparation is too long. Shorten the notes and try again.";
+"使用 Apple Intelligence 產生議程並同步給成員。" = "Generate with Apple Intelligence and share with members.";
+"Preparation changed. Reopen the agenda." = "Preparation changed. Reopen the agenda.";
+"Generation expired. Please try again." = "Generation expired. Please try again.";
+"Provide 3–4 stages with goals and both languages." = "Provide 3–4 stages with goals and both languages.";
+"Invalid generation token." = "Invalid generation token.";
+
+"捨棄未儲存的內容？" = "Discard unsaved changes?";
+
+"繼續編輯" = "Keep editing";
+
+"捨棄" = "Discard";
+
+"群組已截止，請先延長群組期限再修改任務。" = "The group deadline has passed. Extend it before editing this task.";
+
+"截止時間已過，請選擇未來時間後儲存。" = "The deadline has passed. Choose a future time before saving.";

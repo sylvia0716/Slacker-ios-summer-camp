@@ -31,9 +31,20 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        if model.groups.isEmpty {
+                        if model.groups.isEmpty, model.isLoadingCloudGroups {
+                            ProgressView(L10n.text("正在載入群組…"))
+                                .tint(BombTheme.ink)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 80)
+                        } else if model.groups.isEmpty, let message = model.cloudGroupSyncErrorMessage {
+                            syncStatus(message)
+                                .padding(.vertical, 80)
+                        } else if model.groups.isEmpty {
                             emptyState
                         } else {
+                            if let message = model.cloudGroupSyncErrorMessage {
+                                syncStatus(message)
+                            }
                             Text(L10n.text("選一組，繼續拆彈。"))
                                 .font(.subheadline.bold())
 
@@ -177,6 +188,21 @@ struct GroupListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 80)
+    }
+
+    private func syncStatus(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Label(message, systemImage: "icloud.slash")
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Button(L10n.text("重試")) {
+                Task { await model.reloadCloudGroups() }
+            }
+            .font(.subheadline.bold())
+            .disabled(model.isLoadingCloudGroups)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .frame(maxWidth: .infinity)
     }
 
     private func presentAddGroup(mode: GroupEntryMode) {
@@ -622,7 +648,7 @@ private struct AddGroupSheet: View {
             guard model.acceptJoinedGroup(result) else { return }
             let successMessage = model.lastEvent
             dismiss()
-            let refreshed = await model.reloadCloudGroups(reportError: false)
+            let refreshed = await model.reloadCloudGroups(reportError: false, forceRefresh: true)
             guard model.firebaseUID == result.firebaseUID else { return }
             joinedGroup(refreshed ? successMessage : successMessage + L10n.text("，但列表更新失敗，請下拉重新整理。"))
         }

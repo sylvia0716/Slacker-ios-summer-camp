@@ -14,7 +14,17 @@ struct GroupBombApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-preview-smart-agenda") {
+                SmartAgendaPreview()
+            } else if ProcessInfo.processInfo.arguments.contains("-preview-entry-animation") {
+                BombEntryAnimationPreview()
+            } else {
+                AppRootView()
+            }
+            #else
             AppRootView()
+            #endif
         }
     }
 }

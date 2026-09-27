@@ -43,7 +43,6 @@ struct MemberProgressCard: View {
 
     @State private var uploadTask: ProjectTask?
     @State private var managedTask: ProjectTask?
-    @State private var managesDeletion = false
     @State private var previewDeliverable: Deliverable?
     @State private var expandedTaskID: UUID?
 
@@ -136,7 +135,7 @@ struct MemberProgressCard: View {
             }
         }
         .sheet(item: $managedTask) { task in
-            AttachmentManagementSheet(model: model, task: task, deletionMode: managesDeletion, onSubmit: { onSubmitDeliverable(task.id, $0) })
+            AttachmentManagementSheet(model: model, task: task, onSubmit: { onSubmitDeliverable(task.id, $0) })
         }
         .sheet(item: $uploadTask) { task in
             DeliverableSubmissionSheet(task: task) { deliverable in
@@ -378,18 +377,10 @@ struct MemberProgressCard: View {
 
                 if isCurrentUser, task.deliverable != nil {
                     HStack(spacing: 4) {
-                        Button { managesDeletion = false; managedTask = task } label: {
+                        Button { managedTask = task } label: {
                             Image(systemName: "pencil").frame(width: 36, height: 36)
                         }
                         .accessibilityLabel(L10n.text("編輯附件"))
-                        Button {
-                            managesDeletion = true
-                            managedTask = task
-                        } label: {
-                            Image(systemName: "trash").frame(width: 36, height: 36)
-                        }
-                        .accessibilityLabel(L10n.text("刪除附件"))
-                        .disabled(task.deliverable?.attachmentID == nil)
                         Button { uploadTask = task } label: {
                             Image(systemName: "plus").frame(width: 36, height: 36)
                         }
@@ -404,25 +395,8 @@ struct MemberProgressCard: View {
                 ForEach(visibleDeliverables(for: task)) { item in
                     AttachmentActionButton(model: model, taskID: task.id, deliverable: item,
                                        localPreview: { previewDeliverable = item }) {
-                    HStack(spacing: 12) {
-                        AttachmentPhotoThumbnail(model: model, taskID: task.id, deliverable: item)
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(item.title)
-                                .font(.subheadline.weight(.black))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(item.submittedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))
-                                .font(.footnote.weight(.bold)).foregroundStyle(BombTheme.secondaryText)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "arrow.down.to.line")
-                            .font(.title3.weight(.bold))
+                        AttachmentSummaryRow(model: model, taskID: task.id, deliverable: item)
                     }
-                    .padding(10)
-                    .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(BombTheme.ink.opacity(0.12), lineWidth: 1))
-                }
                 }
                 confirmationSection(for: task, deliverable: deliverable)
             } else {
