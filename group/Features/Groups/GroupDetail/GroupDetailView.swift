@@ -120,11 +120,14 @@ struct GroupDetailView: View {
                         }
                         .scrollIndicators(.hidden)
                     }
+                    .disabled(showsPublishTaskSheet || editingTask != nil)
+                    .accessibilityHidden(showsPublishTaskSheet || editingTask != nil)
 
                     if showsPublishTaskSheet {
                         BombTheme.ink.opacity(0.16)
                             .ignoresSafeArea(edges: .top)
-                            .onTapGesture { closePublishTaskSheet() }
+                            // Dismiss explicitly through the form so drafts and in-flight writes are protected.
+                            .onTapGesture { }
                             .transition(.opacity)
                             .zIndex(1)
 
@@ -153,7 +156,7 @@ struct GroupDetailView: View {
                     if let editingTask {
                         BombTheme.ink.opacity(0.16)
                             .ignoresSafeArea(edges: .top)
-                            .onTapGesture { closeTaskEditor() }
+                            .onTapGesture { }
                             .transition(.opacity)
 
                         TaskEditorSheet(
@@ -205,10 +208,10 @@ struct GroupDetailView: View {
             PeerReviewReportView(model: model, group: currentGroup)
         }
         .navigationDestination(isPresented: $showsAgendaDetails) {
-            if let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID {
-                SmartAgendaDetailView(groupID: cloudID, uid: uid, members: groupMembers,
+            if let agendaStore, let uid = model.firebaseUID {
+                SmartAgendaDetailView(store: agendaStore, members: groupMembers,
                                       isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader })
-                    .id("agenda-details/\(cloudID)/\(uid)")
+                    .id("agenda-details/\(agendaStore.groupID)/\(uid)")
             }
         }
         .bombTabBarHidden(
@@ -222,6 +225,7 @@ struct GroupDetailView: View {
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             topBar
+                .disabled(showsPublishTaskSheet || editingTask != nil)
         }
         .overlayPreferenceValue(PokeButtonAnchorKey.self) { anchors in
             GeometryReader { proxy in
@@ -284,9 +288,9 @@ struct GroupDetailView: View {
                 agendaStore = SmartAgendaStore(groupID: cloudID, uid: uid)
                 showsAgendaCreation = false
             }
-            agendaStore?.listen()
+            agendaStore?.listen(generatesPlans: true)
         }
-        .onDisappear { agendaStore?.stop() }
+        .onDisappear { if !showsAgendaDetails { agendaStore?.stop() } }
         .sheet(isPresented: $showsAgendaCreation) {
             if let agendaStore {
                 SmartAgendaMeetingEditor(store: agendaStore)
@@ -1074,7 +1078,7 @@ struct GroupDetailView: View {
                 .buttonStyle(BombFormPrimaryButtonStyle())
                 .disabled(isRemovingMember)
         }
-        .confirmationDialog(
+        .bombDialog(
             L10n.format("確定移除 {0}？", memberPendingRemoval?.name ?? ""),
             isPresented: Binding(
                 get: { memberPendingRemoval != nil },
@@ -1082,13 +1086,13 @@ struct GroupDetailView: View {
             ),
             titleVisibility: .visible
         ) {
+            Button(L10n.text("取消"), role: .cancel) { memberPendingRemoval = nil }
             if let member = memberPendingRemoval {
                 Button(L10n.text("移除成員"), role: .destructive) {
                     memberPendingRemoval = nil
                     removeMember(member)
                 }
             }
-            Button(L10n.text("取消"), role: .cancel) { memberPendingRemoval = nil }
         }
         .interactiveDismissDisabled(isRemovingMember)
     }
@@ -1164,37 +1168,37 @@ struct GroupDetailView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             if let currentUserMember {
-                HStack(spacing: 8) {
-                    Text(L10n.text("我的任務"))
-                    Image(systemName: "pin.fill")
-                        .accessibilityHidden(true)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text(L10n.text("我的任務"))
+                        Image(systemName: "pin.fill")
+                            .accessibilityHidden(true)
+                    }
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .foregroundStyle(BombTheme.ink)
+                    .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    Button {
+                        withAnimation(.snappy) { showsPublishTaskSheet = true }
+                    } label: {
+                        Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 8)
+                            .background(BombTheme.ink)
+                            .clipShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
+                    .disabled(isGroupDeadlinePassed)
+                    .opacity(isGroupDeadlinePassed ? 0.45 : 1)
                 }
-                .font(.system(.title2, design: .rounded, weight: .black))
-                .foregroundStyle(BombTheme.ink)
                 memberProgressCard(for: currentUserMember)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(L10n.text("成員進度"))
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                    .layoutPriority(1)
-                Spacer(minLength: 4)
-                Button {
-                    withAnimation(.snappy) { showsPublishTaskSheet = true }
-                } label: {
-                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
-                .disabled(isGroupDeadlinePassed)
-                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
-            }
+            Text(L10n.text("成員進度"))
+                .font(.system(.title2, design: .rounded, weight: .black))
             ForEach(otherMembers) { member in
                 memberProgressCard(for: member)
             }

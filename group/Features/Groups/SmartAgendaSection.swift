@@ -21,16 +21,10 @@ struct SmartAgendaSection: View {
 
 struct SmartAgendaDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var store: SmartAgendaStore
+    let store: SmartAgendaStore
     @State private var linkDraft: SmartAgendaLinkDraft?
     let members: [Member]
     let isLeader: Bool
-
-    init(groupID: String, uid: String, members: [Member], isLeader: Bool) {
-        _store = State(initialValue: SmartAgendaStore(groupID: groupID, uid: uid))
-        self.members = members
-        self.isLeader = isLeader
-    }
 
     var body: some View {
         ScrollView {
@@ -44,7 +38,6 @@ struct SmartAgendaDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden()
         .onAppear { store.listen(generatesPlans: true) }
-        .onDisappear { store.stop() }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("自動化議程")) {
                 Button(action: dismiss.callAsFunction) {
@@ -70,6 +63,7 @@ struct SmartAgendaDetailView: View {
 
 /// Both screens read the same cloud agenda; only the detail page shows preparation content.
 private struct SmartAgendaCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let store: SmartAgendaStore
     let members: [Member]
     let isLeader: Bool
@@ -109,8 +103,8 @@ private struct SmartAgendaCard: View {
             }
             if !store.isLoading, onOpenDetails == nil { editControl.padding(16) }
         }
-        .foregroundStyle(SmartAgendaStyle.ink)
-        .tint(SmartAgendaStyle.ink)
+        .foregroundStyle(BombTheme.ink)
+        .tint(BombTheme.ink)
         .fullScreenCover(isPresented: $showsEditOptions, onDismiss: openSelectedEditor) { editOptions }
         .sheet(isPresented: $showsMeetingEditor) { SmartAgendaMeetingEditor(store: store) }
         .sheet(item: $materialDraft) { draft in SmartAgendaMaterialEditor(store: store, draft: draft) }
@@ -127,14 +121,36 @@ private struct SmartAgendaCard: View {
                 if let agenda = store.agenda {
                     rule
                     HStack {
-                        Text(L10n.text("團隊準備")).font(SmartAgendaStyle.text(12.5, bold: true))
+                        Text(L10n.text("團隊準備")).font(.subheadline.weight(.black))
                         Spacer()
                         Text(verbatim: "\(agenda.preparedUIDs.count)/\(agenda.memberUIDs.count)")
-                            .font(SmartAgendaStyle.text(11.5, bold: true)).monospacedDigit()
+                            .font(.subheadline.weight(.black)).monospacedDigit()
                             .accessibilityLabel(L10n.format("{0}/{1} 人已準備", String(agenda.preparedUIDs.count), String(agenda.memberUIDs.count)))
                     }.padding(.vertical, 8)
+                    if onOpenDetails != nil, agenda.allPrepared, agenda.stages.isEmpty {
+                        Text(L10n.text(store.isGenerating || agenda.isGenerating(at: .now)
+                                       ? "正在產生會議議程…" : "議程尚未產生"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BombTheme.secondaryText)
+                            .padding(.bottom, 4)
+                    }
                     if onOpenDetails == nil {
                         rule
+                        if !pendingMembers.isEmpty {
+                            Text(L10n.format("尚未準備：{0}", pendingMembers.map(\.name).joined(separator: L10n.text("、"))))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(BombTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 10)
+                        }
+                        if agenda.memberUIDs.contains(store.uid), !agenda.preparedUIDs.contains(store.uid) {
+                            Button { materialDraft = SmartAgendaMaterialDraft() } label: {
+                                Label(L10n.text("新增我的資料"), systemImage: "plus")
+
+                            }
+                            .buttonStyle(BombFormPrimaryButtonStyle())
+                            .padding(.top, 10)
+                        }
                         ForEach(preparedMembers) { person in
                             if let uid = person.firebaseUID {
                                 ForEach(agenda.materials(for: uid)) { entry in
@@ -144,7 +160,7 @@ private struct SmartAgendaCard: View {
                             }
                         }
                         meetingLinks(agenda)
-                        if agenda.allPrepared { plan(agenda) }
+                        if agenda.allPrepared || agenda.meetingStartedAt != nil { plan(agenda) }
                     }
                 }
             }
@@ -162,17 +178,24 @@ private struct SmartAgendaCard: View {
     private var preparedMembers: [Member] {
         members.filter { person in person.firebaseUID.map { !(store.agenda?.materials(for: $0).isEmpty ?? true) } ?? false }
     }
-    private var rule: some View { Rectangle().fill(SmartAgendaStyle.rule).frame(height: 0.7) }
+    private var pendingMembers: [Member] {
+        guard let agenda = store.agenda else { return [] }
+        return members.filter { person in
+            guard let uid = person.firebaseUID else { return false }
+            return agenda.memberUIDs.contains(uid) && !agenda.preparedUIDs.contains(uid)
+        }
+    }
+    private var rule: some View { Rectangle().fill(BombTheme.ink.opacity(0.2)).frame(height: 0.7) }
     private var meetingHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.text("會議主題")).font(SmartAgendaStyle.text(10.5, bold: true)).foregroundStyle(SmartAgendaStyle.secondary)
+                    Text(L10n.text("會議主題")).font(.footnote.weight(.black)).foregroundStyle(BombTheme.secondaryText)
                     if let agenda = store.agenda {
-                        Text(agenda.displayTopic).font(SmartAgendaStyle.text(16, bold: true)).fixedSize(horizontal: false, vertical: true)
+                        Text(agenda.displayTopic).font(.headline.weight(.black)).fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text(L10n.text(isLeader ? "設定會議" : "等待組長設定會議。"))
-                            .font(SmartAgendaStyle.text(14, bold: true)).padding(.vertical, 8)
+                            .font(.subheadline.weight(.black)).padding(.vertical, 8)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if onOpenDetails != nil {
@@ -185,11 +208,11 @@ private struct SmartAgendaCard: View {
                         .accessibilityHidden(true)
                 } else {
                     // Reserve the detail page's edit button without nesting buttons.
-                    Color.clear.frame(width: 36, height: 44).accessibilityHidden(true)
+                    Color.clear.frame(width: 44, height: 44).accessibilityHidden(true)
                 }
             }
             if let agenda = store.agenda {
-                Text(agenda.summary).font(SmartAgendaStyle.text(13))
+                Text(agenda.summary).font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }.padding(.bottom, 12)
@@ -229,7 +252,7 @@ private struct SmartAgendaCard: View {
                         Image(systemName: "xmark")
                             .font(.headline.weight(.black))
                             .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .background(BombTheme.ink, in: Circle())
                     }
                     .buttonStyle(.plain)
@@ -249,7 +272,7 @@ private struct SmartAgendaCard: View {
                             pendingEditAction = .material(SmartAgendaMaterialDraft())
                             showsEditOptions = false
                         }
-                        if isLeader {
+                        if isLeader, store.agenda?.meetingStartedAt == nil {
                             editOptionButton(L10n.text("編輯會議"), icon: "list.bullet.rectangle") {
                                 pendingEditAction = .meeting
                                 showsEditOptions = false
@@ -296,29 +319,31 @@ private struct SmartAgendaCard: View {
 
     private var editIcon: some View {
         Image(systemName: "square.and.pencil")
-            .font(.system(size: 17, weight: .semibold))
-            .frame(width: 36, height: 44)
+            .font(.headline.weight(.semibold))
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
 
     private func preparationRow(_ person: Member, material: SmartAgenda.Material) -> some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             MemberPhotoAvatar(groupID: store.groupID, uid: person.firebaseUID, name: person.name, size: 30)
-            Text(person.name).font(SmartAgendaStyle.text(10.5, bold: true))
-                .frame(width: 54, alignment: .leading).lineLimit(2)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(person.name)
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(BombTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !material.note.isEmpty {
-                    Text(store.agenda?.displayNote(material.note) ?? material.note).font(SmartAgendaStyle.text(9.5))
+                    Text(store.agenda?.displayNote(material.note) ?? material.note).font(.footnote.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let file = material.attachment {
                     Button { Task { await store.download(file) } } label: {
-                        Label(file.fileName, systemImage: "paperclip").font(SmartAgendaStyle.text(9.5))
-                            .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                        Label(file.fileName, systemImage: "paperclip").font(.footnote.weight(.semibold))
+                            .lineLimit(2).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }.buttonStyle(.plain).disabled(store.isDownloading)
                 }
-            }.foregroundStyle(SmartAgendaStyle.secondary).frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(.vertical, 3).frame(minHeight: 39)
+            }.foregroundStyle(BombTheme.secondaryText).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.vertical, 10)
     }
 
     private func meetingLinks(_ agenda: SmartAgenda) -> some View {
@@ -328,15 +353,15 @@ private struct SmartAgendaCard: View {
                     if let url = entry.link.destination {
                         Link(destination: url) {
                             Label(entry.link.displayTitle, systemImage: "link")
-                                .font(SmartAgendaStyle.text(11, bold: true))
-                                .lineLimit(2).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                                .font(.subheadline.weight(.black))
+                                .lineLimit(2).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
                     }
                     if entry.link.ownerUID == store.uid || isLeader {
                         Button { onEditLink?(SmartAgendaLinkDraft(entry: entry)) } label: {
                             Image(systemName: "square.and.pencil")
-                                .frame(width: 36, height: 36).contentShape(Rectangle())
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(L10n.text("編輯會議連結"))
                     }
                 }
@@ -347,11 +372,11 @@ private struct SmartAgendaCard: View {
                         .accessibilityHidden(true)
                     Text(L10n.text("新增會議連結"))
                 }
-                .font(SmartAgendaStyle.text(11, bold: true))
+                .font(.subheadline.weight(.black))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 36, alignment: .center)
-                .overlay(Capsule().stroke(SmartAgendaStyle.ink, lineWidth: 1.5))
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+                .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 1.5))
                 .contentShape(Capsule())
             }.buttonStyle(.plain)
         }.padding(.top, 7).padding(.bottom, 12)
@@ -364,7 +389,7 @@ private struct SmartAgendaCard: View {
         retry.font = .caption.bold()
         retry.underlineStyle = .single
         text.append(retry)
-        return Text(text).font(.caption).foregroundStyle(SmartAgendaStyle.secondary)
+        return Text(text).font(.caption).foregroundStyle(BombTheme.secondaryText)
             .environment(\.openURL, OpenURLAction { _ in
                 Task { await store.retryGeneration() }
                 return .handled
@@ -375,12 +400,16 @@ private struct SmartAgendaCard: View {
         VStack(alignment: .leading, spacing: 2) {
             rule
             Text(L10n.text(agenda.planSource == "sample" ? "範例會議議程" : "AI 建議議程"))
-                .font(SmartAgendaStyle.text(12, bold: true)).padding(.top, 5).padding(.bottom, 4)
+                .font(.subheadline.weight(.black)).padding(.top, 5).padding(.bottom, 4)
             if agenda.stages.isEmpty {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     if store.isGenerating || agenda.isGenerating(at: context.date) {
-                        HStack { ProgressView().controlSize(.small); Text(L10n.text("正在產生會議議程…")).font(SmartAgendaStyle.text(12)) }
+                        HStack { ProgressView().controlSize(.small); Text(L10n.text("正在產生會議議程…")).font(.subheadline.weight(.semibold)) }
                             .padding(.vertical, 14)
+                    } else if store.cannotGenerateOnThisDevice {
+                        Text(L10n.text("請由支援 Apple Intelligence 的成員開啟專案以產生議程。"))
+                            .font(.caption)
+                            .foregroundStyle(BombTheme.secondaryText)
                     } else {
                         retryMessage(store.aiError ?? agenda.generationError
                                      ?? "使用 Apple Intelligence 產生議程並同步給成員。")
@@ -388,29 +417,39 @@ private struct SmartAgendaCard: View {
                 }
             } else {
                 ForEach(agenda.stages) { stage in
-                    HStack(spacing: 10) {
-                        Text(stage.time).font(SmartAgendaStyle.text(10.5, bold: true))
-                            .foregroundStyle(SmartAgendaStyle.secondary).frame(width: 70, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(agenda.displayTitle(stage)).font(SmartAgendaStyle.text(11, bold: true))
-                            Text(agenda.displayGoal(stage)).font(SmartAgendaStyle.text(9.5)).foregroundStyle(SmartAgendaStyle.secondary)
+                    (dynamicTypeSize.isAccessibilitySize
+                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                     : AnyLayout(HStackLayout(alignment: .top, spacing: 12))) {
+                        Text(stage.time).font(.footnote.weight(.black))
+                            .foregroundStyle(BombTheme.secondaryText)
+                            .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 80, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(agenda.displayTitle(stage)).font(.subheadline.weight(.black))
+                            Text(agenda.displayGoal(stage)).font(.footnote.weight(.semibold)).foregroundStyle(BombTheme.secondaryText)
                         }.frame(maxWidth: .infinity, alignment: .leading)
-                    }.fixedSize(horizontal: false, vertical: true)
+                    }.fixedSize(horizontal: false, vertical: true).padding(.vertical, 8)
                     if stage.id != agenda.stages.last?.id { rule }
                 }
-                Button {
-                    starting = true
-                    Task {
-                        defer { starting = false }
-                        do { try await store.startMeeting(); showsMeeting = true }
-                        catch { store.error = error.localizedDescription }
-                    }
-                } label: {
-                    Text(L10n.text(starting ? "正在開始…" : agenda.meetingStartedAt == nil ? "開始會議" : "開啟會議"))
-                        .font(SmartAgendaStyle.text(11.5, bold: true))
-                        .frame(maxWidth: .infinity, minHeight: 29).foregroundStyle(.white)
-                        .background(SmartAgendaStyle.ink, in: Capsule())
-                }.buttonStyle(.plain).padding(.top, 3).disabled(starting)
+                if agenda.meetingStartedAt != nil {
+                    Button(L10n.text("開啟會議")) { showsMeeting = true }
+                        .buttonStyle(BombFormPrimaryButtonStyle()).padding(.top, 12)
+                } else if isLeader {
+                    Button {
+                        starting = true
+                        Task {
+                            defer { starting = false }
+                            do { try await store.startMeeting(); showsMeeting = true }
+                            catch { store.error = error.localizedDescription }
+                        }
+                    } label: {
+                        Text(L10n.text(starting ? "正在開始…" : "開始會議"))
+                    }.buttonStyle(BombFormPrimaryButtonStyle()).padding(.top, 12).disabled(starting)
+                } else {
+                    Text(L10n.text("等待組長開始會議。"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BombTheme.secondaryText)
+                        .padding(.top, 8)
+                }
             }
         }
     }
@@ -434,26 +473,39 @@ struct SmartAgendaMeetingEditor: View {
         _duration = State(initialValue: store.agenda?.duration ?? 20)
     }
     var body: some View {
-        NavigationStack {
-            Form {
-                Section(L10n.text("會議主題")) { TextField(L10n.text("會議主題"), text: $topic) }
-                Section(L10n.text("日期與時間")) { DatePicker(L10n.text("會議"), selection: $date).labelsHidden() }
-                Section(L10n.text("會議長度")) { Stepper(L10n.format("{0} 分鐘", String(duration)), value: $duration, in: 5...180, step: 5) }
-                if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
-            }.disabled(store.isSaving).scrollContentBackground(.hidden).background(SmartAgendaStyle.paper)
-                .navigationTitle(L10n.text(revision == nil ? "設定會議" : "編輯會議")).navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button(L10n.text("取消")) { dismiss() }.disabled(store.isSaving) }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(L10n.text(store.isSaving ? "儲存中…" : "儲存")) {
-                            Task {
-                                do { try await store.saveMeeting(topic: initialTopic.valueToSave(topic), date: date, duration: duration, revision: revision); dismiss() }
-                                catch { self.error = error.localizedDescription }
-                            }
-                        }.disabled(store.isSaving || topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || topic.count > 120)
-                    }
+        BombFormSheet(title: L10n.text(revision == nil ? "設定會議" : "編輯會議")) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("會議主題")).font(.subheadline.weight(.black))
+                    TextField(L10n.text("會議主題"), text: $topic).bombFormField()
                 }
-        }.presentationDetents([.medium, .large]).interactiveDismissDisabled(store.isSaving)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("日期與時間")).font(.subheadline.weight(.black))
+                    DatePicker(L10n.text("會議"), selection: $date).bombFormField()
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("會議長度")).font(.subheadline.weight(.black))
+                    Stepper(L10n.format("{0} 分鐘", String(duration)), value: $duration, in: 5...180, step: 5)
+                        .bombFormField()
+                }
+            }.disabled(store.isSaving)
+            if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text(store.isSaving ? "儲存中…" : "儲存"),
+                isEnabled: !topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && topic.count <= 120,
+                isBusy: store.isSaving,
+                onPrimary: {
+                    Task {
+                        do { try await store.saveMeeting(topic: initialTopic.valueToSave(topic), date: date, duration: duration, revision: revision); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    }
+                },
+                onSecondary: { dismiss() }
+            )
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(store.isSaving)
     }
 }
 
@@ -489,40 +541,53 @@ private struct SmartAgendaMaterialEditor: View {
         _attachment = State(initialValue: own?.attachment)
     }
     var body: some View {
-        NavigationStack {
-            Form {
-                Section(L10n.text("準備內容")) { TextField(L10n.text("你想在會議中討論什麼？"), text: $note, axis: .vertical).lineLimit(3...5) }
-                Section(L10n.text("附件")) {
+        BombFormSheet(title: L10n.text(draft.material == nil ? "新增我的資料" : "編輯我的資料")) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("準備內容")).font(.subheadline.weight(.black))
+                    TextField(L10n.text("你想在會議中討論什麼？"), text: $note, axis: .vertical)
+                        .lineLimit(3...5).bombFormField()
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("附件")).font(.subheadline.weight(.black))
                     if let name = selectedFile?.lastPathComponent ?? attachment?.fileName {
                         HStack {
                             Label(name, systemImage: "paperclip").lineLimit(2)
                             Spacer()
-                            Button { selectedFile = nil; attachment = nil } label: { Image(systemName: "xmark.circle.fill") }
-                                .buttonStyle(.plain).accessibilityLabel(L10n.text("移除附件"))
-                        }
+                            Button { selectedFile = nil; attachment = nil } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .frame(width: 44, height: 44).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain).accessibilityLabel(L10n.text("移除附件"))
+                        }.bombFormField()
                     }
                     Button(L10n.text("選擇檔案"), systemImage: "plus") { showsImporter = true }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .bombFormField()
                 }
-                if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
-            }.disabled(store.isSaving).scrollContentBackground(.hidden).background(SmartAgendaStyle.paper)
-                .navigationTitle(L10n.text(draft.material == nil ? "新增我的資料" : "編輯我的資料")).navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button(L10n.text("取消")) { dismiss() }.disabled(store.isSaving) }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(L10n.text(store.isSaving ? "儲存中…" : "儲存")) {
-                            Task {
-                                do { try await store.saveMaterial(id: draft.id, note: initialNote.valueToSave(note), attachment: attachment, file: selectedFile, revision: revision); dismiss() }
-                                catch { self.error = error.localizedDescription }
-                            }
-                        }.disabled(store.isSaving || note.count > 1000 || (draft.material == nil && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedFile == nil && attachment == nil))
+            }.disabled(store.isSaving)
+            if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
+        } actions: {
+            BombFormActions(
+                primaryTitle: L10n.text(store.isSaving ? "儲存中…" : "儲存"),
+                isEnabled: note.count <= 1000 && (draft.material != nil || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedFile != nil || attachment != nil),
+                isBusy: store.isSaving,
+                onPrimary: {
+                    Task {
+                        do { try await store.saveMaterial(id: draft.id, note: initialNote.valueToSave(note), attachment: attachment, file: selectedFile, revision: revision); dismiss() }
+                        catch { self.error = error.localizedDescription }
                     }
-                }
-                .fileImporter(isPresented: $showsImporter,
-                              allowedContentTypes: SmartAgendaStore.fileTypes.keys.compactMap { UTType(filenameExtension: $0) }) { result in
-                    do { selectedFile = try result.get(); error = nil }
-                    catch { self.error = error.localizedDescription }
-                }
-        }.presentationDetents([.medium, .large]).interactiveDismissDisabled(store.isSaving)
+                },
+                onSecondary: { dismiss() }
+            )
+        }
+        .fileImporter(isPresented: $showsImporter,
+                      allowedContentTypes: SmartAgendaStore.fileTypes.keys.compactMap { UTType(filenameExtension: $0) }) { result in
+            do { selectedFile = try result.get(); error = nil }
+            catch { self.error = error.localizedDescription }
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(store.isSaving)
     }
 }
 
@@ -542,7 +607,7 @@ private struct SmartAgendaMeetingSession: View {
                         Text(String(format: "%02d:%02d", remaining / 60, remaining % 60))
                             .font(.system(size: 48, weight: .bold, design: .monospaced))
                         if let current = agenda.stages.first(where: { elapsed < $0.end * 60 }) {
-                            Text(current.time).foregroundStyle(SmartAgendaStyle.secondary)
+                            Text(current.time).foregroundStyle(BombTheme.secondaryText)
                             Text(agenda.displayTitle(current)).font(.title3.bold())
                             Text(agenda.displayGoal(current))
                         } else { Text(L10n.text("會議已結束")).font(.title3.bold()) }
@@ -554,13 +619,12 @@ private struct SmartAgendaMeetingSession: View {
                                     do { try await store.endMeeting(); dismiss() }
                                     catch { self.error = error.localizedDescription }
                                 }
-                            }.font(.headline).frame(maxWidth: .infinity, minHeight: 44)
-                                .foregroundStyle(.white).background(SmartAgendaStyle.ink, in: Capsule())
+                            }.buttonStyle(BombFormPrimaryButtonStyle())
                         }
                     }.padding(24)
                 } else { Text(L10n.text("會議尚未開始。")) }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity).background(SmartAgendaStyle.paper)
+            .frame(maxWidth: .infinity, maxHeight: .infinity).background(BombTheme.paper)
             .navigationTitle(L10n.text("會議")).navigationBarTitleDisplayMode(.inline)
             .toolbar { Button(L10n.text("完成")) { dismiss() } }
         }

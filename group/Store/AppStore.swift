@@ -1015,6 +1015,23 @@ final class AppStore {
             )
         }
         WidgetSnapshotStore.save(snapshot)
+
+        let todoTasks = projectTasks
+            .filter { $0.ownerMemberID == currentUserID && !$0.isCompleted }
+            .sorted {
+                if $0.deadline != $1.deadline { return $0.deadline < $1.deadline }
+                if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+        let items = todoTasks.flatMap { task in
+            task.subtasks.filter { !$0.isComplete }.map {
+                WidgetTodoItem(id: $0.id, title: $0.title)
+            }
+        }
+        WidgetSnapshotStore.saveTodo(WidgetTodoSnapshot(
+            count: items.count,
+            items: Array(items.prefix(6))
+        ))
     }
 
     /// 依該成員負責任務的子任務完成狀態計算個人進度。
@@ -1382,8 +1399,16 @@ final class AppStore {
             task.firestoreGroupID = groupPath
         }
 
-        projectTasks.append(task)
-        groups[groupIndex].taskIDs.append(task.id)
+        // A snapshot may arrive before the callable returns, or reload/reorder the groups.
+        guard let currentGroupIndex = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        if !projectTasks.contains(where: { $0.id == task.id }) {
+            projectTasks.append(task)
+        }
+        if !groups[currentGroupIndex].taskIDs.contains(task.id) {
+            groups[currentGroupIndex].taskIDs.append(task.id)
+        }
         lastEvent = L10n.format("已發布新任務「{0}」", String(describing: trimmedTitle))
         return task
     }
@@ -1482,7 +1507,9 @@ final class AppStore {
         attachmentListeners[taskID]?.remove()
         attachmentListeners[taskID] = nil
         projectTasks.removeAll { $0.id == taskID }
-        groups[groupIndex].taskIDs.removeAll { $0 == taskID }
+        if let currentGroupIndex = groups.firstIndex(where: { $0.id == task.groupID }) {
+            groups[currentGroupIndex].taskIDs.removeAll { $0 == taskID }
+        }
         lastEvent = L10n.format("已刪除任務「{0}」", String(describing: task.title))
     }
 

@@ -38,6 +38,11 @@ struct AppRootView: View {
                        value: !authSession.isCheckingSession && authSession.canEnterApp && store.firebaseUID == authSession.currentUserID)
         }
         .environment(\.locale, L10n.locale)
+        .onOpenURL { url in
+            if url.scheme == "oopsbomb", url.host == "my-tasks" {
+                tab = .myTasks
+            }
+        }
         .environment(\.bombSafeAreaInsets, safeAreaInsets)
         .onGeometryChange(for: EdgeInsets.self) { proxy in
             proxy.safeAreaInsets

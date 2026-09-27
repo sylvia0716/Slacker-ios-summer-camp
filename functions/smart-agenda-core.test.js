@@ -21,7 +21,7 @@ test('empty preparations, departed members and previous membership materials do 
   const members=[{id:'leader',joinedAt:{seconds:1,nanoseconds:0}},{id:'member',joinedAt:{seconds:2,nanoseconds:0}}];
   const current={topic:'Demo',duration:20,materials:{
     leader:{note:'Decide the script',membershipVersion:'1.0'},member:{note:'Old',membershipVersion:'1.0'},
-    departed:{note:'Old',membershipVersion:'1.0'}},stages:phases([5,7,8]),generation:{token:'old'},meetingStartedAt:1};
+    departed:{note:'Old',membershipVersion:'1.0'}},stages:phases([5,7,8]),generation:{token:'old'},meetingStartedAt:null};
   const next=invalidateAgenda(current,members);
   assert.deepEqual(next.preparedUIDs,['leader']); assert.equal(next.memberUIDs.length,2);
   assert.equal(next.generation,null); assert.equal(next.meetingStartedAt,null); assert.deepEqual(next.stages,[]);
@@ -29,6 +29,23 @@ test('empty preparations, departed members and previous membership materials do 
   assert.equal(invalidateAgenda(current,members).preparedUIDs.length,2);
   current.materials.member={note:'  ',membershipVersion:'2.0'};
   assert.equal(invalidateAgenda(current,members).preparedUIDs.length,1);
+});
+test('preparation changes preserve a meeting in progress until it ends', () => {
+  const members=[{id:'leader'},{id:'member'}], started={toMillis:()=>1000};
+  const current={materials:{leader:{note:'Opening',membershipVersion:'legacy'},
+    member:{note:'Order',membershipVersion:'legacy'}},memberUIDs:['leader','member'],
+    preparedUIDs:['leader','member'],inputRevision:'published',stages:phases([5,7,8]),
+    planState:'ready',planSource:'appleIntelligence',meetingStartedAt:started};
+  const during=invalidateAgenda({...current,materials:{...current.materials,
+    member:{note:'Updated order',membershipVersion:'legacy'}}},members);
+  assert.equal(during.meetingStartedAt,started);
+  assert.equal(during.inputRevision,'published');
+  assert.deepEqual(during.stages,current.stages);
+  assert.equal(during.preparationChangedDuringMeeting,true);
+  const after=invalidateAgenda({...during,meetingStartedAt:null},members);
+  assert.equal(after.meetingStartedAt,null);
+  assert.deepEqual(after.stages,[]);
+  assert.equal(after.preparationChangedDuringMeeting,false);
 });
 test('membership fingerprint ignores role/name edits but catches rejoining', () => {
   const member={id:'one',role:'leader',displayName:'Name',joinedAt:{seconds:1,nanoseconds:123}};

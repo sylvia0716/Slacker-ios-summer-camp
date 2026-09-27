@@ -77,8 +77,8 @@ struct SmartAgendaLinkEditor: View {
             .defaultScrollAnchor(.center)
         }
         .bombDialog(L10n.text("刪除連結？"), isPresented: $confirmsDeletion) {
-            Button(L10n.text("刪除連結"), role: .destructive) { save(removing: true) }
             Button(L10n.text("取消"), role: .cancel) {}
+            Button(L10n.text("刪除連結"), role: .destructive) { save(removing: true) }
         }
     }
 
