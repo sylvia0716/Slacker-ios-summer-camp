@@ -1168,37 +1168,37 @@ struct GroupDetailView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             if let currentUserMember {
-                HStack(spacing: 8) {
-                    Text(L10n.text("我的任務"))
-                    Image(systemName: "pin.fill")
-                        .accessibilityHidden(true)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text(L10n.text("我的任務"))
+                        Image(systemName: "pin.fill")
+                            .accessibilityHidden(true)
+                    }
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .foregroundStyle(BombTheme.ink)
+                    .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    Button {
+                        withAnimation(.snappy) { showsPublishTaskSheet = true }
+                    } label: {
+                        Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 8)
+                            .background(BombTheme.ink)
+                            .clipShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
+                    .disabled(isGroupDeadlinePassed)
+                    .opacity(isGroupDeadlinePassed ? 0.45 : 1)
                 }
-                .font(.system(.title2, design: .rounded, weight: .black))
-                .foregroundStyle(BombTheme.ink)
                 memberProgressCard(for: currentUserMember)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(L10n.text("成員進度"))
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                    .layoutPriority(1)
-                Spacer(minLength: 4)
-                Button {
-                    withAnimation(.snappy) { showsPublishTaskSheet = true }
-                } label: {
-                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .background(BombTheme.ink)
-                        .clipShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
-                .disabled(isGroupDeadlinePassed)
-                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
-            }
+            Text(L10n.text("成員進度"))
+                .font(.system(.title2, design: .rounded, weight: .black))
             ForEach(otherMembers) { member in
                 memberProgressCard(for: member)
             }
