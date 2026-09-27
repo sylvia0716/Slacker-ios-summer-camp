@@ -157,6 +157,7 @@ test('device-generated plan is validated, stored in Firebase and streamed to ano
  assert.deepEqual(value.stages.map(s=>[s.start,s.end]),[[0,5],[5,12],[12,20]]);
  await leader.call('completePlan',{...fields,phases});
  assert.deepEqual(await read(),value);
+ await assert.rejects(member.call('start',{inputRevision:value.inputRevision}),e=>e.code==='functions/permission-denied');
  await leader.call('start',{inputRevision:value.inputRevision});
  assert((await read(member)).meetingStartedAt);
  await assert.rejects(member.call('end',{inputRevision:value.inputRevision}),e=>e.code==='functions/permission-denied');

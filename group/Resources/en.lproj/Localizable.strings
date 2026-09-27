@@ -808,6 +808,8 @@
 "自動化議程" = "Smart Agenda";
 "團隊準備" = "Team prep";
 "{0}/{1} 人已準備" = "{0}/{1} prepared";
+"尚未準備：{0}" = "Not ready: {0}";
+"、" = ", ";
 "新增我的資料" = "Add my material";
 "會議主題" = "Meeting topic";
 "設定會議" = "Set a meeting";
@@ -821,6 +823,8 @@
 "範例會議議程" = "Sample meeting plan";
 "AI 建議議程" = "AI suggested plan";
 "正在產生會議議程…" = "Generating meeting plan…";
+"議程尚未產生" = "Meeting plan not ready";
+"請由支援 Apple Intelligence 的成員開啟專案以產生議程。" = "A member with Apple Intelligence needs to open this project to generate the plan.";
 "產生會議議程" = "Generate meeting plan";
 "正在開始…" = "Starting…";
 "開始會議" = "Start meeting";
@@ -854,12 +858,15 @@
 "Upload is incomplete." = "Upload is incomplete.";
 "Membership required." = "Membership required.";
 "Only the leader can edit the meeting." = "Only the leader can edit the meeting.";
+"Only the leader can start the meeting." = "Only the leader can start the meeting.";
+"End the meeting before editing its settings." = "End the meeting before editing its settings.";
 "Enter a topic, meeting date and 5–180 minute duration." = "Enter a topic, meeting date and 5–180 minute duration.";
 "Meeting changed. Reopen the editor." = "Meeting changed. Reopen the editor.";
 "The leader must set a meeting first." = "The leader must set a meeting first.";
 "Note must be 1000 characters or less." = "Note must be 1000 characters or less.";
 "Your material changed. Reopen the editor." = "Your material changed. Reopen the editor.";
 "Everyone must prepare first." = "Everyone must prepare first.";
+"等待組長開始會議。" = "Waiting for the leader to start the meeting.";
 "Please wait a minute before trying again." = "Please wait a minute before trying again.";
 "The meeting plan is not ready." = "The meeting plan is not ready.";
 "Only the leader can end the meeting." = "Only the leader can end the meeting.";
@@ -970,3 +977,13 @@
 "Generation expired. Please try again." = "Generation expired. Please try again.";
 "Provide 3–4 stages with goals and both languages." = "Provide 3–4 stages with goals and both languages.";
 "Invalid generation token." = "Invalid generation token.";
+
+"捨棄未儲存的內容？" = "Discard unsaved changes?";
+
+"繼續編輯" = "Keep editing";
+
+"捨棄" = "Discard";
+
+"群組已截止，請先延長群組期限再修改任務。" = "The group deadline has passed. Extend it before editing this task.";
+
+"截止時間已過，請選擇未來時間後儲存。" = "The deadline has passed. Choose a future time before saving.";

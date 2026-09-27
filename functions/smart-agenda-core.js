@@ -23,11 +23,19 @@ function materialsForMember(materials, uid) {
 }
 function invalidateAgenda(agenda, members) {
   const materials = activeMaterials(agenda.materials, members);
+  const meetingInProgress = Boolean(agenda.meetingStartedAt);
   return {...agenda, materials, memberUIDs: members.map(m => m.id).sort(),
     preparedUIDs: [...new Set(Object.entries(materials).map(([id, value]) => value.ownerUID || id))].sort(),
     membershipSignature: membershipSignature(members),
-    inputRevision: randomUUID(), stages: [], planState: 'waiting', generation: null, planError: null, planSource: null,
-    meetingStartedAt: null, completedGeneration: null};
+    inputRevision: meetingInProgress ? agenda.inputRevision : randomUUID(),
+    stages: meetingInProgress ? agenda.stages : [],
+    planState: meetingInProgress ? agenda.planState : 'waiting',
+    generation: meetingInProgress ? agenda.generation : null,
+    planError: meetingInProgress ? agenda.planError : null,
+    planSource: meetingInProgress ? agenda.planSource : null,
+    meetingStartedAt: agenda.meetingStartedAt ?? null,
+    preparationChangedDuringMeeting: meetingInProgress,
+    completedGeneration: meetingInProgress ? agenda.completedGeneration : null};
 }
 // The model supplies priorities in minutes; allocate integer slots without gaps or lost minutes.
 function timedStages(phases, duration) {

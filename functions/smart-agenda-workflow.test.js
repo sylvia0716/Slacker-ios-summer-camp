@@ -190,6 +190,28 @@ test('saving unchanged preparation keeps the published plan, timer and revision 
  assert.deepEqual(s.agenda.stages,core.timedStages(phases(stages),20));
  await s.trigger();assert.equal(s.calls,1);
 });
+test('only the leader starts a meeting; new preparation keeps the live plan until the leader ends it',async()=>{
+ const s=setup(async()=>stages);await s.trigger();
+ const revision=s.agenda.inputRevision;
+ await assert.rejects(s.call('start',{inputRevision:revision},'b'),e=>e.code==='permission-denied');
+ await s.call('start',{inputRevision:revision});
+ const started=s.agenda.meetingStartedAt, published=s.agenda.stages;
+ await s.call('material',{note:'Updated order',attachment:null,expectedRevision:'b1'},'b');
+ assert.equal(s.agenda.meetingStartedAt,started);
+ assert.equal(s.agenda.inputRevision,revision);
+ assert.deepEqual(s.agenda.stages,published);
+ assert.equal(s.agenda.materials.b.note,'Updated order');
+ await assert.rejects(s.call('meeting',{topic:'New topic',meetingAtMillis:123456000,duration:20,expectedRevision:'m1'}),e=>e.code==='failed-precondition');
+ await assert.rejects(s.call('end',{inputRevision:revision},'b'),e=>e.code==='permission-denied');
+ await s.call('material',{note:'',attachment:null,expectedRevision:s.agenda.materials.b.revision},'b');
+ assert.deepEqual(s.agenda.preparedUIDs,['a']);
+ assert.deepEqual(s.agenda.stages,published);
+ s.members.push({id:'c',role:'member'});
+ await s.call('end',{inputRevision:revision});
+ assert.equal(s.agenda.meetingStartedAt,null);
+ assert.equal(s.agenda.stages.length,0);
+ assert.equal(s.agenda.planState,'waiting');
+});
 test('saving the same meeting leaves a ready plan intact',async()=>{
  const s=setup(async()=>stages);s.agenda={...s.agenda,meetingAt:{toMillis:()=>123456000}};
  await s.trigger(); const before=s.agenda;

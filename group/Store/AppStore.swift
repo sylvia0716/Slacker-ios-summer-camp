@@ -1399,8 +1399,16 @@ final class AppStore {
             task.firestoreGroupID = groupPath
         }
 
-        projectTasks.append(task)
-        groups[groupIndex].taskIDs.append(task.id)
+        // A snapshot may arrive before the callable returns, or reload/reorder the groups.
+        guard let currentGroupIndex = groups.firstIndex(where: { $0.id == groupID }) else {
+            throw PublishTaskError.groupNotFound
+        }
+        if !projectTasks.contains(where: { $0.id == task.id }) {
+            projectTasks.append(task)
+        }
+        if !groups[currentGroupIndex].taskIDs.contains(task.id) {
+            groups[currentGroupIndex].taskIDs.append(task.id)
+        }
         lastEvent = L10n.format("已發布新任務「{0}」", String(describing: trimmedTitle))
         return task
     }
@@ -1499,7 +1507,9 @@ final class AppStore {
         attachmentListeners[taskID]?.remove()
         attachmentListeners[taskID] = nil
         projectTasks.removeAll { $0.id == taskID }
-        groups[groupIndex].taskIDs.removeAll { $0 == taskID }
+        if let currentGroupIndex = groups.firstIndex(where: { $0.id == task.groupID }) {
+            groups[currentGroupIndex].taskIDs.removeAll { $0 == taskID }
+        }
         lastEvent = L10n.format("已刪除任務「{0}」", String(describing: task.title))
     }
 

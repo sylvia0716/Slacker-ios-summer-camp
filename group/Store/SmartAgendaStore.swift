@@ -15,6 +15,7 @@ final class SmartAgendaStore {
     private(set) var isSaving = false
     private(set) var isGenerating = false
     private(set) var isDownloading = false
+    private(set) var cannotGenerateOnThisDevice = false
     var error: String?
     var aiError: String?
     var previewURL: URL?
@@ -55,6 +56,7 @@ final class SmartAgendaStore {
                         self.cancelGeneration()
                         self.attemptedRevision = nil
                         self.aiError = nil
+                        self.cannotGenerateOnThisDevice = false
                     }
                     self.agenda = value
                     self.error = nil
@@ -258,6 +260,10 @@ final class SmartAgendaStore {
         } catch {
             if claimed { _ = try? await call("failPlan", fields) }
             guard generationID == id, !Task.isCancelled else { return }
+            if let availability = error as? AppleIntelligenceServiceError,
+               case .deviceNotEligible = availability {
+                cannotGenerateOnThisDevice = true
+            }
             if error is LanguageModelSession.GenerationError {
                 aiError = L10n.text("Apple Intelligence 暫時無法完成這次請求，請稍後再試。")
             } else {

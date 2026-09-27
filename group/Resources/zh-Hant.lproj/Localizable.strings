@@ -808,6 +808,8 @@
 "自動化議程" = "自動化議程";
 "團隊準備" = "團隊準備";
 "{0}/{1} 人已準備" = "{0}/{1} 人已準備";
+"尚未準備：{0}" = "尚未準備：{0}";
+"、" = "、";
 "新增我的資料" = "新增我的資料";
 "會議主題" = "會議主題";
 "設定會議" = "設定會議";
@@ -821,6 +823,8 @@
 "範例會議議程" = "範例會議議程";
 "AI 建議議程" = "AI 建議議程";
 "正在產生會議議程…" = "正在產生會議議程…";
+"議程尚未產生" = "議程尚未產生";
+"請由支援 Apple Intelligence 的成員開啟專案以產生議程。" = "請由支援 Apple Intelligence 的成員開啟專案以產生議程。";
 "產生會議議程" = "產生會議議程";
 "正在開始…" = "正在開始…";
 "開始會議" = "開始會議";
@@ -854,12 +858,15 @@
 "Upload is incomplete." = "上傳尚未完成，請再試一次。";
 "Membership required." = "你已不在此群組中。";
 "Only the leader can edit the meeting." = "只有組長可以編輯會議。";
+"Only the leader can start the meeting." = "只有組長可以開始會議。";
+"End the meeting before editing its settings." = "請先結束會議，再修改會議設定。";
 "Enter a topic, meeting date and 5–180 minute duration." = "請填寫會議主題、日期及 5 至 180 分鐘的會議長度。";
 "Meeting changed. Reopen the editor." = "會議資料已變更，請重新開啟編輯視窗。";
 "The leader must set a meeting first." = "請先由組長設定會議。";
 "Note must be 1000 characters or less." = "準備內容不可超過 1000 個字。";
 "Your material changed. Reopen the editor." = "你的準備資料已變更，請重新開啟編輯視窗。";
 "Everyone must prepare first." = "請等待所有成員提交準備資料。";
+"等待組長開始會議。" = "等待組長開始會議。";
 "Please wait a minute before trying again." = "請稍候一分鐘再試。";
 "The meeting plan is not ready." = "會議議程尚未準備完成。";
 "Only the leader can end the meeting." = "只有組長可以結束會議。";
@@ -970,3 +977,13 @@
 "Generation expired. Please try again." = "議程產生逾時，請重試。";
 "Provide 3–4 stages with goals and both languages." = "產生的議程格式不完整，請重試。";
 "Invalid generation token." = "無法驗證這次議程生成，請重試。";
+
+"捨棄未儲存的內容？" = "捨棄未儲存的內容？";
+
+"繼續編輯" = "繼續編輯";
+
+"捨棄" = "捨棄";
+
+"群組已截止，請先延長群組期限再修改任務。" = "群組已截止，請先延長群組期限再修改任務。";
+
+"截止時間已過，請選擇未來時間後儲存。" = "截止時間已過，請選擇未來時間後儲存。";

@@ -17,8 +17,10 @@ struct PublishTaskSheet: View {
     @State private var subtaskDrafts = [SubtaskDraft()]
     @State private var selectedMemberID: UUID?
     @State private var deadline: Date
+    @State private var initialDeadline: Date
     @State private var submissionError: String?
     @State private var isPublishing = false
+    @State private var confirmsDiscard = false
 
     init(
         group: Group,
@@ -35,14 +37,19 @@ struct PublishTaskSheet: View {
         let preferredDeadline = now.addingTimeInterval(60 * 60)
         let initialDeadline = max(now, min(preferredDeadline, group.deadline))
         _deadline = State(initialValue: initialDeadline)
+        _initialDeadline = State(initialValue: initialDeadline)
     }
 
     var body: some View {
         BombFormSheet(title: L10n.text("發布任務"), showsHandle: true) {
             taskFields
+                .disabled(isPublishing)
             subtaskFields
+                .disabled(isPublishing)
             assigneePicker
+                .disabled(isPublishing)
             deadlinePicker
+                .disabled(isPublishing)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -56,7 +63,7 @@ struct PublishTaskSheet: View {
                 isEnabled: canPublish,
                 isBusy: isPublishing,
                 onPrimary: publish,
-                onSecondary: onCancel
+                onSecondary: requestCancel
             )
         }
         .background(BombTheme.yellow)
@@ -66,6 +73,10 @@ struct PublishTaskSheet: View {
                 .stroke(BombTheme.ink, lineWidth: 3)
         }
         .shadow(color: BombTheme.ink.opacity(0.3), radius: 14, y: 4)
+        .bombDialog(L10n.text("捨棄未儲存的內容？"), isPresented: $confirmsDiscard, destructiveIsRed: true) {
+            Button(L10n.text("繼續編輯"), role: .cancel) { }
+            Button(L10n.text("捨棄"), role: .destructive, action: onCancel)
+        }
     }
 
     private var subtaskFields: some View {
@@ -90,8 +101,8 @@ struct PublishTaskSheet: View {
                         } label: {
                             Image(systemName: "minus")
                                 .font(.subheadline.weight(.black))
-                                .frame(width: 38, height: 38)
-                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .foregroundStyle(BombTheme.paper)
                                 .background(BombTheme.red)
                                 .clipShape(.circle)
                         }
@@ -266,6 +277,18 @@ struct PublishTaskSheet: View {
                 submissionError = error.localizedDescription
                 isPublishing = false
             }
+        }
+    }
+
+    private func requestCancel() {
+        guard !isPublishing else { return }
+        let hasChanges = !title.isEmpty || !detail.isEmpty
+            || selectedMemberID != nil || deadline != initialDeadline
+            || subtaskDrafts.count != 1 || subtaskDrafts.contains { !$0.title.isEmpty }
+        if hasChanges {
+            confirmsDiscard = true
+        } else {
+            onCancel()
         }
     }
 

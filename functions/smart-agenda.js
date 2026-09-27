@@ -82,6 +82,7 @@ exports.updateSmartAgenda = onCall({region}, async request => {
         if (changedMembers) write(agenda);
         return {saved:true};
       }
+      if (agenda.meetingStartedAt) throw new HttpsError('failed-precondition','End the meeting before editing its settings.');
       if (d.expectedRevision !== current.meetingRevision) throw new HttpsError('aborted','Meeting changed. Reopen the editor.');
       write(invalidateAgenda({...agenda, topic:d.topic.trim(), meetingAt:Timestamp.fromMillis(d.meetingAtMillis),
         duration:d.duration, meetingRevision:randomUUID()}, members));
@@ -208,14 +209,22 @@ exports.updateSmartAgenda = onCall({region}, async request => {
       write({...agenda,planState:'waiting',planError:null,generation:null,generationRequest:randomUUID()});
       return {queued:true};
     }
+    if (d.action === 'end') {
+      if (caller.role !== 'leader') throw new HttpsError('permission-denied','Only the leader can end the meeting.');
+      if (!agenda.meetingStartedAt) {
+        if (changedMembers) write(agenda);
+        return {saved:true};
+      }
+      if (d.inputRevision !== agenda.inputRevision) throw new HttpsError('failed-precondition','The meeting plan is not ready.');
+      if (agenda.preparationChangedDuringMeeting) write(invalidateAgenda({...agenda, meetingStartedAt:null}, members));
+      else write({...agenda, meetingStartedAt:null});
+      return {saved:true};
+    }
+    if (d.action === 'start' && caller.role !== 'leader') throw new HttpsError('permission-denied','Only the leader can start the meeting.');
     if (changedMembers || d.inputRevision !== agenda.inputRevision || !allPrepared || !agenda.stages?.length) {
       throw new HttpsError('failed-precondition','The meeting plan is not ready.');
     }
     if (d.action === 'start' && !agenda.meetingStartedAt) write({...agenda, meetingStartedAt:FieldValue.serverTimestamp()});
-    if (d.action === 'end') {
-      if (caller.role !== 'leader') throw new HttpsError('permission-denied','Only the leader can end the meeting.');
-      write({...agenda, meetingStartedAt:null});
-    }
     return {saved:true};
   });
 });
