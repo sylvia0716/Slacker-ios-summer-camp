@@ -11,47 +11,59 @@ private enum BombLaunchTiming {
 /// Replays the entrance without rebuilding the underlying login, navigation or stores.
 struct BombLaunchView<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var startedAt = ContinuousClock.now
     @State private var playbackGeneration = UUID()
     @State private var isRevealed = false
     @State private var isFinished = false
+    @State private var playingReplayID: Int?
     let playsAnimation: Bool
     let replayID: Int
+    let coversWhenInactive: Bool
     @ViewBuilder let content: () -> Content
 
-    init(playsAnimation: Bool = true, replayID: Int = 0, @ViewBuilder content: @escaping () -> Content) {
+    init(playsAnimation: Bool = true, replayID: Int = 0, coversWhenInactive: Bool = false,
+         @ViewBuilder content: @escaping () -> Content) {
         self.playsAnimation = playsAnimation
         self.replayID = replayID
+        self.coversWhenInactive = coversWhenInactive
         self.content = content
         _isRevealed = State(initialValue: !playsAnimation)
         _isFinished = State(initialValue: !playsAnimation)
     }
 
     var body: some View {
+        // A new request covers content immediately; .task starts on a later render pass.
+        let holdsFirstFrame = playsAnimation && (playingReplayID != replayID
+            || (coversWhenInactive && scenePhase != .active))
+        let revealed = isRevealed && !holdsFirstFrame
         ZStack {
             content()
-                .allowsHitTesting(isRevealed)
-                .accessibilityHidden(!isRevealed)
+                .opacity(revealed ? 1 : 0)
+                .allowsHitTesting(revealed)
+                .accessibilityHidden(!revealed)
 
-            if !isFinished {
+            if !isFinished || holdsFirstFrame {
                 GeometryReader { proxy in
-                    TimelineView(.animation(paused: reduceMotion)) { _ in
+                    TimelineView(.animation(paused: reduceMotion || scenePhase != .active)) { _ in
                         let duration = startedAt.duration(to: .now).components
                         let elapsed = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
-                        BombLaunchArtwork(elapsed: reduceMotion ? 0 : max(0, elapsed))
+                        BombLaunchArtwork(elapsed: reduceMotion || holdsFirstFrame ? 0 : max(0, elapsed))
                     }
-                    .offset(x: reduceMotion ? 0 : (isRevealed ? -proxy.size.width * 1.15 : 0))
-                    .opacity(reduceMotion && isRevealed ? 0 : 1)
+                    .background(BombTheme.yellow)
+                    .offset(x: reduceMotion ? 0 : (revealed ? -proxy.size.width * 1.15 : 0))
+                    .opacity(reduceMotion && revealed ? 0 : 1)
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
 
-                if !isRevealed {
+                if !revealed {
                     VStack {
                         HStack {
                             Spacer()
                             Button(L10n.text("略過動畫")) { reveal() }
+                                .disabled(scenePhase != .active)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(BombTheme.ink)
                                 .padding(.horizontal, 16)
@@ -66,13 +78,16 @@ struct BombLaunchView<Content: View>: View {
                 }
             }
         }
-        .task(id: replayID) {
-            guard playsAnimation else { return }
+        .background(BombTheme.yellow)
+        .task(id: PlaybackRequest(replayID: replayID, isActive: scenePhase == .active)) {
+            guard playsAnimation, scenePhase == .active,
+                  playingReplayID != replayID || !isFinished else { return }
             let generation = UUID()
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 playbackGeneration = generation
+                playingReplayID = replayID
                 startedAt = .now
                 isRevealed = false
                 isFinished = false
@@ -95,6 +110,11 @@ struct BombLaunchView<Content: View>: View {
         .onChange(of: reduceMotion) { _, enabled in
             if enabled { reveal() }
         }
+    }
+
+    private struct PlaybackRequest: Equatable {
+        let replayID: Int
+        let isActive: Bool
     }
 
     private func reveal() {

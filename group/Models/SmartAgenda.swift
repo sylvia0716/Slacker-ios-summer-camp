@@ -62,6 +62,7 @@ struct SmartAgenda: Decodable {
         var time: String { L10n.format("{0}–{1} 分鐘", String(start), String(end)) }
     }
     struct Generation: Decodable {
+        let ownerUID: String?
         let expiresAt: Date
     }
     let topic: String
@@ -93,11 +94,8 @@ struct SmartAgenda: Decodable {
 
     func isGenerating(at date: Date) -> Bool {
         guard allPrepared, stages.isEmpty else { return false }
-        switch planState {
-        case "generating": return (generation?.expiresAt ?? .distantPast) > date
-        case "waiting": return (updatedAt?.addingTimeInterval(180) ?? .distantPast) > date
-        default: return false
-        }
+        return planState == "generating" && generation?.ownerUID != nil
+            && (generation?.expiresAt ?? .distantPast) > date
     }
 
     func materials(for uid: String) -> [MaterialEntry] {
@@ -125,11 +123,7 @@ struct SmartAgenda: Decodable {
     }
     var generationError: String? {
         guard planState == "failed" else { return nil }
-        switch planError {
-        case "quota": return "The app's AI service has insufficient credit. Please contact support."
-        case "configuration": return "AI is unavailable. Please contact the group leader."
-        default: return "Could not generate the meeting plan. Please try again."
-        }
+        return "Apple Intelligence 暫時無法完成這次請求，請稍後再試。"
     }
     var summary: String {
         let formatter = DateFormatter()

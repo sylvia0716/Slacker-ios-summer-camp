@@ -3,10 +3,7 @@ const {getFirestore, FieldValue, Timestamp} = require('firebase-admin/firestore'
 const {getStorage} = require('firebase-admin/storage');
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {onDocumentWritten} = require('firebase-functions/v2/firestore');
-const {defineSecret} = require('firebase-functions/params');
-const {generatePlan, model} = require('./smart-agenda-ai');
-const openAIKey = defineSecret('OPENAI_API_KEY');
-const {membershipVersion, membershipSignature, materialsForMember, invalidateAgenda} = require('./smart-agenda-core');
+const {membershipVersion, membershipSignature, materialsForMember, invalidateAgenda, timedStages} = require('./smart-agenda-core');
 const region = 'asia-east1';
 const types = {
   png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', pdf:'application/pdf',
@@ -20,6 +17,8 @@ const keysByAction = {
   material:['note','attachment','expectedRevision'], retry:[],
   link:['linkID','title','url','expectedRevision'],
   start:['inputRevision'], end:['inputRevision'],
+  claimPlan:['inputRevision','token'], completePlan:['inputRevision','token','phases'],
+  failPlan:['inputRevision','token'],
 };
 function requireRequest(request) {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated','Please sign in.');
@@ -156,6 +155,50 @@ exports.updateSmartAgenda = onCall({region}, async request => {
       return {saved:true};
     }
     const allPrepared = members.length > 0 && agenda.preparedUIDs?.length === members.length;
+    if (['claimPlan','completePlan','failPlan'].includes(d.action)) {
+      if (typeof d.token !== 'string' || !/^[a-f0-9-]{36}$/.test(d.token)) {
+        throw new HttpsError('invalid-argument','Invalid generation token.');
+      }
+      if (changedMembers || d.inputRevision !== agenda.inputRevision || !allPrepared) {
+        throw new HttpsError('failed-precondition','Preparation changed. Reopen the agenda.');
+      }
+      const lease = agenda.generation;
+      const ownsLease = lease?.ownerUID === uid && lease.token === d.token;
+      if (d.action === 'claimPlan') {
+        if (agenda.stages?.length) return {status:'ready'};
+        // Legacy cloud leases have no ownerUID and must not block the on-device replacement.
+        if (lease?.ownerUID && lease.expiresAt.toMillis() > Date.now() && !ownsLease) return {status:'busy'};
+        if (!ownsLease || lease.expiresAt.toMillis() <= Date.now()) {
+          write({...agenda,planState:'generating',planError:null,lastGenerationAt:FieldValue.serverTimestamp(),
+            generation:{token:d.token,ownerUID:uid,inputRevision:agenda.inputRevision,
+              expiresAt:Timestamp.fromMillis(Date.now()+300000)}});
+        }
+        return {status:'claimed',input:{topic:agenda.topic,duration:agenda.duration,
+          members:members.map((m,index)=>({member:index+1,materials:materialsForMember(agenda.materials,m.id)
+            .map(material=>({note:material.note,fileName:material.attachment?.fileName || ''}))}))}};
+      }
+      // Retrying a committed upload after a lost response must not replace the result.
+      if (d.action === 'completePlan' && agenda.completedGeneration?.token === d.token
+          && agenda.completedGeneration.ownerUID === uid && agenda.stages?.length) return {saved:true};
+      if (!ownsLease || lease.expiresAt.toMillis() <= Date.now()) {
+        throw new HttpsError('failed-precondition','Generation expired. Please try again.');
+      }
+      if (d.action === 'failPlan') {
+        write({...agenda,planState:'failed',planError:'unavailable',generation:null});
+        return {saved:true};
+      }
+      let stages;
+      try {
+        stages = timedStages(d.phases, agenda.duration);
+        if (stages.some(stage=>!stage.titleZhHant || !stage.goalZhHant)) throw Error('Missing translation');
+      } catch {
+        throw new HttpsError('invalid-argument','Provide 3–4 stages with goals and both languages.');
+      }
+      write({...agenda,stages,planState:'ready',planError:null,generation:null,
+        planSource:'appleIntelligence',planModel:'SystemLanguageModel.default',
+        completedGeneration:{token:d.token,ownerUID:uid}});
+      return {saved:true};
+    }
     if (d.action === 'retry') {
       if (!allPrepared || agenda.stages?.length) throw new HttpsError('failed-precondition','Everyone must prepare first.');
       if (agenda.generation?.expiresAt.toMillis() > Date.now()
@@ -177,48 +220,9 @@ exports.updateSmartAgenda = onCall({region}, async request => {
   });
 });
 
-// Only the server can create a plan. Duplicate events share a lease; stale responses are discarded.
-exports.generateSmartAgendaPlan = onDocumentWritten({region,document:'groups/{groupID}/smartAgenda/current',
-  secrets:[openAIKey],timeoutSeconds:120,maxInstances:3,retry:false}, async event => {
-  const after = event.data.after.data();
-  if (!after || after.planState !== 'waiting' || !after.topic || after.stages?.length
-      || !after.memberUIDs?.length || after.preparedUIDs?.length !== after.memberUIDs.length) return;
-  const db=getFirestore(), ref=event.data.after.ref, group=ref.parent.parent;
-  const claim = await db.runTransaction(async tx=>{
-    const [snap,parent,membership]=await Promise.all([tx.get(ref),tx.get(group),tx.get(group.collection('members'))]);
-    if (!snap.exists || !parent.exists || parent.data().deleting) return null;
-    const agenda=snap.data(), members=membership.docs.map(m=>({...m.data(),id:m.id}));
-    if (agenda.membershipSignature !== membershipSignature(members)) {
-      tx.set(ref,{...invalidateAgenda(agenda,members),updatedAt:FieldValue.serverTimestamp()}); return null;
-    }
-    if (agenda.planState !== 'waiting' || agenda.stages?.length || !members.length
-        || agenda.preparedUIDs?.length !== members.length) return null;
-    const token=randomUUID();
-    tx.update(ref,{planState:'generating',planError:null,lastGenerationAt:FieldValue.serverTimestamp(),
-      generation:{token,inputRevision:agenda.inputRevision,expiresAt:Timestamp.fromMillis(Date.now()+180000)}});
-    return {token,revision:agenda.inputRevision,signature:agenda.membershipSignature,input:{topic:agenda.topic,duration:agenda.duration,
-      members:members.map((m,index)=>({member:index+1,materials:materialsForMember(agenda.materials,m.id)
-        .map(material=>({note:material.note,fileName:material.attachment?.fileName || ''}))}))}};
-  });
-  if (!claim) return;
-  let stages, errorCode;
-  try { stages=await generatePlan(claim.input,openAIKey.value()); }
-  catch(error) {
-    errorCode=['quota','configuration','unavailable','invalid-plan'].includes(error.code) ? error.code : 'unavailable';
-    console.warn('Agenda generation failed',{groupID:event.params.groupID,code:errorCode});
-  }
-  await db.runTransaction(async tx=>{
-    const [snap,parent,membership]=await Promise.all([tx.get(ref),tx.get(group),tx.get(group.collection('members'))]);
-    if (!snap.exists || !parent.exists || parent.data().deleting) return;
-    const current=snap.data(),members=membership.docs.map(m=>({...m.data(),id:m.id}));
-    if (current.generation?.token !== claim.token || current.inputRevision !== claim.revision) return;
-    if (membershipSignature(members) !== claim.signature) {
-      tx.set(ref,{...invalidateAgenda(current,members),updatedAt:FieldValue.serverTimestamp()}); return;
-    }
-    tx.update(ref,{stages:stages || [],planState:stages ? 'ready' : 'failed',planError:errorCode || null,
-      generation:null,planSource:stages ? 'openai' : null,planModel:stages ? model : null,updatedAt:FieldValue.serverTimestamp()});
-  });
-});
+// Retain the deployed trigger during the provider transition. It is deliberately inert:
+// devices now generate plans and completePlan validates/shares them; no cloud AI call or secret.
+exports.generateSmartAgendaPlan = onDocumentWritten({region,document:'groups/{groupID}/smartAgenda/current'}, async () => {});
 
 // Joining/leaving changes the denominator and invalidates an old plan. Profile/role edits do not.
 exports.syncAgendaMembership = onDocumentWritten({region, document:'groups/{groupID}/members/{uid}', retry:true}, async event => {

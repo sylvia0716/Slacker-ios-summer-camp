@@ -43,7 +43,7 @@ struct SmartAgendaDetailView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden()
-        .onAppear { store.listen() }
+        .onAppear { store.listen(generatesPlans: true) }
         .onDisappear { store.stop() }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("自動化議程")) {
@@ -383,7 +383,7 @@ private struct SmartAgendaCard: View {
                             .padding(.vertical, 14)
                     } else {
                         retryMessage(store.aiError ?? agenda.generationError
-                                     ?? (["waiting", "generating"].contains(agenda.planState) ? "議程產生逾時，請重試。" : nil))
+                                     ?? "使用 Apple Intelligence 產生議程並同步給成員。")
                     }
                 }
             } else {
