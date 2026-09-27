@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const core=require('./smart-agenda-core');
+const {randomUUID}=require('node:crypto');
 function setup(generate) {
  const members=[{id:'a',role:'leader'},{id:'b',role:'member'}];
  let agenda={...core.invalidateAgenda({topic:'Demo',duration:20,materials:{
@@ -27,53 +28,86 @@ function setup(generate) {
  const context={exports:{},URL,console:{warn(){}},require:name=>{
   if(name==='node:crypto')return require(name);
   if(name==='./smart-agenda-core')return core;
-  if(name==='./smart-agenda-ai')return {model:'test-model',generatePlan:async input=>{calls++;return generate(input);}};
   if(name==='firebase-admin/firestore')return {getFirestore:()=>db,FieldValue:{serverTimestamp:()=>({toMillis:()=>Date.now()})},Timestamp:{fromMillis:value=>({toMillis:()=>value})}};
   if(name==='firebase-admin/storage')return {getStorage(){throw Error('Unexpected Storage call');}};
   if(name==='firebase-functions/v2/https')return {onCall:(_,fn)=>fn,HttpsError};
   if(name==='firebase-functions/v2/firestore')return {onDocumentWritten:(_,fn)=>fn};
-  if(name==='firebase-functions/params')return {defineSecret:()=>({value:()=> 'test-key'})};
   throw Error(name);
  }};
  vm.runInNewContext(fs.readFileSync(__dirname+'/smart-agenda.js','utf8'),context);
- return {get agenda(){return agenda;},set agenda(value){agenda=value;},members,get calls(){return calls;},
-  trigger:()=>context.exports.generateSmartAgendaPlan({params:{groupID:'test'},data:{after:snapshot()}}),
-  call:(action,fields={},uid='a')=>context.exports.updateSmartAgenda({auth:{uid},data:{groupID:'11111111-1111-4111-8111-111111111111',action,...fields}})};
+ const call=(action,fields={},uid='a')=>context.exports.updateSmartAgenda({auth:{uid},data:{groupID:'11111111-1111-4111-8111-111111111111',action,...fields}});
+ return {get agenda(){return agenda;},set agenda(value){agenda=value;},members,get calls(){return calls;},call,
+  cloudEvent:()=>context.exports.generateSmartAgendaPlan({data:{after:snapshot()}}),
+  // Model output is a test fixture; this exercises the same claim/publish boundary as the app.
+  trigger:async()=>{
+   const fields={inputRevision:agenda.inputRevision,token:randomUUID()};
+   const claim=await call('claimPlan',fields);
+   if(claim.status!=='claimed')return;
+   calls++;
+   try { const result=await generate(claim.input); await call('completePlan',{...fields,phases:phases(result)}); }
+   catch(error) { try {await call('failPlan',fields);}catch{} throw error; }
+  }};
 }
 const stages=[{start:0,end:5,title:'Opening',goal:'Approve hook'},{start:5,end:12,title:'Order',goal:'Choose features'},{start:12,end:20,title:'Owners',goal:'Assign edits'}];
-test('all-prepared produces one server plan; duplicate events do not charge twice',async()=>{
- let finish,started;const began=new Promise(r=>{started=r;});
- const s=setup(async()=>{started();return new Promise(r=>{finish=r;});});
- const first=s.trigger();await began;await s.trigger();assert.equal(s.calls,1);
- finish(stages);await first;assert.equal(s.agenda.planState,'ready');assert.equal(s.agenda.planSource,'openai');
- assert.deepEqual(s.agenda.stages,stages);await s.trigger();assert.equal(s.calls,1);
+const phases=result=>result.map(s=>({minutes:s.end-s.start,title:s.title,goal:s.goal,titleZhHant:'討論重點',goalZhHant:'確認具體決議'}));
+const claimFields=s=>({inputRevision:s.agenda.inputRevision,token:randomUUID()});
+test('one device claims generation; other devices cannot publish or cancel its work',async()=>{
+ const s=setup(),fields=claimFields(s);
+ assert.equal((await s.call('claimPlan',fields)).status,'claimed');
+ assert.equal((await s.call('claimPlan',claimFields(s),'b')).status,'busy');
+ await assert.rejects(s.call('completePlan',{...fields,phases:phases(stages)},'b'),e=>e.code==='failed-precondition');
+ await assert.rejects(s.call('failPlan',fields,'b'),e=>e.code==='failed-precondition');
+ await s.call('completePlan',{...fields,phases:phases(stages)});
+ assert.equal(s.agenda.planSource,'appleIntelligence');
+ assert.equal(s.agenda.planState,'ready');
+ assert.equal((await s.call('claimPlan',claimFields(s),'b')).status,'ready');
+ const published=s.agenda;
+ await s.call('completePlan',{...fields,phases:phases(stages)});
+ assert.equal(s.agenda,published);
 });
-test('editing preparation during generation discards the old response',async()=>{
- let finish,started;const began=new Promise(r=>{started=r;});
- const s=setup(async()=>{started();return new Promise(r=>{finish=r;});});
- const running=s.trigger();await began;
+test('preparation changes reject old device output even after a successful publication',async()=>{
+ const s=setup(),fields=claimFields(s);await s.call('claimPlan',fields);
+ await s.call('completePlan',{...fields,phases:phases(stages)});
  await s.call('material',{note:'New opening',attachment:null,expectedRevision:'a1'});
- finish(stages);await running;assert.equal(s.agenda.planState,'waiting');assert.equal(s.agenda.stages.length,0);
+ await assert.rejects(s.call('completePlan',{...fields,phases:phases(stages)}),e=>e.code==='failed-precondition');
+ assert.equal(s.agenda.planState,'waiting');assert.equal(s.agenda.stages.length,0);
 });
-test('membership changes invalidate a completed response',async()=>{
- let finish,started;const began=new Promise(r=>{started=r;});
- const s=setup(async()=>{started();return new Promise(r=>{finish=r;});});
- const running=s.trigger();await began;s.members.push({id:'c',role:'member'});
- finish(stages);await running;assert.equal(s.agenda.memberUIDs.length,3);assert.equal(s.agenda.stages.length,0);
+test('changed or departed memberships cannot publish a stale plan',async()=>{
+ const s=setup(),fields=claimFields(s);await s.call('claimPlan',fields);
+ s.members.push({id:'c',role:'member'});
+ await assert.rejects(s.call('completePlan',{...fields,phases:phases(stages)}),e=>e.code==='failed-precondition');
+ s.members.splice(0,1);
+ await assert.rejects(s.call('completePlan',{...fields,phases:phases(stages)}),e=>e.code==='permission-denied');
+ assert.equal(s.agenda.stages.length,0);
 });
-test('missing preparation never calls AI; quota failure is shared and does not loop',async()=>{
- const s=setup(async()=>{throw Object.assign(Error('Do not expose provider text'),{code:'quota'});});
- const prepared=s.agenda;s.agenda={...prepared,preparedUIDs:['a']};await s.trigger();assert.equal(s.calls,0);
- s.agenda=prepared;await s.trigger();assert.equal(s.agenda.planState,'failed');assert.equal(s.agenda.planError,'quota');
- await s.trigger();assert.equal(s.calls,1);
- await assert.rejects(s.call('retry'),e=>e.code==='resource-exhausted');
- s.agenda={...s.agenda,lastGenerationAt:{toMillis:()=>0}};await s.call('retry');assert.equal(s.agenda.planState,'waiting');
+test('unprepared teams and outsiders cannot claim; failed generation can be retried on another device',async()=>{
+ const s=setup(),original=s.agenda;
+ s.agenda={...original,preparedUIDs:['a']};
+ await assert.rejects(s.call('claimPlan',claimFields(s)),e=>e.code==='failed-precondition');
+ s.agenda=original;
+ await assert.rejects(s.call('claimPlan',claimFields(s),'outside'),e=>e.code==='permission-denied');
+ const fields=claimFields(s);await s.call('claimPlan',fields);await s.call('failPlan',fields);
+ assert.equal(s.agenda.planState,'failed');assert.equal(s.agenda.generation,null);
+ assert.equal((await s.call('claimPlan',claimFields(s),'b')).status,'claimed');
 });
-test('clients cannot publish arbitrary plans, and outsiders cannot retry',async()=>{
- const s=setup(async()=>stages);
- await assert.rejects(s.call('publish',{token:'fake',phases:[]}),e=>e.code==='invalid-argument');
- await assert.rejects(s.call('claim'),e=>e.code==='invalid-argument');
- await assert.rejects(s.call('retry',{},'outside'),e=>e.code==='permission-denied');
+test('invalid phases or missing translations never publish; valid phases use the exact meeting duration',async()=>{
+ const s=setup(),fields=claimFields(s);await s.call('claimPlan',fields);
+ for(const invalid of [[],phases(stages).slice(0,2),[...phases(stages),...phases(stages)],
+  phases(stages).map(p=>({...p,minutes:0})),phases(stages).map(p=>({...p,goalZhHant:''}))]) {
+  await assert.rejects(s.call('completePlan',{...fields,phases:invalid}),e=>e.code==='invalid-argument');
+  assert.equal(s.agenda.stages.length,0);
+ }
+ await s.call('completePlan',{...fields,phases:phases(stages).map(p=>({...p,minutes:9}))});
+ assert.equal(s.agenda.stages.length,3);assert.equal(s.agenda.stages[0].start,0);
+ assert.equal(s.agenda.stages.at(-1).end,20);
+ assert(s.agenda.stages.every((p,i)=>p.end>p.start && (i===0 || p.start===s.agenda.stages[i-1].end)));
+});
+test('legacy cloud failures and ownerless leases do not block Apple Intelligence',async()=>{
+ const s=setup();s.agenda={...s.agenda,planState:'failed',planError:'quota',generation:{token:'old',expiresAt:{toMillis:()=>Date.now()+180000}}};
+ const fields=claimFields(s);assert.equal((await s.call('claimPlan',fields)).status,'claimed');
+ assert.equal(s.agenda.planError,null);assert.equal(s.agenda.generation.ownerUID,'a');
+ const lease=s.agenda.generation;
+ await s.call('claimPlan',fields);assert.equal(s.agenda.generation,lease);
 });
 test('members can generate at least five plans after revising their own materials',async()=>{
  const s=setup(async()=>stages);
@@ -153,7 +187,7 @@ test('saving unchanged preparation keeps the published plan, timer and revision 
  await s.call('material',{note:'  Opening  ',attachment:null,expectedRevision:'a1'});
  assert.equal(s.agenda.inputRevision,before.inputRevision);
  assert.equal(s.agenda.meetingStartedAt,started);
- assert.deepEqual(s.agenda.stages,stages);
+ assert.deepEqual(s.agenda.stages,core.timedStages(phases(stages),20));
  await s.trigger();assert.equal(s.calls,1);
 });
 test('saving the same meeting leaves a ready plan intact',async()=>{
@@ -162,7 +196,7 @@ test('saving the same meeting leaves a ready plan intact',async()=>{
  await s.call('meeting',{topic:'Demo',meetingAtMillis:123456000,duration:20,expectedRevision:'m1'});
  assert.equal(s.agenda.inputRevision,before.inputRevision);
  assert.equal(s.agenda.meetingRevision,'m1');
- assert.deepEqual(s.agenda.stages,stages);
+ assert.deepEqual(s.agenda.stages,core.timedStages(phases(stages),20));
 });
 test('an unchanged save still reconciles a membership change',async()=>{
  const s=setup(async()=>stages);await s.call('material',newMaterial(firstID,'Extra'));
@@ -172,14 +206,14 @@ test('an unchanged save still reconciles a membership change',async()=>{
  assert.equal(s.agenda.preparedUIDs.length,2);
 });
 
-test('an expired generation can be retried and the previous response cannot replace the new plan',async()=>{
- let finish,started,count=0;const began=new Promise(r=>{started=r;});
- const s=setup(async()=>{if(++count===1){started();return new Promise(r=>{finish=r;});}return stages;});
- const first=s.trigger();await began;
- s.agenda={...s.agenda,generation:{...s.agenda.generation,expiresAt:{toMillis:()=>0}},lastGenerationAt:{toMillis:()=>0}};
- await s.call('retry');await s.trigger();
- finish([{start:0,end:20,title:'Stale response',goal:'Must not be published'}]);await first;
- assert.equal(s.calls,2);assert.equal(s.agenda.planState,'ready');assert.deepEqual(s.agenda.stages,stages);
+test('expired leases can be reclaimed and cannot overwrite newer device results',async()=>{
+ const s=setup(),old=claimFields(s);await s.call('claimPlan',old);
+ s.agenda={...s.agenda,generation:{...s.agenda.generation,expiresAt:{toMillis:()=>0}}};
+ await assert.rejects(s.call('completePlan',{...old,phases:phases(stages)}),e=>e.code==='failed-precondition');
+ const current=claimFields(s);await s.call('claimPlan',current,'b');
+ await s.call('completePlan',{...current,phases:phases(stages)},'b');
+ await assert.rejects(s.call('completePlan',{...old,phases:phases(stages)}),e=>e.code==='failed-precondition');
+ assert.equal(s.agenda.completedGeneration.ownerUID,'b');
 });
 
 test('retrying a committed edit after a lost response keeps the same plan and revision',async()=>{
@@ -259,4 +293,12 @@ test('leaders can manage shared links; retried deletes cannot remove a recreated
  await s.call('link',newLink(),'b');
  await assert.rejects(s.call('link',request,'b'),e=>e.code==='aborted');
  assert(s.agenda.links[linkID]);
+});
+
+
+test('the retained cloud trigger never calls a provider or changes agenda data',async()=>{
+ const s=setup(()=>{throw Error('Cloud AI must not run');});
+ const before=s.agenda;
+ await s.cloudEvent();await s.cloudEvent();
+ assert.equal(s.agenda,before);assert.equal(s.calls,0);
 });

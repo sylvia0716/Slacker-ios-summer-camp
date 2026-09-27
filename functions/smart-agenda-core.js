@@ -27,7 +27,7 @@ function invalidateAgenda(agenda, members) {
     preparedUIDs: [...new Set(Object.entries(materials).map(([id, value]) => value.ownerUID || id))].sort(),
     membershipSignature: membershipSignature(members),
     inputRevision: randomUUID(), stages: [], planState: 'waiting', generation: null, planError: null, planSource: null,
-    meetingStartedAt: null};
+    meetingStartedAt: null, completedGeneration: null};
 }
 // The model supplies priorities in minutes; allocate integer slots without gaps or lost minutes.
 function timedStages(phases, duration) {

@@ -9,7 +9,6 @@ struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var authSession = AuthSessionStore()
     @State private var launchAnimationID = 0
-    @State private var wasInBackground = false
     @State private var tab = AppTab.groups
     @State private var settingsNavigationID = UUID()
     @State private var tutorialStep: TutorialStep?
@@ -21,7 +20,8 @@ struct AppRootView: View {
     private let reviewRouter = ReviewNotificationRouter.shared
 
     var body: some View {
-        BombLaunchView(playsAnimation: playsLaunchAnimation, replayID: launchAnimationID) {
+        BombLaunchView(playsAnimation: playsLaunchAnimation, replayID: launchAnimationID,
+                       coversWhenInactive: !authSession.isAuthenticated && !authSession.isPreviewSession) {
             ZStack {
                 if authSession.isCheckingSession {
                     authenticationLoadingView
@@ -65,16 +65,20 @@ struct AppRootView: View {
         .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                if wasInBackground, !authSession.isAuthenticated, !authSession.isPreviewSession {
-                    authSession.returnToEntryIfUnauthenticated()
-                    launchAnimationID += 1
-                }
-                wasInBackground = false
                 AppLanguageSettings.shared.refreshSystemLanguage()
                 store.resumeCloudSync()
             }
             else if phase == .background {
-                wasInBackground = true
+                // Prepare the entrance before iOS snapshots the backgrounded app.
+                // Returning to the foreground starts playback, rather than exposing login first.
+                if !authSession.isAuthenticated, !authSession.isPreviewSession {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        launchAnimationID += 1
+                        authSession.returnToEntryIfUnauthenticated()
+                    }
+                }
                 store.suspendCloudSync()
                 if !store.isDemoMode { PokeBackgroundRefresh.shared.schedule() }
             }

@@ -963,3 +963,10 @@
 "尚未提交筆記或附件：{0}。" = "Still missing a note or attachment: {0}.";
 "討論重點：{0}。" = "Discussion focus: {0}.";
 "{0}等 {1} 人" = "{0} ({1} people in total)";
+
+"會前資料過長，請精簡備註後再產生議程。" = "The preparation is too long. Shorten the notes and try again.";
+"使用 Apple Intelligence 產生議程並同步給成員。" = "Generate with Apple Intelligence and share with members.";
+"Preparation changed. Reopen the agenda." = "Preparation changed. Reopen the agenda.";
+"Generation expired. Please try again." = "Generation expired. Please try again.";
+"Provide 3–4 stages with goals and both languages." = "Provide 3–4 stages with goals and both languages.";
+"Invalid generation token." = "Invalid generation token.";

@@ -125,15 +125,38 @@ test('retrying an attached edit preserves the exact uploaded object and another 
  await assert.rejects(member.call('material',{...request,note:'Conflicting stale change'}),e=>e.code==='functions/aborted');
 });
 
-test('clients cannot publish AI output; server-owned plan and meeting timer are shared',async()=>{
- await assert.rejects(leader.call('claim'),e=>e.code==='functions/invalid-argument');
- await assert.rejects(member.call('publish',{token:'fake',phases:[]}),e=>e.code==='functions/invalid-argument');
- // Provider and concurrency behavior are covered separately in smart-agenda-workflow.test.js.
- const stages=[{start:0,end:5,title:'Review materials',goal:'Confirm the opening'},
-  {start:5,end:12,title:'Decide order',goal:'Choose features'},{start:12,end:20,title:'Finalize',goal:'Assign revisions'}];
- await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),path),{stages,planState:'ready',generation:null,planSource:'test'}));
+test('device-generated plan is validated, stored in Firebase and streamed to another account',async()=>{
+ const {randomUUID}=await import('node:crypto');
+ const before=await read(),fields={inputRevision:before.inputRevision,token:randomUUID()};
+ const phases=[{minutes:5,title:'Review materials',goal:'Confirm the opening',titleZhHant:'檢視資料',goalZhHant:'確認開場'},
+  {minutes:7,title:'Decide order',goal:'Choose features',titleZhHant:'決定順序',goalZhHant:'選定功能'},
+  {minutes:8,title:'Finalize',goal:'Assign revisions',titleZhHant:'完成決議',goalZhHant:'分派修改'}];
+ await assert.rejects(outsider.call('claimPlan',fields),e=>e.code==='functions/permission-denied');
+ const claim=await leader.call('claimPlan',fields);
+ assert.equal(claim.status,'claimed');
+ assert.equal(claim.input.duration,20);
+ assert.equal(claim.input.members.length,2);
+ assert(claim.input.members.some(m=>m.materials.some(v=>v.fileName==='Feature Priorities.pdf')));
+ assert.equal((await member.call('claimPlan',{...fields,token:randomUUID()})).status,'busy');
+ await assert.rejects(member.call('completePlan',{...fields,phases}),e=>e.code==='functions/failed-precondition');
+ await assert.rejects(leader.call('completePlan',{...fields,phases:phases.slice(0,2)}),e=>e.code==='functions/invalid-argument');
+ await assertFails(updateDoc(doc(member.db,path),{stages:phases,planSource:'appleIntelligence'}));
+ const observed=new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>{stop();reject(Error('Published plan did not sync'));},10000);
+  const stop=onSnapshot(doc(member.db,path),snapshot=>{
+   if(snapshot.data()?.planSource==='appleIntelligence' && snapshot.data()?.stages?.length===3) {
+    clearTimeout(timeout);stop();resolve(snapshot.data());
+   }
+  },reject);
+ });
+ await leader.call('completePlan',{...fields,phases});
+ const shared=await observed;
+ assert.equal(shared.stages[0].titleZhHant,'檢視資料');
  const value=await read(leader);
+ assert.deepEqual(value.stages,shared.stages);
  assert.deepEqual(value.stages.map(s=>[s.start,s.end]),[[0,5],[5,12],[12,20]]);
+ await leader.call('completePlan',{...fields,phases});
+ assert.deepEqual(await read(),value);
  await leader.call('start',{inputRevision:value.inputRevision});
  assert((await read(member)).meetingStartedAt);
  await assert.rejects(member.call('end',{inputRevision:value.inputRevision}),e=>e.code==='functions/permission-denied');

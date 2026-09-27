@@ -3,6 +3,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import FirebaseStorage
 import Foundation
+import FoundationModels
 import Observation
 
 @MainActor @Observable
@@ -19,6 +20,10 @@ final class SmartAgendaStore {
     var previewURL: URL?
     @ObservationIgnored private var listener: ListenerRegistration?
     @ObservationIgnored private var subscription = UUID()
+    @ObservationIgnored private var generatesPlans = false
+    @ObservationIgnored private var attemptedRevision: String?
+    @ObservationIgnored private var generationTask: Task<Void, Never>?
+    @ObservationIgnored private var generationID: UUID?
     @ObservationIgnored private var downloadedFiles: [URL] = []
     @ObservationIgnored private var pendingUploads: [String: PendingUpload] = [:]
     private struct PendingUpload {
@@ -33,7 +38,8 @@ final class SmartAgendaStore {
 
     init(groupID: String, uid: String) { self.groupID = groupID; self.uid = uid }
 
-    func listen() {
+    func listen(generatesPlans: Bool = false) {
+        self.generatesPlans = generatesPlans
         guard listener == nil, Auth.auth().currentUser?.uid == uid else { return }
         isLoading = true
         let token = UUID()
@@ -45,9 +51,15 @@ final class SmartAgendaStore {
                 if let error { self.error = error.localizedDescription; return }
                 do {
                     let value = try snapshot?.exists == true ? snapshot?.data(as: SmartAgenda.self) : nil
-                    if value?.inputRevision != self.agenda?.inputRevision { self.aiError = nil }
+                    if value?.inputRevision != self.agenda?.inputRevision {
+                        self.cancelGeneration()
+                        self.attemptedRevision = nil
+                        self.aiError = nil
+                    }
                     self.agenda = value
                     self.error = nil
+                    if value?.stages.isEmpty == false { self.aiError = nil }
+                    self.generateIfNeeded()
                 } catch { self.error = error.localizedDescription }
             }
         }
@@ -55,6 +67,8 @@ final class SmartAgendaStore {
 
     func stop() {
         subscription = UUID()
+        cancelGeneration()
+        attemptedRevision = nil
         listener?.remove()
         listener = nil
         for url in downloadedFiles { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -188,15 +202,67 @@ final class SmartAgendaStore {
         } catch { self.error = error.localizedDescription }
     }
 
-    func retryGeneration() async {
-        guard let agenda, agenda.allPrepared, agenda.stages.isEmpty, !isGenerating else { return }
-        aiError = nil
+    private func cancelGeneration() {
+        generationID = nil
+        generationTask?.cancel()
+        generationTask = nil
+        isGenerating = false
+    }
+
+    private func generateIfNeeded() {
+        guard generatesPlans, listener != nil, let agenda, agenda.allPrepared, agenda.stages.isEmpty,
+              !isGenerating, attemptedRevision != agenda.inputRevision, !agenda.isGenerating(at: .now) else { return }
+        attemptedRevision = agenda.inputRevision
+        let id = UUID(), revision = agenda.inputRevision
+        generationID = id
         isGenerating = true
-        defer { isGenerating = false }
+        aiError = nil
+        generationTask = Task { [weak self] in
+            await self?.generatePlan(revision: revision, id: id)
+        }
+    }
+
+    func retryGeneration() async {
+        guard !isGenerating else { return }
+        attemptedRevision = nil
+        generateIfNeeded()
+        await generationTask?.value
+    }
+
+    private func generatePlan(revision: String, id: UUID) async {
+        let token = id.uuidString.lowercased()
+        let fields: [String: Any] = ["inputRevision": revision, "token": token]
+        var claimed = false
+        defer {
+            if generationID == id {
+                generationID = nil
+                generationTask = nil
+                isGenerating = false
+            }
+        }
         do {
-            try await call("retry")
+            // Unsupported devices can read a shared plan, but never reserve its generation lease.
+            try AppleIntelligenceService().ensureAgendaAvailable()
+            try Task.checkCancellation()
+            let claim = try await call("claimPlan", fields)
+            guard claim["status"] as? String == "claimed" else { return }
+            claimed = true
+            try Task.checkCancellation()
+            guard let input = claim["input"] as? [String: Any] else { throw AgendaError.invalidResponse }
+            let phases = try await AppleAgendaPlanner().generate(input: input)
+            try Task.checkCancellation()
+            guard generationID == id, agenda?.inputRevision == revision else { throw CancellationError() }
+            var result = fields
+            result["phases"] = phases
+            try await call("completePlan", result)
         } catch {
-            if !Task.isCancelled { aiError = error.localizedDescription }
+            if claimed { _ = try? await call("failPlan", fields) }
+            guard generationID == id, !Task.isCancelled else { return }
+            if error is LanguageModelSession.GenerationError {
+                aiError = L10n.text("Apple Intelligence 暫時無法完成這次請求，請稍後再試。")
+            } else {
+                aiError = error.localizedDescription
+            }
         }
     }
 

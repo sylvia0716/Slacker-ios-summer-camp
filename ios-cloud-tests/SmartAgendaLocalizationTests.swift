@@ -26,17 +26,27 @@ struct SmartAgendaLocalizationTests {
     @Test func generationWaitingAndLeasesExpireWithoutAnotherSnapshot() throws {
         let now = Date(timeIntervalSince1970: 1000)
         let queued = try agenda(overrides: ["stages": [], "planState": "waiting", "updatedAt": 900])
-        #expect(queued.isGenerating(at: now))
+        #expect(!queued.isGenerating(at: now))
         #expect(!queued.isGenerating(at: now.addingTimeInterval(81)))
-        let running = try agenda(overrides: ["stages": [], "planState": "generating", "generation": ["expiresAt": 1020]])
+        let running = try agenda(overrides: ["stages": [], "planState": "generating", "generation": ["expiresAt": 1020, "ownerUID": "one"]])
         #expect(running.isGenerating(at: now))
         #expect(!running.isGenerating(at: now.addingTimeInterval(20)))
-        let failed = try agenda(overrides: ["stages": [], "planState": "failed", "generation": ["expiresAt": 1020]])
+        let failed = try agenda(overrides: ["stages": [], "planState": "failed", "generation": ["expiresAt": 1020, "ownerUID": "one"]])
         #expect(!failed.isGenerating(at: now))
         let old = try agenda(overrides: ["stages": [], "planState": "waiting"])
         #expect(!old.isGenerating(at: now))
         let unprepared = try agenda(overrides: ["stages": [], "preparedUIDs": [], "planState": "waiting", "updatedAt": 1000])
         #expect(!unprepared.isGenerating(at: now))
+    }
+
+    @Test func oldCloudQuotaDoesNotBlockDeviceGeneration() throws {
+        let failed = try agenda(overrides: ["stages": [], "planState": "failed", "planError": "quota"])
+        #expect(failed.generationError == "Apple Intelligence 暫時無法完成這次請求，請稍後再試。")
+        let oldLease = try agenda(overrides: ["stages": [], "planState": "generating", "generation": ["expiresAt": 9999999999]])
+        #expect(!oldLease.isGenerating(at: .now))
+        let shared = try agenda(bilingual: true, overrides: ["planSource": "appleIntelligence"])
+        #expect(!shared.stages.isEmpty)
+        #expect(shared.generationError == nil)
     }
 
     @Test func legacyAndNewEntriesKeepTheirOwnersAndStableOrder() throws {

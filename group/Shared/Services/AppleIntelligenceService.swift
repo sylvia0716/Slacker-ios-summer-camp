@@ -227,6 +227,12 @@ struct AppleIntelligenceService {
         return containsHanCharacter ? .traditionalChinese : .english
     }
 
+    /// Shared plans contain both translations so each member can use their own app language.
+    func ensureAgendaAvailable() throws {
+        try ensureAvailable(for: .english)
+        try ensureAvailable(for: .traditionalChinese)
+    }
+
     private func ensureAvailable(for language: ResponseLanguage) throws {
         switch model.availability {
         case .available:
