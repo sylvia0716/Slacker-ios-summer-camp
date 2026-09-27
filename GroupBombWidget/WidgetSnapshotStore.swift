@@ -7,15 +7,32 @@ struct WidgetProgressSnapshot: Codable {
     let deadline: Date
 }
 
+struct WidgetTodoSnapshot: Codable {
+    let count: Int
+    let items: [WidgetTodoItem]
+}
+
+struct WidgetTodoItem: Codable, Identifiable {
+    let id: UUID
+    let title: String
+}
+
 /// Reads the latest group summary written by the main app through the App Group.
 enum WidgetSnapshotStore {
     static let appGroupIdentifier = "group.con.sylvia.group"
     static let snapshotKey = "widgetProgressSnapshot"
+    static let todoSnapshotKey = "widgetTodoSnapshot"
 
     static var current: WidgetProgressSnapshot? {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
               let data = defaults.data(forKey: snapshotKey) else { return nil }
         return try? JSONDecoder().decode(WidgetProgressSnapshot.self, from: data)
+    }
+
+    static var currentTodo: WidgetTodoSnapshot? {
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+              let data = defaults.data(forKey: todoSnapshotKey) else { return nil }
+        return try? JSONDecoder().decode(WidgetTodoSnapshot.self, from: data)
     }
 }
 

@@ -1009,6 +1009,23 @@ final class AppStore {
             )
         }
         WidgetSnapshotStore.save(snapshot)
+
+        let todoTasks = projectTasks
+            .filter { $0.ownerMemberID == currentUserID && !$0.isCompleted }
+            .sorted {
+                if $0.deadline != $1.deadline { return $0.deadline < $1.deadline }
+                if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+        let items = todoTasks.flatMap { task in
+            task.subtasks.filter { !$0.isComplete }.map {
+                WidgetTodoItem(id: $0.id, title: $0.title)
+            }
+        }
+        WidgetSnapshotStore.saveTodo(WidgetTodoSnapshot(
+            count: items.count,
+            items: Array(items.prefix(6))
+        ))
     }
 
     /// 依該成員負責任務的子任務完成狀態計算個人進度。
