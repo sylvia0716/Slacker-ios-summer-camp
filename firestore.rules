@@ -259,6 +259,12 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      match /smartAgenda/{agendaID} {
+        allow read: if isGroupMember(groupID) && agendaID == 'current';
+        // Callables enforce leader/own-material permissions and atomic plan revisions.
+        allow write: if false;
+      }
+
       match /readReceipts/{userID} {
         allow read: if isGroupMember(groupID);
         allow create, update: if isGroupMember(groupID)

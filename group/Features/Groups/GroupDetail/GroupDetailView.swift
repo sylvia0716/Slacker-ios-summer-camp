@@ -31,6 +31,9 @@ struct GroupDetailView: View {
     @State private var peerReviewRevision = 0
     @State private var showsPeerReviewPage = false
     @State private var showsBattleReport = false
+    @State private var showsAgendaDetails = false
+    @State private var agendaStore: SmartAgendaStore?
+    @State private var showsAgendaCreation = false
     @State private var showsExplosionMeme = false
     @State private var showsSuccessMeme = false
     @State private var hasConfiguredOutcomePresentation = false
@@ -85,6 +88,13 @@ struct GroupDetailView: View {
                                     }
                                 }
 
+                                if let agendaStore, agendaStore.agenda != nil {
+                                    SmartAgendaSection(store: agendaStore, members: groupMembers,
+                                                       isLeader: currentUserMember?.role == .leader,
+                                                       onOpenDetails: { showsAgendaDetails = true })
+                                        .id("agenda/\(agendaStore.groupID)/\(agendaStore.uid)")
+                                }
+
                                 if deadlineOutcome(now: context.date) == .active {
                                     memberSection
                                 }
@@ -109,14 +119,6 @@ struct GroupDetailView: View {
                             .padding(.bottom, 120)
                         }
                         .scrollIndicators(.hidden)
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if deadlineOutcome(now: context.date) == .active,
-                           !showsPublishTaskSheet, editingTask == nil {
-                            publishTaskButton
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 80)
-                        }
                     }
 
                     if showsPublishTaskSheet {
@@ -202,6 +204,13 @@ struct GroupDetailView: View {
         .navigationDestination(isPresented: $showsBattleReport) {
             PeerReviewReportView(model: model, group: currentGroup)
         }
+        .navigationDestination(isPresented: $showsAgendaDetails) {
+            if let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID {
+                SmartAgendaDetailView(groupID: cloudID, uid: uid, members: groupMembers,
+                                      isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader })
+                    .id("agenda-details/\(cloudID)/\(uid)")
+            }
+        }
         .bombTabBarHidden(
             showsPublishTaskSheet
                 || showsEditOptions
@@ -262,6 +271,26 @@ struct GroupDetailView: View {
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
+        }
+        .task(id: "\(currentGroup.firestoreDocumentID ?? "")/\(model.firebaseUID ?? "")") {
+            guard let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID else {
+                agendaStore?.stop()
+                agendaStore = nil
+                showsAgendaCreation = false
+                return
+            }
+            if agendaStore?.groupID != cloudID || agendaStore?.uid != uid {
+                agendaStore?.stop()
+                agendaStore = SmartAgendaStore(groupID: cloudID, uid: uid)
+                showsAgendaCreation = false
+            }
+            agendaStore?.listen()
+        }
+        .onDisappear { agendaStore?.stop() }
+        .sheet(isPresented: $showsAgendaCreation) {
+            if let agendaStore {
+                SmartAgendaMeetingEditor(store: agendaStore)
+            }
         }
         .sheet(isPresented: $showsLeaderPicker) {
             NavigationStack {
@@ -857,6 +886,11 @@ struct GroupDetailView: View {
                     .font(.caption.weight(.black))
                     .foregroundStyle(showsCopiedFeedback ? BombTheme.green : BombTheme.ink)
                     .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(BombTheme.yellow)
+                    .clipShape(.capsule)
+                    .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 1.5))
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -868,6 +902,20 @@ struct GroupDetailView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 0) {
+                    if let agendaStore, !agendaStore.isLoading, agendaStore.agenda == nil,
+                       currentUserMember?.role == .leader {
+                        Button { showsAgendaCreation = true } label: {
+                            Image(systemName: "list.bullet.rectangle")
+                                .font(.caption2.weight(.black))
+                                .foregroundStyle(.white)
+                                .frame(width: 30, height: 30)
+                                .background(BombTheme.ink)
+                                .clipShape(.circle)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("設定會議"))
+                    }
                     ShareLink(
                         item: L10n.format(
                             "一起加入「{0}」！\n在 Group Bomb 輸入邀請碼：{1}",
@@ -1103,38 +1151,54 @@ struct GroupDetailView: View {
     }
 
     private var memberSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.text("我的進度"))
-                .font(.system(.title2, design: .rounded, weight: .black))
+        let members = groupMembers
+        // Match the displayed percentages, preserving group order for equal progress.
+        let otherMembers = members.enumerated()
+            .filter { $0.element.id != model.currentUserID }
+            .sorted { left, right in
+                let leftProgress = model.memberProgress(for: left.element.id, in: group.id)
+                let rightProgress = model.memberProgress(for: right.element.id, in: group.id)
+                return leftProgress == rightProgress ? left.offset < right.offset : leftProgress < rightProgress
+            }
+            .map(\.element)
 
+        return VStack(alignment: .leading, spacing: 16) {
             if let currentUserMember {
+                HStack(spacing: 8) {
+                    Text(L10n.text("我的任務"))
+                    Image(systemName: "pin.fill")
+                        .accessibilityHidden(true)
+                }
+                .font(.system(.title2, design: .rounded, weight: .black))
+                .foregroundStyle(BombTheme.ink)
                 memberProgressCard(for: currentUserMember)
             }
 
-            Text(L10n.text("成員進度"))
-                .font(.system(.title2, design: .rounded, weight: .black))
-
-            ForEach(otherGroupMembers) { member in
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(L10n.text("成員進度"))
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .layoutPriority(1)
+                Spacer(minLength: 4)
+                Button {
+                    withAnimation(.snappy) { showsPublishTaskSheet = true }
+                } label: {
+                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
+                .disabled(isGroupDeadlinePassed)
+                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
+            }
+            ForEach(otherMembers) { member in
                 memberProgressCard(for: member)
             }
         }
-    }
-
-    private var publishTaskButton: some View {
-        Button {
-            withAnimation(.snappy) { showsPublishTaskSheet = true }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 28, weight: .black))
-                .foregroundStyle(BombTheme.yellow)
-                .frame(width: 60, height: 60)
-                .background(BombTheme.ink, in: Circle())
-                .shadow(color: BombTheme.ink.opacity(0.25), radius: 6, y: 4)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.text("發布任務"))
-        .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
-        .disabled(isGroupDeadlinePassed)
     }
 
     private var leadershipSection: some View {

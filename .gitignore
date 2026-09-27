@@ -13,3 +13,10 @@ ui-debug.log
 
 # Node dependencies
 node_modules/
+
+# Swift package build products
+.build/
+
+# Local API credentials
+.env.local
+.secret.local

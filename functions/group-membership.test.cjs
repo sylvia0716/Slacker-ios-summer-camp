@@ -32,7 +32,7 @@ function setup(uids) {
     if(name === 'node:crypto') return require('node:crypto');
     if(name === './poke-notification') return require('./poke-notification');
     if(name === './member-display-name') return {memberDisplayName:()=> 'Test'};
-    if(name === './task-progress' || name === './group-membership' || name === './peer-review') return {};
+    if(name === './task-progress' || name === './group-membership' || name === './peer-review' || name === './smart-agenda' || name === './smart-agenda-reminders') return {};
     if(name === 'firebase-admin/firestore') return {getFirestore:()=>db, FieldValue:{serverTimestamp:()=>1}, Timestamp:class Timestamp {}};
     if(name === 'firebase-admin/storage') return {getStorage:()=>({bucket:()=>({deleteFiles:async ({prefix})=>{if(storageFailures-- > 0) throw Error('storage unavailable'); removedPrefixes.push(prefix);}})})};
     if(name === 'firebase-functions/v2/https') return {onCall:(opts,fn)=>fn, HttpsError};

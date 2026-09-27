@@ -163,7 +163,8 @@ final class AppStore {
     private(set) var personalPeerReviewProjects: [PersonalPeerReviewProject] = []
     private(set) var personalPeerReviewSyncError: String?
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
-    @ObservationIgnored private var cloudLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var cloudLoadTask: Task<Bool, Never>?
+    @ObservationIgnored private var cloudRecoveryTask: Task<Void, Never>?
     @ObservationIgnored private var cloudGeneration = UUID()
     @ObservationIgnored private var syncIsActive = false
     private(set) var firebaseUID: String?
@@ -802,6 +803,11 @@ final class AppStore {
                         text: message.text,
                         createdAt: message.createdAt
                     )
+                case .agendaReminder:
+                    guard let summary = message.agendaSummary else {
+                        return .systemEvent(id: message.id, icon: "list.bullet.rectangle", text: message.text, createdAt: message.createdAt)
+                    }
+                    return .agendaReminder(id: message.id, summary: summary, createdAt: message.createdAt)
                 case .botAnalysis:
                     guard let score = message.analysisScore,
                           let strength = message.analysisStrength,
@@ -1531,7 +1537,7 @@ final class AppStore {
         }
 
         mergeAccessibleCloudGroups([result.group])
-        _ = await reloadCloudGroups(reportError: false)
+        _ = await reloadCloudGroups(reportError: false, forceRefresh: true)
         guard firebaseUID == uid,
               let group = groups.first(where: { $0.id == result.group.id }) else {
             throw GroupJoinError.invalidGroupData
@@ -1681,7 +1687,7 @@ final class AppStore {
         refreshDeadlineReminders()
         PokeBackgroundRefresh.shared.schedule()
         registerPokeDevice()
-        cloudLoadTask = Task { [weak self] in _ = await self?.reloadCloudGroups() }
+        Task { [weak self] in _ = await self?.reloadCloudGroups() }
     }
 
     func registerPokeDevice() {
@@ -1707,6 +1713,8 @@ final class AppStore {
         cloudGeneration = UUID()
         cloudLoadTask?.cancel()
         cloudLoadTask = nil
+        cloudRecoveryTask?.cancel()
+        cloudRecoveryTask = nil
         stopAttachmentSync()
         stopPokeSync()
         stopPeerReviewSync()
@@ -1744,13 +1752,32 @@ final class AppStore {
     }
 
     @discardableResult
-    func reloadCloudGroups(reportError: Bool = true) async -> Bool {
+    func reloadCloudGroups(reportError: Bool = true, forceRefresh: Bool = false) async -> Bool {
         guard dataMode == .live,
               let uid = firebaseUID,
               syncIsActive,
               FirebaseApp.app() != nil else { return false }
+        // Auth restoration, scene activation and pull-to-refresh can arrive together.
+        // Share the same load instead of cancelling/replacing each other's snapshot.
+        if let cloudLoadTask {
+            if !forceRefresh { return await cloudLoadTask.value }
+            // A completed join/create must not reuse a snapshot requested before that mutation.
+            cloudLoadTask.cancel()
+        }
+        cloudRecoveryTask?.cancel()
+        cloudRecoveryTask = nil
         let generation = UUID()
         cloudGeneration = generation
+        let task = Task { [weak self] in
+            guard let self, !Task.isCancelled, self.firebaseUID == uid,
+                  self.cloudGeneration == generation, self.syncIsActive else { return false }
+            return await self.performCloudGroupLoad(uid: uid, generation: generation, reportError: reportError)
+        }
+        cloudLoadTask = task
+        return await task.value
+    }
+
+    private func performCloudGroupLoad(uid: String, generation: UUID, reportError: Bool) async -> Bool {
         stopAttachmentSync()
         stopPokeSync()
         stopPeerReviewSync()
@@ -1758,6 +1785,7 @@ final class AppStore {
         isLoadingCloudGroups = true
         defer {
             if cloudGeneration == generation {
+                cloudLoadTask = nil
                 isLoadingCloudGroups = false
                 refreshDeadlineReminders()
             }
@@ -1807,11 +1835,22 @@ final class AppStore {
             }
             return true
         } catch {
-            guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation else { return false }
+            guard !Task.isCancelled, firebaseUID == uid, cloudGeneration == generation, syncIsActive else { return false }
             // Keep the last successful snapshot so a transient failure is not mistaken for an empty account.
-            let message = Self.cloudMessage(error)
-            cloudGroupSyncErrorMessage = message
-            if reportError { cloudErrorMessage = message }
+            if CloudReadRetry.isTransient(error) {
+                cloudGroupSyncErrorMessage = L10n.text("網路連線暫時中斷，正在自動重新連線。")
+                cloudRecoveryTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                    guard let self, !Task.isCancelled, self.syncIsActive,
+                          self.firebaseUID == uid, self.cloudGeneration == generation else { return }
+                    self.cloudRecoveryTask = nil
+                    _ = await self.reloadCloudGroups(reportError: false)
+                }
+            } else {
+                let message = Self.cloudMessage(error)
+                cloudGroupSyncErrorMessage = message
+                if reportError { cloudErrorMessage = message }
+            }
             return false
         }
     }
@@ -1830,7 +1869,8 @@ final class AppStore {
         if let error = error as? GroupLoadError { return error.localizedDescription }
         if let error = error as? GroupJoinError { return error.localizedDescription }
         let nsError = error as NSError
-        if nsError.domain == FirestoreErrorDomain, nsError.code == FirestoreErrorCode.permissionDenied.rawValue {
+        if [FirestoreErrorDomain, "com.firebase.functions"].contains(nsError.domain),
+           nsError.code == FirestoreErrorCode.permissionDenied.rawValue {
             return GroupLoadError.permissionDenied.localizedDescription
         }
         if error is DecodingError { return GroupLoadError.invalidData.localizedDescription }
