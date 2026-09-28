@@ -1067,3 +1067,10 @@
 "This agenda was deleted." = "This agenda was deleted.";
 
 "This agenda already exists." = "This agenda already exists.";
+
+"能力概覽" = "Ability overview";
+"AI 功能暫時無法使用" = "AI is currently unavailable";
+"此裝置尚未開啟 Apple Intelligence，暫時無法使用 AI 功能。請先到系統設定開啟後再試。" = "Apple Intelligence is not enabled on this device, so AI features are unavailable. Enable it in system settings, then try again.";
+"返回查看" = "Back to review";
+"確認拒絕" = "Confirm rejection";
+"拒絕後，對方可在 App 內查看未通過結果，並可重新申請。" = "The applicant can see the rejection in the app and apply again.";

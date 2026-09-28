@@ -26,26 +26,28 @@ struct ApplicantBattleProfileView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(L10n.text("個人戰力檔案"))
-                .font(.title2.weight(.black))
             if projects.isEmpty {
                 ContentUnavailableView(L10n.text("尚無歷史戰力紀錄"), systemImage: "chart.bar.xaxis")
             } else {
                 VStack(alignment: .leading, spacing: 14) {
+                    Text(L10n.text("能力概覽"))
+                        .font(.title3.weight(.black))
                     Text(L10n.format("累積 {0} 個專案 · {1} 份匿名互評",
                                      String(projects.count), String(projects.reduce(0) { $0 + $1.reviewCount })))
-                        .font(.subheadline.bold())
+                        .font(.caption)
+                        .foregroundStyle(BombTheme.secondaryText)
                     ForEach(metrics) { metric in
-                        HStack {
-                            Text(metric.title)
-                            Spacer()
-                            Text("\(metric.score.formatted(.number.precision(.fractionLength(1)))) / 5")
-                                .monospacedDigit()
+                        VStack(spacing: 6) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(metric.title)
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                score(metric.score, font: .headline)
+                            }
+                            ProgressView(value: min(max(metric.score, 0), 5), total: 5)
+                                .tint(scoreColor(metric.score))
+                                .accessibilityLabel(metric.title)
                         }
-                        .font(.subheadline.weight(.semibold))
-                        ProgressView(value: min(max(metric.score, 0), 5), total: 5)
-                            .tint(BombTheme.ink)
-                            .accessibilityLabel(metric.title)
                     }
                     if projects.count < 3 {
                         Text(L10n.text("專案數較少，分數僅供初步參考。"))
@@ -53,11 +55,53 @@ struct ApplicantBattleProfileView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .comicCard()
+                Divider()
+                Text(L10n.text("專案紀錄"))
+                    .font(.title3.weight(.black))
                 ForEach(projects) { project in
-                    ProjectRecordCard(project: project)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                                Text(project.groupName).font(.headline)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                Spacer(minLength: 8)
+                                score(project.overallAverage, font: .title2)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(project.groupName).font(.headline)
+                                score(project.overallAverage, font: .title2)
+                            }
+                        }
+                        Text(project.completedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(L10n.locale)))
+                            .font(.caption)
+                            .foregroundStyle(BombTheme.secondaryText)
+                        if project.excludedReviewCount > 0 {
+                            Text(L10n.format("已排除 {0} 份異常評分", String(project.excludedReviewCount)))
+                                .font(.caption2)
+                                .foregroundStyle(BombTheme.secondaryText)
+                        }
+                    }
+                    if project.id != projects.last?.id { Divider() }
                 }
             }
         }
+        .foregroundStyle(BombTheme.ink)
+    }
+
+    private func scoreColor(_ value: Double) -> Color {
+        value < 3 ? BombTheme.red : BombTheme.ink
+    }
+
+    private func score(_ value: Double, font: Font) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text(value.formatted(.number.precision(.fractionLength(1))))
+                .font(font.weight(.black))
+                .foregroundStyle(scoreColor(value))
+            Text("/ 5")
+                .font(.caption)
+                .foregroundStyle(BombTheme.secondaryText)
+        }
+        .monospacedDigit()
+        .fixedSize()
     }
 }

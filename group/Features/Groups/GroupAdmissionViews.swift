@@ -115,9 +115,15 @@ private struct GroupAdmissionReviewSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.text("個人戰力檔案"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(BombTheme.secondaryText)
                         Text(request.applicantName).font(.largeTitle.weight(.black))
-                        Text(L10n.format("申請加入「{0}」", request.groupName)).font(.subheadline.bold())
+                        Text(L10n.format("申請加入「{0}」", request.groupName))
+                            .font(.subheadline)
+                            .foregroundStyle(BombTheme.secondaryText)
                     }
+                    Divider()
                     if !isPending {
                         ContentUnavailableView(L10n.text("此申請已更新"), systemImage: "checkmark.circle")
                     } else if isLoading {
@@ -125,6 +131,7 @@ private struct GroupAdmissionReviewSheet: View {
                     } else if let loadError {
                         Text(loadError).foregroundStyle(BombTheme.red)
                         Button(L10n.text("重試")) { Task { await loadProfile() } }
+                            .buttonStyle(AdmissionDecisionButtonStyle(isPrimary: true))
                     } else {
                         ApplicantBattleProfileView(projects: projects)
                     }
@@ -132,6 +139,8 @@ private struct GroupAdmissionReviewSheet: View {
                         Text(decisionError).font(.footnote).foregroundStyle(BombTheme.red)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .comicCard()
                 .padding(20)
             }
             .background(BombTheme.yellow)
@@ -139,14 +148,27 @@ private struct GroupAdmissionReviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("關閉")) { dismiss() }.disabled(isSaving)
+                    Button { dismiss() } label: {
+                        Text(L10n.text("關閉"))
+                            .font(.subheadline.weight(.bold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(BombTheme.ink)
+                            .background(BombTheme.paper, in: Capsule())
+                            .overlay(Capsule().stroke(BombTheme.ink, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSaving)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if isPending { reviewActions }
             }
-            .confirmationDialog(L10n.text("拒絕這份入群申請？"), isPresented: $confirmsRejection, titleVisibility: .visible) {
-                Button(L10n.text("拒絕申請"), role: .destructive) { decide(approve: false) }
+            .bombDialog(L10n.text("拒絕這份入群申請？"), isPresented: $confirmsRejection) {
+                Button(L10n.text("返回查看"), role: .cancel) { }
+                Button(L10n.text("確認拒絕"), role: .destructive) { decide(approve: false) }
+            } message: {
+                Text(L10n.text("拒絕後，對方可在 App 內查看未通過結果，並可重新申請。"))
             }
         }
         .interactiveDismissDisabled(isSaving)
@@ -235,13 +257,13 @@ private struct AdmissionDecisionButtonStyle: ButtonStyle {
             .background {
                 // Draw the offset backing separately so text and symbols never cast a shadow.
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18)
+                    Capsule()
                         .fill(BombTheme.ink)
                         .offset(y: configuration.isPressed ? 0 : 3)
-                    RoundedRectangle(cornerRadius: 18)
+                    Capsule()
                         .fill(isPrimary ? BombTheme.ink : BombTheme.paper)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 18)
+                            Capsule()
                                 .strokeBorder(BombTheme.ink, lineWidth: 2.5)
                         }
                 }

@@ -1,8 +1,10 @@
 import SwiftUI
+import OSLog
 
 /// 群組聊天室畫面；完整時間軸由 AppStore 依群組保存至裝置本機。
 struct ChatRoomView: View {
     private static let bottomAnchorID = "chat-room-bottom"
+    private static let aiLogger = Logger(subsystem: "con.sylvia.group", category: "AppleIntelligence")
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -13,6 +15,7 @@ struct ChatRoomView: View {
     @State private var draft = ""
     @State private var showsShortcuts = false
     @State private var isAIResponding = false
+    @State private var aiFailureMessage: String?
     @State private var isAwayFromLatest = false
     @State private var pinnedScrollTargetID: String?
     @FocusState private var isComposerFocused: Bool
@@ -125,6 +128,17 @@ struct ChatRoomView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden()
+        .bombDialog(
+            L10n.text("AI 功能暫時無法使用"),
+            isPresented: Binding(
+                get: { aiFailureMessage != nil },
+                set: { if !$0 { aiFailureMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("知道了")) { aiFailureMessage = nil }
+        } message: {
+            Text(aiFailureMessage ?? "")
+        }
         .onAppear {
             if tutorialStep?.wrappedValue == .chatEntry {
                 tutorialStep?.wrappedValue = .aiChat
@@ -636,7 +650,13 @@ struct ChatRoomView: View {
             )
             await appendBotReply(answer)
         } catch {
-            await appendBotReply(aiErrorMessage(error))
+            #if DEBUG
+            Self.aiLogger.error(
+                "Answer request failed:\n\(AppleIntelligenceDiagnostics.description(of: error), privacy: .public)"
+            )
+            #endif
+            isComposerFocused = false
+            aiFailureMessage = aiErrorMessage(error)
         }
     }
 
@@ -667,7 +687,13 @@ struct ChatRoomView: View {
                 groupID: group.id
             )
         } catch {
-            await appendBotReply(aiErrorMessage(error))
+            #if DEBUG
+            Self.aiLogger.error(
+                "Analysis request failed:\n\(AppleIntelligenceDiagnostics.description(of: error), privacy: .public)"
+            )
+            #endif
+            isComposerFocused = false
+            aiFailureMessage = aiErrorMessage(error)
         }
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import OSLog
 
 /// Apple Intelligence 產生的結構化溝通分析，之後會轉成 App 共用的 CommunicationAnalysis。
 @Generable
@@ -32,7 +33,7 @@ struct GeneratedCommunicationAnalysis {
     var reliabilityScore: Int
 }
 
-/// Foundation Models 無法使用時，轉成聊天室能直接顯示的原因。
+/// Foundation Models 無法使用時，提供僅向操作者顯示的簡短原因。
 enum AppleIntelligenceServiceError: LocalizedError {
     case deviceNotEligible
     case appleIntelligenceNotEnabled
@@ -47,7 +48,7 @@ enum AppleIntelligenceServiceError: LocalizedError {
         case .deviceNotEligible:
             L10n.text("這台裝置不支援 Apple Intelligence，請改用支援的 iPhone 實機。")
         case .appleIntelligenceNotEnabled:
-            L10n.text("請先到系統設定開啟 Apple Intelligence，再回來使用 AI 功能。")
+            L10n.text("此裝置尚未開啟 Apple Intelligence，暫時無法使用 AI 功能。請先到系統設定開啟後再試。")
         case .modelNotReady:
             L10n.text("Apple Intelligence 模型尚未準備完成，可能仍在下載，請稍後再試。")
         case .traditionalChineseUnsupported:
@@ -62,8 +63,56 @@ enum AppleIntelligenceServiceError: LocalizedError {
     }
 }
 
+/// 將 Foundation Models 包裝的多層錯誤展開，供 DEBUG Console 診斷。
+enum AppleIntelligenceDiagnostics {
+    static func description(of error: Error) -> String {
+        var lines: [String] = []
+        append(error as NSError, label: "error", depth: 0, to: &lines)
+        return lines.joined(separator: "\n")
+    }
+
+    private static func append(
+        _ error: NSError,
+        label: String,
+        depth: Int,
+        to lines: inout [String]
+    ) {
+        guard depth < 8 else {
+            lines.append("\(label): nested error limit reached")
+            return
+        }
+
+        lines.append(
+            "\(label): type=\(String(reflecting: type(of: error))) "
+                + "domain=\(error.domain) code=\(error.code) "
+                + "description=\(error.localizedDescription)"
+        )
+
+        if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            append(
+                underlyingError,
+                label: "\(label).underlying",
+                depth: depth + 1,
+                to: &lines
+            )
+        }
+
+        if let underlyingErrors = error.userInfo["NSMultipleUnderlyingErrorsKey"] as? [NSError] {
+            for (index, underlyingError) in underlyingErrors.enumerated() {
+                append(
+                    underlyingError,
+                    label: "\(label).underlying[\(index)]",
+                    depth: depth + 1,
+                    to: &lines
+                )
+            }
+        }
+    }
+}
+
 /// 封裝 Apple Foundation Models；聊天室只負責送出對話與顯示結果。
 struct AppleIntelligenceService {
+    private static let logger = Logger(subsystem: "con.sylvia.group", category: "AppleIntelligence")
     private let model = SystemLanguageModel.default
 
     private enum ResponseLanguage {
@@ -83,6 +132,11 @@ struct AppleIntelligenceService {
     /// 根據近期討論回答成員希望機器人協助的問題。
     func answer(question: String, conversation: [String]) async throws -> String {
         let language = responseLanguage(for: question)
+        #if DEBUG
+        Self.logger.info(
+            "Model availability: \(String(reflecting: model.availability), privacy: .public); locale supported: \(model.supportsLocale(language.locale), privacy: .public)"
+        )
+        #endif
         try ensureAvailable(for: language)
 
         do {
@@ -92,6 +146,11 @@ struct AppleIntelligenceService {
                 language: language
             )
         } catch let error as LanguageModelSession.GenerationError {
+            #if DEBUG
+            Self.logger.error(
+                "Answer generation failed:\n\(AppleIntelligenceDiagnostics.description(of: error), privacy: .public)"
+            )
+            #endif
             guard case .unsupportedLanguageOrLocale = error else { throw error }
 
             // Foundation Models 偶爾會把暱稱或混合語言的歷史訊息誤判成其他語言。
@@ -117,6 +176,12 @@ struct AppleIntelligenceService {
         members: [Member],
         conversation: [String]
     ) async throws -> GeneratedCommunicationAnalysis {
+        #if DEBUG
+        let analysisLocale = Locale(identifier: "zh_TW")
+        Self.logger.info(
+            "Analysis model availability: \(String(reflecting: model.availability), privacy: .public); locale supported: \(model.supportsLocale(analysisLocale), privacy: .public)"
+        )
+        #endif
         try ensureAvailable(for: .traditionalChinese)
 
         let session = LanguageModelSession(
