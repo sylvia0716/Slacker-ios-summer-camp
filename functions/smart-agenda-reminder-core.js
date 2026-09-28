@@ -44,7 +44,7 @@ function fallbackText(summary) {
 
 async function publishReminder(db, ref, now, serverTimestamp) {
   const group = ref.parent.parent;
-  if (ref.id !== 'current' || group?.parent.id !== 'groups') return false;
+  if (ref.parent.id !== 'smartAgenda' || group?.parent.id !== 'groups') return false;
   return db.runTransaction(async tx => {
     const [snapshot, parent, membership] = await Promise.all([
       tx.get(ref), tx.get(group), tx.get(group.collection('members')),

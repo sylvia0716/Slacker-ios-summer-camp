@@ -285,6 +285,8 @@ final class AppStore {
     var cloudChatMessageIDsByGroupID: [UUID: [String]] = [:]
     var chatReadReceiptsByGroupID: [UUID: [ChatReadReceipt]] = [:]
     var pinnedChatMessageByGroupID: [UUID: ChatPinnedMessage] = [:]
+    /// Personal member-card ordering for this session; never changes another member's view.
+    var pinnedProgressMemberByGroupID: [UUID: UUID] = [:]
     var chatReadSyncErrorsByGroupID: [UUID: String] = [:]
     var chatPinSyncErrorsByGroupID: [UUID: String] = [:]
 
@@ -373,6 +375,7 @@ final class AppStore {
     func setDemoMode(_ isEnabled: Bool) {
         guard isEnabled != isDemoMode else { return }
 
+        pinnedProgressMemberByGroupID = [:]
         suspendCloudSync()
         hasLoadedReminderData = false
 
@@ -1657,6 +1660,7 @@ final class AppStore {
             return
         }
         hasLoadedReminderData = false
+        pinnedProgressMemberByGroupID = [:]
         PokeBackgroundRefresh.shared.cancel()
         suspendCloudSync()
         groups = []
@@ -2055,6 +2059,7 @@ final class AppStore {
         chatPinSyncErrorsByGroupID[groupID] = nil
         chatReadReceiptsByGroupID[groupID] = nil
         pinnedChatMessageByGroupID[groupID] = nil
+        pinnedProgressMemberByGroupID[groupID] = nil
         cloudChatMessageIDsByGroupID[groupID] = nil
         lastMarkedChatMessageIDByGroupID[groupID] = nil
         chatMessageSyncReadyGroupIDs.remove(groupID)

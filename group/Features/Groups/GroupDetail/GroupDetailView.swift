@@ -33,14 +33,16 @@ struct GroupDetailView: View {
     @State private var taskMutationError: String?
     @State private var isDeletingTask = false
     @State private var expandedMemberID: UUID?
+    @State private var showsPinnedMemberPicker = false
     @State private var reviewDeferred = true
     @State private var peerReviewStartsAtOutcomeSummary = false
     @State private var peerReviewRevision = 0
     @State private var showsPeerReviewPage = false
     @State private var showsBattleReport = false
     @State private var showsAgendaDetails = false
-    @State private var agendaStore: SmartAgendaStore?
-    @State private var showsAgendaCreation = false
+    @State private var agendaCollection: SmartAgendaCollectionStore?
+    @State private var selectedAgenda: SmartAgendaStore?
+    @State private var showsAgendaManager = false
     @State private var showsExplosionMeme = false
     @State private var showsSuccessMeme = false
     @State private var hasConfiguredOutcomePresentation = false
@@ -103,11 +105,13 @@ struct GroupDetailView: View {
                                     }
                                 }
 
-                                if let agendaStore, agendaStore.agenda != nil {
-                                    SmartAgendaSection(store: agendaStore, members: groupMembers,
-                                                       isLeader: currentUserMember?.role == .leader,
-                                                       onOpenDetails: { showsAgendaDetails = true })
-                                        .id("agenda/\(agendaStore.groupID)/\(agendaStore.uid)")
+                                if let agendaCollection {
+                                    ForEach(agendaCollection.meetings) { store in
+                                        SmartAgendaSection(store: store, members: groupMembers,
+                                                           isLeader: currentUserMember?.role == .leader,
+                                                           onOpenDetails: { selectedAgenda = store; showsAgendaDetails = true },
+                                                           showsTitle: store.id == agendaCollection.meetings.first?.id)
+                                    }
                                 }
 
                                 if deadlineOutcome(now: context.date) == .active {
@@ -249,15 +253,18 @@ struct GroupDetailView: View {
             PeerReviewReportView(model: model, group: currentGroup)
         }
         .navigationDestination(isPresented: $showsAgendaDetails) {
-            if let agendaStore, let uid = model.firebaseUID {
+            if let agendaStore = selectedAgenda, let uid = model.firebaseUID {
                 SmartAgendaDetailView(store: agendaStore, members: groupMembers,
                                       isLeader: groupMembers.contains { $0.firebaseUID == uid && $0.role == .leader })
-                    .id("agenda-details/\(agendaStore.groupID)/\(uid)")
+                    .id("agenda-details/\(agendaStore.groupID)/\(agendaStore.id)/\(uid)")
             }
         }
         .bombTabBarHidden(
             showsPublishTaskSheet
                 || showsEditOptions
+                || showsPinnedMemberPicker
+                || showsLeaderPicker
+                || showsAgendaManager
                 || showsLeaveConfirmation
                 || editingTask != nil
                 || taskPendingDeletion != nil
@@ -313,59 +320,55 @@ struct GroupDetailView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: showsEditOptions)
+        .accessibilityHidden(showsPinnedMemberPicker)
+        .overlay {
+            if showsPinnedMemberPicker {
+                pinnedMemberPicker
+                    .transition(.opacity)
+                    .zIndex(300)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsPinnedMemberPicker)
+        .accessibilityHidden(showsLeaderPicker)
+        .overlay {
+            if showsLeaderPicker {
+                leaderPickerOverlay
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsLeaderPicker)
+        .accessibilityHidden(showsAgendaManager)
+        .overlay {
+            if showsAgendaManager, let agendaCollection, currentUserMember?.role == .leader {
+                SmartAgendaManager(collection: agendaCollection) { showsAgendaManager = false }
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showsAgendaManager)
+        .onChange(of: currentUserMember?.role == .leader) { _, isLeader in
+            if !isLeader { showsAgendaManager = false }
+        }
         .onAppear {
             deadlineDraft = currentGroup.deadline
             configureOutcomePresentation()
         }
         .task(id: "\(currentGroup.firestoreDocumentID ?? "")/\(model.firebaseUID ?? "")") {
             guard let cloudID = currentGroup.firestoreDocumentID, let uid = model.firebaseUID else {
-                agendaStore?.stop()
-                agendaStore = nil
-                showsAgendaCreation = false
+                agendaCollection?.stop()
+                agendaCollection = nil
+                selectedAgenda = nil
+                showsAgendaManager = false
                 return
             }
-            if agendaStore?.groupID != cloudID || agendaStore?.uid != uid {
-                agendaStore?.stop()
-                agendaStore = SmartAgendaStore(groupID: cloudID, uid: uid)
-                showsAgendaCreation = false
+            if agendaCollection?.groupID != cloudID || agendaCollection?.uid != uid {
+                agendaCollection?.stop()
+                agendaCollection = SmartAgendaCollectionStore(groupID: cloudID, uid: uid)
+                selectedAgenda = nil
+                showsAgendaManager = false
             }
-            agendaStore?.listen(generatesPlans: true)
+            agendaCollection?.listen()
         }
-        .onDisappear { if !showsAgendaDetails { agendaStore?.stop() } }
-        .sheet(isPresented: $showsAgendaCreation) {
-            if let agendaStore {
-                SmartAgendaMeetingEditor(store: agendaStore)
-            }
-        }
-        .sheet(isPresented: $showsLeaderPicker) {
-            NavigationStack {
-                ScrollView { leadershipSection.padding(16) }
-                    .background(BombTheme.paper)
-                    .navigationTitle(L10n.text("更換組長"))
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(BombTheme.paper, for: .navigationBar)
-                    .toolbarBackground(.visible, for: .navigationBar)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button {
-                                showsLeaderPicker = false
-                            } label: {
-                                Text(L10n.text("完成"))
-                                    .font(.subheadline.weight(.black))
-                                    .foregroundStyle(BombTheme.ink)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(BombTheme.yellow, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isChoosingLeader)
-                        }
-                    }
-            }
-            .presentationBackground(BombTheme.paper)
-            .presentationDetents([.medium, .large])
-            .interactiveDismissDisabled(isChoosingLeader)
-        }
+        .onDisappear { if !showsAgendaDetails { agendaCollection?.stop() } }
         .sheet(isPresented: $showsDeadlineSheet) {
             DeadlineEditorSheet(deadline: $deadlineDraft, onSave: saveDeadline)
         }
@@ -973,11 +976,10 @@ struct GroupDetailView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 0) {
-                    if let agendaStore, !agendaStore.isLoading, agendaStore.agenda == nil,
-                       currentUserMember?.role == .leader {
-                        Button { showsAgendaCreation = true } label: {
-                            Image(systemName: "list.bullet.rectangle")
-                                .font(.caption2.weight(.black))
+                    if agendaCollection != nil, currentUserMember?.role == .leader {
+                        Button { showsAgendaManager = true } label: {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 30, height: 30)
                                 .background(BombTheme.ink)
@@ -985,7 +987,7 @@ struct GroupDetailView: View {
                                 .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(L10n.text("設定會議"))
+                        .accessibilityLabel(L10n.text("管理議程"))
                     }
                     ShareLink(
                         item: L10n.format(
@@ -1244,9 +1246,10 @@ struct GroupDetailView: View {
 
     private var memberSection: some View {
         let members = groupMembers
+        let pinnedMember = pinnedProgressMember
         // Match the displayed percentages, preserving group order for equal progress.
         let otherMembers = members.enumerated()
-            .filter { $0.element.id != model.currentUserID }
+            .filter { $0.element.id != pinnedMember?.id }
             .sorted { left, right in
                 let leftProgress = model.memberProgress(for: left.element.id, in: group.id)
                 let rightProgress = model.memberProgress(for: right.element.id, in: group.id)
@@ -1254,40 +1257,45 @@ struct GroupDetailView: View {
             }
             .map(\.element)
 
+        let orderedMembers = pinnedMember.map { [$0] + otherMembers } ?? otherMembers
+
         return VStack(alignment: .leading, spacing: 16) {
-            if let currentUserMember {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Text(L10n.text("我的任務"))
+            HStack(alignment: .center, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text(L10n.text("成員進度"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Button { showsPinnedMemberPicker = true } label: {
                         Image(systemName: "pin.fill")
-                            .accessibilityHidden(true)
-                    }
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                    .foregroundStyle(BombTheme.ink)
-                    .layoutPriority(1)
-                    Spacer(minLength: 4)
-                    Button {
-                        withAnimation(.snappy) { showsPublishTaskSheet = true }
-                    } label: {
-                        Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
-                            .background(BombTheme.ink)
-                            .clipShape(.capsule)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
-                    .disabled(isGroupDeadlinePassed)
-                    .opacity(isGroupDeadlinePassed ? 0.45 : 1)
+                    .accessibilityLabel(L10n.text("選擇釘選成員"))
+                    .accessibilityValue(pinnedMember?.name ?? "")
+                    .disabled(members.isEmpty)
                 }
-                memberProgressCard(for: currentUserMember)
-            }
-
-            Text(L10n.text("成員進度"))
                 .font(.system(.title2, design: .rounded, weight: .black))
-            ForEach(otherMembers) { member in
+                .foregroundStyle(BombTheme.ink)
+                .layoutPriority(1)
+                Spacer(minLength: 4)
+                Button {
+                    withAnimation(.snappy) { showsPublishTaskSheet = true }
+                } label: {
+                    Text(isGroupDeadlinePassed ? L10n.text("已截止") : L10n.text("＋ 發布任務"))
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(BombTheme.ink)
+                        .clipShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .tutorialTarget(.publishTask, enabled: tutorialStep?.wrappedValue == .publishTask)
+                .disabled(isGroupDeadlinePassed)
+                .opacity(isGroupDeadlinePassed ? 0.45 : 1)
+            }
+            ForEach(orderedMembers) { member in
                 memberProgressCard(for: member)
             }
         }
@@ -1344,6 +1352,125 @@ struct GroupDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    private var pinnedProgressMember: Member? {
+        if let selectedID = model.pinnedProgressMemberByGroupID[group.id],
+           let member = groupMembers.first(where: { $0.id == selectedID }) {
+            return member
+        }
+        return currentUserMember ?? groupMembers.first
+    }
+
+    private var pinnedMemberPicker: some View {
+        GeometryReader { proxy in
+            ZStack {
+                BombTheme.ink.opacity(0.48)
+                    .ignoresSafeArea()
+                    .onTapGesture { showsPinnedMemberPicker = false }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Label(L10n.text("釘選成員"), systemImage: "pin.fill")
+                            .font(.title2.weight(.black))
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer()
+                        Button { showsPinnedMemberPicker = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.headline.weight(.black))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(BombTheme.ink, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("取消"))
+                    }
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(groupMembers) { member in
+                                let isPinned = member.id == pinnedProgressMember?.id
+                                Button {
+                                    model.pinnedProgressMemberByGroupID[group.id] = member.id
+                                    showsPinnedMemberPicker = false
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        MemberPhotoAvatar(groupID: currentGroup.firestoreDocumentID,
+                                                          uid: member.firebaseUID, name: member.name, size: 44)
+                                        Text(member.name)
+                                            .font(.subheadline.weight(.bold))
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.title3.weight(.bold))
+                                            .opacity(isPinned ? 1 : 0)
+                                            .accessibilityHidden(true)
+                                    }
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, minHeight: 68)
+                                    .background(isPinned ? BombTheme.yellow : BombTheme.paper,
+                                                in: RoundedRectangle(cornerRadius: 14))
+                                    .contentShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(isPinned ? [.isSelected] : [])
+                            }
+                        }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: min(CGFloat(groupMembers.count) * 88, max(160, proxy.size.height - 180)))
+                }
+                .foregroundStyle(BombTheme.ink)
+                .padding(20)
+                .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+                .padding(.horizontal, 28)
+                .frame(maxWidth: 480)
+                .accessibilityAddTraits(.isModal)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var leaderPickerOverlay: some View {
+        ZStack {
+            BombTheme.ink.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture { if !isChoosingLeader { showsLeaderPicker = false } }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Label(L10n.text("更換組長"), systemImage: "crown.fill")
+                            .font(.title2.weight(.black))
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer()
+                        Button { showsLeaderPicker = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.headline.weight(.black))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(BombTheme.ink, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("取消"))
+                        .disabled(isChoosingLeader)
+                    }
+                    leadershipSection
+                }
+                .foregroundStyle(BombTheme.ink)
+                .padding(20)
+                .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+                .padding(.horizontal, 28)
+                .padding(.vertical, 20)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isModal)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .defaultScrollAnchor(.center)
         }
     }
 

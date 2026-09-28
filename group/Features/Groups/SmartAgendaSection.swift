@@ -7,12 +7,14 @@ struct SmartAgendaSection: View {
     let members: [Member]
     let isLeader: Bool
     let onOpenDetails: () -> Void
+    var showsTitle = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("自動化議程"))
+            if showsTitle { Text(L10n.text("自動化議程"))
                 .font(.system(.title2, design: .rounded, weight: .black))
                 .foregroundStyle(BombTheme.ink)
+            }
             SmartAgendaCard(store: store, members: members, isLeader: isLeader,
                             onOpenDetails: onOpenDetails)
         }
@@ -23,13 +25,20 @@ struct SmartAgendaDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let store: SmartAgendaStore
     @State private var linkDraft: SmartAgendaLinkDraft?
+    @State private var showsEditOptions = false
+    @State private var showsMeetingEditor = false
+    @State private var materialDraft: SmartAgendaMaterialDraft?
     let members: [Member]
     let isLeader: Bool
 
     var body: some View {
         ScrollView {
             SmartAgendaCard(store: store, members: members, isLeader: isLeader,
-                            onEditLink: { linkDraft = $0 })
+                            onEditLink: { linkDraft = $0 },
+                            onEdit: {
+                                if store.agenda == nil { showsMeetingEditor = true }
+                                else { showsEditOptions = true }
+                            })
                 .padding(16)
                 .padding(.bottom, 24)
         }
@@ -38,6 +47,9 @@ struct SmartAgendaDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .bombTabBarHidden()
         .onAppear { store.listen(generatesPlans: true) }
+        .onChange(of: store.agenda == nil) { _, missing in
+            if missing && !store.isLoading { dismiss() }
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("自動化議程")) {
                 Button(action: dismiss.callAsFunction) {
@@ -49,16 +61,116 @@ struct SmartAgendaDetailView: View {
                 EmptyView()
             }
         }
-        .accessibilityHidden(linkDraft != nil)
+        .accessibilityHidden(linkDraft != nil || showsEditOptions || showsMeetingEditor || materialDraft != nil)
         .overlay {
             if let draft = linkDraft {
                 SmartAgendaLinkEditor(store: store, draft: draft) { linkDraft = nil }
                     .id(draft.id)
                     .transition(.opacity)
+            } else if showsEditOptions || showsMeetingEditor || materialDraft != nil {
+                ZStack {
+                    BombTheme.ink.opacity(0.48)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            if !store.isSaving {
+                                showsEditOptions = false
+                                showsMeetingEditor = false
+                                materialDraft = nil
+                            }
+                        }
+                    if let draft = materialDraft {
+                        SmartAgendaMaterialEditor(store: store, draft: draft) { materialDraft = nil }
+                            .id(draft.id)
+                            .transition(.opacity)
+                    } else if showsMeetingEditor {
+                        SmartAgendaMeetingEditor(store: store) { showsMeetingEditor = false }
+                            .transition(.opacity)
+                    } else {
+                        editOptions
+                            .transition(.opacity)
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.2), value: linkDraft?.id)
+        .animation(.easeOut(duration: 0.2), value: showsEditOptions)
+        .animation(.easeOut(duration: 0.2), value: showsMeetingEditor)
+        .animation(.easeOut(duration: 0.2), value: materialDraft?.id)
     }
+
+    private func materialTitle(_ entry: SmartAgenda.MaterialEntry) -> String {
+        String((entry.material.note.isEmpty ? entry.material.attachment?.fileName ?? "" : store.agenda?.displayNote(entry.material.note) ?? entry.material.note).prefix(60))
+    }
+
+    private var editOptions: some View {
+        let entries = store.agenda?.materials(for: store.uid) ?? []
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Label(L10n.text("編輯議程"), systemImage: "square.and.pencil")
+                    .font(.title2.weight(.black))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button {
+                    showsEditOptions = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(BombTheme.ink, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("取消"))
+            }
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(entries) { entry in
+                        editOptionButton(entries.count == 1 ? L10n.text("編輯我的資料") : materialTitle(entry),
+                                         icon: "person.crop.circle", highlighted: true) {
+                            showsEditOptions = false
+                            materialDraft = SmartAgendaMaterialDraft(entry: entry)
+                        }
+                    }
+                    editOptionButton(L10n.text("新增我的資料"), icon: "plus") {
+                        showsEditOptions = false
+                        materialDraft = SmartAgendaMaterialDraft()
+                    }
+                    if isLeader, store.agenda?.meetingStartedAt == nil {
+                        editOptionButton(L10n.text("編輯會議"), icon: "list.bullet") {
+                            showsEditOptions = false
+                            showsMeetingEditor = true
+                        }
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: CGFloat(min(entries.count + (isLeader ? 2 : 1), 4)) * 68)
+        }
+        .foregroundStyle(BombTheme.ink)
+        .padding(20)
+        .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+        .padding(.horizontal, 28)
+        .frame(maxWidth: 480)
+    }
+
+    private func editOptionButton(_ title: String, icon: String, highlighted: Bool = false,
+                                  action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.headline.weight(.black))
+                .foregroundStyle(highlighted ? BombTheme.ink : .white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(highlighted ? BombTheme.yellow : BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
 }
 
 /// Both screens read the same cloud agenda; only the detail page shows preparation content.
@@ -69,26 +181,20 @@ private struct SmartAgendaCard: View {
     let isLeader: Bool
     let onOpenDetails: (() -> Void)?
     let onEditLink: ((SmartAgendaLinkDraft) -> Void)?
-    @State private var showsMeetingEditor = false
-    @State private var showsEditOptions = false
-    @State private var pendingEditAction: EditAction?
-    @State private var materialDraft: SmartAgendaMaterialDraft?
+    let onEdit: (() -> Void)?
     @State private var showsMeeting = false
     @State private var starting = false
 
-    private enum EditAction {
-        case material(SmartAgendaMaterialDraft)
-        case meeting
-    }
-
     init(store: SmartAgendaStore, members: [Member], isLeader: Bool,
          onOpenDetails: (() -> Void)? = nil,
-         onEditLink: ((SmartAgendaLinkDraft) -> Void)? = nil) {
+         onEditLink: ((SmartAgendaLinkDraft) -> Void)? = nil,
+         onEdit: (() -> Void)? = nil) {
         self.store = store
         self.members = members
         self.isLeader = isLeader
         self.onOpenDetails = onOpenDetails
         self.onEditLink = onEditLink
+        self.onEdit = onEdit
     }
 
     var body: some View {
@@ -105,9 +211,6 @@ private struct SmartAgendaCard: View {
         }
         .foregroundStyle(BombTheme.ink)
         .tint(BombTheme.ink)
-        .fullScreenCover(isPresented: $showsEditOptions, onDismiss: openSelectedEditor) { editOptions }
-        .sheet(isPresented: $showsMeetingEditor) { SmartAgendaMeetingEditor(store: store) }
-        .sheet(item: $materialDraft) { draft in SmartAgendaMaterialEditor(store: store, draft: draft) }
         .sheet(isPresented: $showsMeeting) { SmartAgendaMeetingSession(store: store, isLeader: isLeader) }
         .quickLookPreview($store.previewURL)
     }
@@ -125,6 +228,7 @@ private struct SmartAgendaCard: View {
                         Spacer()
                         Text(verbatim: "\(agenda.preparedUIDs.count)/\(agenda.memberUIDs.count)")
                             .font(.subheadline.weight(.black)).monospacedDigit()
+                            .frame(minWidth: 44, alignment: .trailing)
                             .accessibilityLabel(L10n.format("{0}/{1} 人已準備", String(agenda.preparedUIDs.count), String(agenda.memberUIDs.count)))
                     }.padding(.vertical, 8)
                     if onOpenDetails != nil, agenda.allPrepared, agenda.stages.isEmpty {
@@ -142,14 +246,6 @@ private struct SmartAgendaCard: View {
                                 .foregroundStyle(BombTheme.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 10)
-                        }
-                        if agenda.memberUIDs.contains(store.uid), !agenda.preparedUIDs.contains(store.uid) {
-                            Button { materialDraft = SmartAgendaMaterialDraft() } label: {
-                                Label(L10n.text("新增我的資料"), systemImage: "plus")
-
-                            }
-                            .buttonStyle(BombFormPrimaryButtonStyle())
-                            .padding(.top, 10)
                         }
                         ForEach(preparedMembers) { person in
                             if let uid = person.firebaseUID {
@@ -219,108 +315,17 @@ private struct SmartAgendaCard: View {
     }
 
     @ViewBuilder private var editControl: some View {
-        if store.agenda != nil || isLeader {
-            Button {
-                if store.agenda == nil { showsMeetingEditor = true }
-                else { showsEditOptions = true }
-            } label: { editIcon }
+        if let onEdit, store.agenda != nil || isLeader {
+            Button(action: onEdit) { editIcon }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("編輯議程"))
         }
     }
 
-    private func materialTitle(_ entry: SmartAgenda.MaterialEntry) -> String {
-        String((entry.material.note.isEmpty ? entry.material.attachment?.fileName ?? "" : store.agenda?.displayNote(entry.material.note) ?? entry.material.note).prefix(60))
-    }
-
-    private var editOptions: some View {
-        let entries = store.agenda?.materials(for: store.uid) ?? []
-        return ZStack {
-            BombTheme.ink.opacity(0.48)
-                .ignoresSafeArea()
-                .onTapGesture { showsEditOptions = false }
-
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Label(L10n.text("編輯議程"), systemImage: "square.and.pencil")
-                        .font(.title2.weight(.black))
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer()
-                    Button {
-                        showsEditOptions = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.headline.weight(.black))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(BombTheme.ink, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.text("取消"))
-                }
-
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(entries) { entry in
-                            editOptionButton(entries.count == 1 ? L10n.text("編輯我的資料") : materialTitle(entry),
-                                             icon: "person.crop.circle", highlighted: true) {
-                                pendingEditAction = .material(SmartAgendaMaterialDraft(entry: entry))
-                                showsEditOptions = false
-                            }
-                        }
-                        editOptionButton(L10n.text("新增我的資料"), icon: "plus") {
-                            pendingEditAction = .material(SmartAgendaMaterialDraft())
-                            showsEditOptions = false
-                        }
-                        if isLeader, store.agenda?.meetingStartedAt == nil {
-                            editOptionButton(L10n.text("編輯會議"), icon: "list.bullet.rectangle") {
-                                pendingEditAction = .meeting
-                                showsEditOptions = false
-                            }
-                        }
-                    }
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(maxHeight: CGFloat(min(entries.count + (isLeader ? 2 : 1), 4)) * 68)
-            }
-            .foregroundStyle(BombTheme.ink)
-            .padding(20)
-            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
-            .padding(.horizontal, 28)
-            .frame(maxWidth: 480)
-        }
-        .presentationBackground(.clear)
-    }
-
-    private func editOptionButton(_ title: String, icon: String, highlighted: Bool = false,
-                                  action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.headline.weight(.black))
-                .foregroundStyle(highlighted ? BombTheme.ink : .white)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(highlighted ? BombTheme.yellow : BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
-                .contentShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func openSelectedEditor() {
-        switch pendingEditAction {
-        case .material(let draft): materialDraft = draft
-        case .meeting: showsMeetingEditor = true
-        case nil: break
-        }
-        pendingEditAction = nil
-    }
-
     private var editIcon: some View {
-        Image(systemName: "square.and.pencil")
+        Image(systemName: "pencil")
             .font(.headline.weight(.semibold))
-            .frame(width: 44, height: 44)
+            .frame(width: 44, height: 44, alignment: .trailing)
             .contentShape(Rectangle())
     }
 
@@ -360,8 +365,7 @@ private struct SmartAgendaCard: View {
                     }
                     if entry.link.ownerUID == store.uid || isLeader {
                         Button { onEditLink?(SmartAgendaLinkDraft(entry: entry)) } label: {
-                            Image(systemName: "square.and.pencil")
-                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                            editIcon
                         }.buttonStyle(.plain).accessibilityLabel(L10n.text("編輯會議連結"))
                     }
                 }
@@ -457,55 +461,107 @@ private struct SmartAgendaCard: View {
 
 struct SmartAgendaMeetingEditor: View {
     let store: SmartAgendaStore
-    @Environment(\.dismiss) private var dismiss
+    let onDismiss: () -> Void
     @State private var topic: String
     @State private var date: Date
     @State private var duration: Int
     @State private var error: String?
     private let revision: String?
     private let initialTopic: SmartAgenda.EditableText
-    init(store: SmartAgendaStore) {
+    init(store: SmartAgendaStore, onDismiss: @escaping () -> Void) {
         self.store = store
+        self.onDismiss = onDismiss
         revision = store.agenda?.meetingRevision
         initialTopic = store.agenda?.editableTopic ?? .init(original: "", displayed: "")
         _topic = State(initialValue: initialTopic.displayed)
         _date = State(initialValue: store.agenda?.meetingAt ?? Date.now.addingTimeInterval(3600))
         _duration = State(initialValue: store.agenda?.duration ?? 20)
     }
+    private var canSave: Bool {
+        !store.isSaving && !topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && topic.count <= 120
+    }
+
     var body: some View {
-        BombFormSheet(title: L10n.text(revision == nil ? "設定會議" : "編輯會議")) {
-            VStack(alignment: .leading, spacing: 18) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label(L10n.text(revision == nil ? "設定會議" : "編輯會議"), systemImage: "list.bullet")
+                        .font(.title2.weight(.black))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(BombTheme.ink, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("取消"))
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.text("會議主題")).font(.subheadline.weight(.black))
                     TextField(L10n.text("會議主題"), text: $topic).bombFormField()
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.text("日期與時間")).font(.subheadline.weight(.black))
-                    DatePicker(L10n.text("會議"), selection: $date).bombFormField()
+                    DatePicker(L10n.text("會議"), selection: $date)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .bombFormField()
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.text("會議長度")).font(.subheadline.weight(.black))
                     Stepper(L10n.format("{0} 分鐘", String(duration)), value: $duration, in: 5...180, step: 5)
                         .bombFormField()
                 }
-            }.disabled(store.isSaving)
-            if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
-        } actions: {
-            BombFormActions(
-                primaryTitle: L10n.text(store.isSaving ? "儲存中…" : "儲存"),
-                isEnabled: !topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && topic.count <= 120,
-                isBusy: store.isSaving,
-                onPrimary: {
-                    Task {
-                        do { try await store.saveMeeting(topic: initialTopic.valueToSave(topic), date: date, duration: duration, revision: revision); dismiss() }
-                        catch { self.error = error.localizedDescription }
-                    }
-                },
-                onSecondary: { dismiss() }
-            )
+                if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
+                actionButton(store.isSaving ? "儲存中…" : "儲存", icon: "checkmark", highlighted: true, action: save)
+                    .disabled(!canSave)
+                    .opacity(canSave ? 1 : 0.45)
+                actionButton("取消", icon: "xmark", action: onDismiss)
+            }
+            .disabled(store.isSaving)
+            .foregroundStyle(BombTheme.ink)
+            .tint(BombTheme.ink)
+            .padding(20)
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .padding(.vertical, 20)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .accessibilityAddTraits(.isModal)
         }
-        .presentationDetents([.medium, .large])
-        .interactiveDismissDisabled(store.isSaving)
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
+        .defaultScrollAnchor(.center)
+    }
+
+    private func actionButton(_ title: String, icon: String, highlighted: Bool = false,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(L10n.text(title), systemImage: icon)
+                .font(.headline.weight(.black))
+                .foregroundStyle(highlighted ? BombTheme.ink : .white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(highlighted ? BombTheme.yellow : BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func save() {
+        guard canSave else { return }
+        Task {
+            do {
+                try await store.saveMeeting(topic: initialTopic.valueToSave(topic), date: date,
+                                            duration: duration, revision: revision)
+                onDismiss()
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }
 
@@ -522,7 +578,7 @@ private struct SmartAgendaMaterialDraft: Identifiable {
 private struct SmartAgendaMaterialEditor: View {
     let store: SmartAgendaStore
     let draft: SmartAgendaMaterialDraft
-    @Environment(\.dismiss) private var dismiss
+    let onDismiss: () -> Void
     @State private var note: String
     @State private var attachment: SmartAgenda.Attachment?
     @State private var selectedFile: URL?
@@ -530,9 +586,10 @@ private struct SmartAgendaMaterialEditor: View {
     @State private var error: String?
     private let revision: String?
     private let initialNote: SmartAgenda.EditableText
-    init(store: SmartAgendaStore, draft: SmartAgendaMaterialDraft) {
+    init(store: SmartAgendaStore, draft: SmartAgendaMaterialDraft, onDismiss: @escaping () -> Void) {
         self.store = store
         self.draft = draft
+        self.onDismiss = onDismiss
         let own = draft.material
         revision = own?.revision
         let original = own?.note ?? ""
@@ -540,9 +597,30 @@ private struct SmartAgendaMaterialEditor: View {
         _note = State(initialValue: initialNote.displayed)
         _attachment = State(initialValue: own?.attachment)
     }
+    private var canSave: Bool {
+        !store.isSaving && note.count <= 1000
+            && (draft.material != nil || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || selectedFile != nil || attachment != nil)
+    }
+
     var body: some View {
-        BombFormSheet(title: L10n.text(draft.material == nil ? "新增我的資料" : "編輯我的資料")) {
-            VStack(alignment: .leading, spacing: 18) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label(L10n.text(draft.material == nil ? "新增我的資料" : "編輯我的資料"), systemImage: "person.crop.circle")
+                        .font(.title2.weight(.black))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(BombTheme.ink, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("取消"))
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.text("準備內容")).font(.subheadline.weight(.black))
                     TextField(L10n.text("你想在會議中討論什麼？"), text: $note, axis: .vertical)
@@ -565,29 +643,58 @@ private struct SmartAgendaMaterialEditor: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .bombFormField()
                 }
-            }.disabled(store.isSaving)
-            if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
-        } actions: {
-            BombFormActions(
-                primaryTitle: L10n.text(store.isSaving ? "儲存中…" : "儲存"),
-                isEnabled: note.count <= 1000 && (draft.material != nil || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedFile != nil || attachment != nil),
-                isBusy: store.isSaving,
-                onPrimary: {
-                    Task {
-                        do { try await store.saveMaterial(id: draft.id, note: initialNote.valueToSave(note), attachment: attachment, file: selectedFile, revision: revision); dismiss() }
-                        catch { self.error = error.localizedDescription }
-                    }
-                },
-                onSecondary: { dismiss() }
-            )
+                if let error { Text(L10n.text(error)).foregroundStyle(BombTheme.red) }
+                actionButton(store.isSaving ? "儲存中…" : "儲存", icon: "checkmark", highlighted: true, action: save)
+                    .disabled(!canSave)
+                    .opacity(canSave ? 1 : 0.45)
+                actionButton("取消", icon: "xmark", action: onDismiss)
+            }
+            .disabled(store.isSaving)
+            .foregroundStyle(BombTheme.ink)
+            .tint(BombTheme.ink)
+            .padding(20)
+            .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+            .padding(.horizontal, 28)
+            .padding(.vertical, 20)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .accessibilityAddTraits(.isModal)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
+        .defaultScrollAnchor(.center)
         .fileImporter(isPresented: $showsImporter,
                       allowedContentTypes: SmartAgendaStore.fileTypes.keys.compactMap { UTType(filenameExtension: $0) }) { result in
             do { selectedFile = try result.get(); error = nil }
             catch { self.error = error.localizedDescription }
         }
-        .presentationDetents([.medium, .large])
-        .interactiveDismissDisabled(store.isSaving)
+    }
+
+    private func actionButton(_ title: String, icon: String, highlighted: Bool = false,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(L10n.text(title), systemImage: icon)
+                .font(.headline.weight(.black))
+                .foregroundStyle(highlighted ? BombTheme.ink : .white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(highlighted ? BombTheme.yellow : BombTheme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func save() {
+        guard canSave else { return }
+        Task {
+            do {
+                try await store.saveMaterial(id: draft.id, note: initialNote.valueToSave(note), attachment: attachment,
+                                             file: selectedFile, revision: revision)
+                onDismiss()
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }
 

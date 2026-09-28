@@ -260,7 +260,7 @@ service cloud.firestore {
       }
 
       match /smartAgenda/{agendaID} {
-        allow read: if isGroupMember(groupID) && agendaID == 'current';
+        allow read: if isGroupMember(groupID);
         // Callables enforce leader/own-material permissions and atomic plan revisions.
         allow write: if false;
       }
