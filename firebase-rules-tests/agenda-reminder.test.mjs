@@ -90,3 +90,14 @@ test('clients cannot impersonate a server-authored agenda summary', async () => 
   await assertFails(setDoc(doc(env.authenticatedContext('member').firestore(),`groups/${groupID}/messages/forged`),
     {...original,id:'forged',senderID:'member',createdAt:serverTimestamp()}));
 });
+
+test('each meeting gets its own reminder; a deleted agenda never sends one', async () => {
+  const second = group.collection('smartAgenda').doc('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  await second.set({...((await agenda.get()).data()), topic:'Second meeting'});
+  assert.equal(await publish(),true);
+  assert.equal(await publishReminder(db,second,now,()=>FieldValue.serverTimestamp()),true);
+  assert.equal(await publishReminder(db,second,now,()=>FieldValue.serverTimestamp()),false);
+  assert.equal((await group.collection('messages').get()).size,2);
+  await second.set({deleted:true});
+  assert.equal(await publishReminder(db,second,now,()=>FieldValue.serverTimestamp()),false);
+});

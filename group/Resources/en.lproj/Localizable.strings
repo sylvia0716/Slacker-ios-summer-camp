@@ -400,6 +400,8 @@
 "移除失敗，請確認網路後重試。" = "Could not remove the member. Check your connection and try again.";
 "群組代碼已複製" = "Group code copied";
 "成員進度" = "Member progress";
+"釘選成員" = "Pinned member";
+"選擇釘選成員" = "Choose a member to pin";
 "我的進度" = "My progress";
 "已截止" = "Deadline passed";
 "＋ 發布任務" = "＋ Publish task";
@@ -1002,3 +1004,19 @@
 "群組已截止，請先延長群組期限再修改任務。" = "The group deadline has passed. Extend it before editing this task.";
 
 "截止時間已過，請選擇未來時間後儲存。" = "The deadline has passed. Choose a future time before saving.";
+
+"管理議程" = "Manage agendas";
+
+"新增議程" = "Add agenda";
+
+"刪除議程" = "Delete agenda";
+
+"刪除中…" = "Deleting…";
+
+"刪除後，這場會議的準備資料、連結與 AI 議程也會移除。" = "Deleting this meeting also removes its preparation, links and AI plan.";
+
+"Only the leader can manage meetings." = "Only the leader can manage meetings.";
+
+"This agenda was deleted." = "This agenda was deleted.";
+
+"This agenda already exists." = "This agenda already exists.";

@@ -7,9 +7,10 @@ import FoundationModels
 import Observation
 
 @MainActor @Observable
-final class SmartAgendaStore {
+final class SmartAgendaStore: Identifiable {
     let groupID: String
     let uid: String
+    let id: String
     private(set) var agenda: SmartAgenda?
     private(set) var isLoading = true
     private(set) var isSaving = false
@@ -22,6 +23,7 @@ final class SmartAgendaStore {
     @ObservationIgnored private var listener: ListenerRegistration?
     @ObservationIgnored private var subscription = UUID()
     @ObservationIgnored private var generatesPlans = false
+    @ObservationIgnored private var observedByCollection = false
     @ObservationIgnored private var attemptedRevision: String?
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var generationID: UUID?
@@ -34,13 +36,32 @@ final class SmartAgendaStore {
         let attachment: SmartAgenda.Attachment
     }
     private var document: DocumentReference {
-        Firestore.firestore().collection("groups").document(groupID).collection("smartAgenda").document("current")
+        Firestore.firestore().collection("groups").document(groupID).collection("smartAgenda").document(id)
     }
 
-    init(groupID: String, uid: String) { self.groupID = groupID; self.uid = uid }
+    init(groupID: String, uid: String, id: String = "current") {
+        self.groupID = groupID; self.uid = uid; self.id = id
+    }
+
+    func receive(_ value: SmartAgenda?, fromCollection: Bool = true) {
+        observedByCollection = fromCollection
+        if fromCollection { generatesPlans = true }
+        isLoading = false
+        if value?.inputRevision != agenda?.inputRevision {
+            cancelGeneration()
+            attemptedRevision = nil
+            aiError = nil
+            cannotGenerateOnThisDevice = false
+        }
+        agenda = value
+        error = nil
+        if value?.stages.isEmpty == false { aiError = nil }
+        generateIfNeeded()
+    }
 
     func listen(generatesPlans: Bool = false) {
         self.generatesPlans = generatesPlans
+        if observedByCollection { generateIfNeeded(); return }
         guard listener == nil, Auth.auth().currentUser?.uid == uid else { return }
         isLoading = true
         let token = UUID()
@@ -51,17 +72,9 @@ final class SmartAgendaStore {
                 self.isLoading = false
                 if let error { self.error = error.localizedDescription; return }
                 do {
-                    let value = try snapshot?.exists == true ? snapshot?.data(as: SmartAgenda.self) : nil
-                    if value?.inputRevision != self.agenda?.inputRevision {
-                        self.cancelGeneration()
-                        self.attemptedRevision = nil
-                        self.aiError = nil
-                        self.cannotGenerateOnThisDevice = false
-                    }
-                    self.agenda = value
-                    self.error = nil
-                    if value?.stages.isEmpty == false { self.aiError = nil }
-                    self.generateIfNeeded()
+                    let value = try snapshot?.exists == true && snapshot?.data()?["deleted"] as? Bool != true
+                        ? snapshot?.data(as: SmartAgenda.self) : nil
+                    self.receive(value, fromCollection: false)
                 } catch { self.error = error.localizedDescription }
             }
         }
@@ -69,6 +82,7 @@ final class SmartAgendaStore {
 
     func stop() {
         subscription = UUID()
+        observedByCollection = false
         cancelGeneration()
         attemptedRevision = nil
         listener?.remove()
@@ -83,6 +97,7 @@ final class SmartAgendaStore {
         var payload = fields
         payload["action"] = action
         payload["groupID"] = groupID
+        payload["agendaID"] = id
         let response = try await Functions.functions(region: "asia-east1").httpsCallable("updateSmartAgenda").call(payload)
         guard Auth.auth().currentUser?.uid == uid else { throw AgendaError.signedOut }
         guard let data = response.data as? [String: Any] else { throw AgendaError.invalidResponse }
@@ -93,8 +108,16 @@ final class SmartAgendaStore {
         guard !isSaving else { throw AgendaError.saving }
         isSaving = true
         defer { isSaving = false }
-        try await call("meeting", ["topic": topic, "meetingAtMillis": date.timeIntervalSince1970 * 1000,
+        try await call(revision == nil ? "createMeeting" : "meeting", ["topic": topic, "meetingAtMillis": date.timeIntervalSince1970 * 1000,
                                   "duration": duration, "expectedRevision": revision as Any? ?? NSNull()])
+    }
+
+    func deleteMeeting(revision: String) async throws {
+        guard !isSaving else { throw AgendaError.saving }
+        isSaving = true
+        defer { isSaving = false }
+        try await call("deleteMeeting", ["expectedRevision": revision])
+        receive(nil)
     }
 
     func saveLink(id: String, title: String, url: String, revision: String?) async throws {
@@ -212,7 +235,7 @@ final class SmartAgendaStore {
     }
 
     private func generateIfNeeded() {
-        guard generatesPlans, listener != nil, let agenda, agenda.allPrepared, agenda.stages.isEmpty,
+        guard generatesPlans, (listener != nil || observedByCollection), let agenda, agenda.allPrepared, agenda.stages.isEmpty,
               !isGenerating, attemptedRevision != agenda.inputRevision, !agenda.isGenerating(at: .now) else { return }
         attemptedRevision = agenda.inputRevision
         let id = UUID(), revision = agenda.inputRevision
