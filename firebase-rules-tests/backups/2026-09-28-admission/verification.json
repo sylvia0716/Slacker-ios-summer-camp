@@ -1,0 +1,24 @@
+{
+  "ruleset": "projects/group-bomb/rulesets/bffcd751-3de3-4e4f-9376-7eb13279edca",
+  "rulesMatch": true,
+  "functions": [
+    {
+      "id": "reviewGroupJoinRequest",
+      "state": "ACTIVE",
+      "unauthenticatedHTTP": 401,
+      "status": "UNAUTHENTICATED"
+    },
+    {
+      "id": "getJoinApplicantProfile",
+      "state": "ACTIVE",
+      "unauthenticatedHTTP": 401,
+      "status": "UNAUTHENTICATED"
+    },
+    {
+      "id": "joinGroupByInviteCode",
+      "state": "ACTIVE",
+      "unauthenticatedHTTP": 401,
+      "status": "UNAUTHENTICATED"
+    }
+  ]
+}

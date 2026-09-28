@@ -160,6 +160,7 @@ final class AppStore {
     @ObservationIgnored private var peerReviewCommentsSyncErrorsByGroupID: [UUID: String] = [:]
     private(set) var peerReviewSummariesByGroupID: [UUID: PeerReviewSummary] = [:]
     private(set) var peerReviewCommentsByGroupID: [UUID: [String]] = [:]
+    let admissions = GroupAdmissionStore()
     private(set) var personalPeerReviewProjects: [PersonalPeerReviewProject] = []
     private(set) var personalPeerReviewSyncError: String?
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
@@ -1726,10 +1727,18 @@ final class AppStore {
     func resumeCloudSync() {
         guard dataMode == .live, firebaseUID != nil, !syncIsActive else { return }
         syncIsActive = true
+        refreshAdmissionSync()
         refreshDeadlineReminders()
         PokeBackgroundRefresh.shared.schedule()
         registerPokeDevice()
         Task { [weak self] in _ = await self?.reloadCloudGroups() }
+    }
+
+    func refreshAdmissionSync() {
+        guard !isDemoMode, let uid = firebaseUID else { return }
+        admissions.start(uid: uid, leaderGroupIDs: groups.filter {
+            $0.memberRoles[currentUserID] == .leader
+        }.compactMap(\.firestoreDocumentID))
     }
 
     func registerPokeDevice() {
@@ -1751,6 +1760,7 @@ final class AppStore {
     }
 
     func suspendCloudSync() {
+        admissions.stop()
         syncIsActive = false
         cloudGeneration = UUID()
         cloudLoadTask?.cancel()
@@ -1840,6 +1850,7 @@ final class AppStore {
             // Replace, never append stale account/group/task rows.
             projectTasks = loaded.flatMap(\.tasks)
             groups = loaded.map(\.group)
+            refreshAdmissionSync()
             hasLoadedReminderData = true
             var byID: [UUID: Member] = [:]
             for member in loaded.flatMap(\.members) { byID[member.id] = member }
@@ -1900,7 +1911,11 @@ final class AppStore {
     func acceptJoinedGroup(_ result: GroupJoinResult) -> Bool {
         guard firebaseUID == result.firebaseUID else { return false }
         cloudErrorMessage = nil
-        mergeAccessibleCloudGroups([result.group])
+        if !result.isPending { mergeAccessibleCloudGroups([result.group]) }
+        if result.isPending {
+            lastEvent = L10n.format("已送出加入「{0}」的申請，等待組長審核。", result.group.name)
+            return true
+        }
         lastEvent = result.wasAlreadyMember
             ? L10n.format("你已經是「{0}」的成員", String(describing: result.group.name))
             : L10n.format("已加入「{0}」", String(describing: result.group.name))
@@ -2139,6 +2154,7 @@ final class AppStore {
                 }
                 self.groups[index].memberIDs = loaded.group.memberIDs
                 self.groups[index].memberRoles = loaded.group.memberRoles
+                self.refreshAdmissionSync()
                 self.groups[index].leaderElectionID = loaded.group.leaderElectionID
                 self.groups[index].leaderVotes = loaded.group.leaderVotes
                 self.groups[index].taskIDs = loaded.group.taskIDs

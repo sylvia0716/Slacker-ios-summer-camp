@@ -41,6 +41,7 @@ struct MemberProgressCard: View {
     let onPokeEmoji: (String, String?) -> Void
     var onChangeLeader: (() -> Void)? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var uploadTask: ProjectTask?
     @State private var managedTask: ProjectTask?
     @State private var previewDeliverable: Deliverable?
@@ -73,8 +74,9 @@ struct MemberProgressCard: View {
                         HStack(spacing: 10) {
                             Text(tasks.isEmpty ? "—" : "\(member.progress)%")
                                 .font(.system(.title2, design: .rounded, weight: .black)).monospacedDigit()
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            Image(systemName: "chevron.down")
                                 .font(.subheadline.weight(.black))
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                     }
                 }
@@ -111,29 +113,25 @@ struct MemberProgressCard: View {
                     if tasks.isEmpty {
                         emptyTaskState
                     }
-                }
-
-                if member.showsNudge && !isCurrentUser {
-                    HStack {
-                        Spacer()
-                        PokeActionButton(onPoke: onPoke, onPokeEmoji: { onPokeEmoji(member.id, $0) })
-                            .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
-                                [member.id: $0]
-                            }
+                    if member.showsNudge && !isCurrentUser {
+                        HStack {
+                            Spacer()
+                            PokeActionButton(onPoke: onPoke, onPokeEmoji: { onPokeEmoji(member.id, $0) })
+                                .anchorPreference(key: PokeButtonAnchorKey.self, value: .bounds) {
+                                    [member.id: $0]
+                                }
+                        }
+                        .padding(.top, 4)
                     }
                 }
+                .transition(.opacity)
             }
         }
         .foregroundStyle(BombTheme.ink)
         .padding(16)
         .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(BombTheme.ink, lineWidth: 3))
-        .animation(.snappy, value: isExpanded)
-        .onChange(of: isExpanded) { _, expanded in
-            if !expanded {
-                expandedTaskID = nil
-            }
-        }
         .sheet(item: $managedTask) { task in
             AttachmentManagementSheet(model: model, task: task, onSubmit: { onSubmitDeliverable(task.id, $0) })
         }
@@ -206,8 +204,9 @@ struct MemberProgressCard: View {
                     Button {
                         toggleTaskExpansion(task.id, isExpanded: isTaskExpanded)
                     } label: {
-                        Image(systemName: isTaskExpanded ? "chevron.up" : "chevron.down")
+                        Image(systemName: "chevron.down")
                             .font(.caption.weight(.black))
+                            .rotationEffect(.degrees(isTaskExpanded ? 180 : 0))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isTaskExpanded ? L10n.text("收合任務") : L10n.text("展開任務"))
@@ -239,23 +238,26 @@ struct MemberProgressCard: View {
                 : L10n.format("展開任務 {0}", String(describing: task.title)))
 
             if isTaskExpanded {
-                Divider()
-                    .overlay(BombTheme.ink.opacity(0.16))
+                VStack(spacing: 0) {
+                    Divider()
+                        .overlay(BombTheme.ink.opacity(0.16))
 
-                VStack(alignment: .leading, spacing: 18) {
-                    checklistSection(for: task)
-                    deliverableSection(for: task)
+                    VStack(alignment: .leading, spacing: 18) {
+                        checklistSection(for: task)
+                        deliverableSection(for: task)
+                    }
+                    .padding(14)
                 }
-                .padding(14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .background(BombTheme.paper, in: RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BombTheme.ink.opacity(0.7), lineWidth: 1.5))
     }
 
     private func toggleTaskExpansion(_ taskID: UUID, isExpanded: Bool) {
-        withAnimation(.snappy) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24, extraBounce: 0)) {
             expandedTaskID = isExpanded ? nil : taskID
         }
     }
@@ -283,8 +285,9 @@ struct MemberProgressCard: View {
                 .font(.system(.title2, design: .rounded, weight: .black))
                 .monospacedDigit()
                 .fixedSize()
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            Image(systemName: "chevron.down")
                 .font(.subheadline.weight(.black))
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
         }
     }
 

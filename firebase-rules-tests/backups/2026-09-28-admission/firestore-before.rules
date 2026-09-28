@@ -97,12 +97,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Applications do not grant access to group data. Only the owner sees their result.
-    match /users/{userID}/groupJoinRequests/{groupID} {
-      allow read: if isCurrentUser(userID);
-      allow write: if false;
-    }
-
     function isGroupLeader(groupID) {
       return isGroupMember(groupID)
         && get(
@@ -236,11 +230,6 @@ service cloud.firestore {
       allow read: if isGroupMember(groupID);
       allow write: if false;
 
-      match /joinRequests/{userID} {
-        allow read: if isGroupLeader(groupID);
-        allow write: if false;
-      }
-
       match /members/{userID} {
         allow read: if isGroupMember(groupID) || isCurrentUser(userID);
 
@@ -271,7 +260,7 @@ service cloud.firestore {
       }
 
       match /smartAgenda/{agendaID} {
-        allow read: if isGroupMember(groupID) && agendaID == 'current';
+        allow read: if isGroupMember(groupID);
         // Callables enforce leader/own-material permissions and atomic plan revisions.
         allow write: if false;
       }

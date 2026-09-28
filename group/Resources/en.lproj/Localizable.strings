@@ -1002,3 +1002,51 @@
 "群組已截止，請先延長群組期限再修改任務。" = "The group deadline has passed. Extend it before editing this task.";
 
 "截止時間已過，請選擇未來時間後儲存。" = "The deadline has passed. Choose a future time before saving.";
+
+"待審核" = "Pending review";
+
+"已核准" = "Approved";
+
+"未通過審核" = "Not approved";
+
+"尚無歷史戰力紀錄" = "No past performance records";
+
+"專案數較少，分數僅供初步參考。" = "Limited project history. Scores are preliminary.";
+
+"入群申請同步失敗，請重試。" = "Could not sync join requests. Please try again.";
+
+"已送出加入「{0}」的申請，等待組長審核。" = "Your request to join “{0}” is awaiting the group leader’s review.";
+
+"待審核入群 · {0}" = "Join requests · {0}";
+
+"查看申請" = "Review request";
+
+"我的入群申請" = "My join requests";
+
+"申請加入「{0}」" = "Request to join “{0}”";
+
+"此申請已更新" = "This request has changed";
+
+"載入戰力檔案…" = "Loading performance profile…";
+
+"入群審核" = "Review join request";
+
+"拒絕申請" = "Decline request";
+
+"核准加入" = "Approve";
+
+"拒絕這份入群申請？" = "Decline this join request?";
+
+"無法載入戰力檔案，請重試。" = "Could not load the performance profile. Please try again.";
+
+"審核未完成，申請或群組狀態可能已變更，請重新整理後重試。" = "Could not complete the review. The request or group may have changed. Refresh and try again.";
+
+"送出申請即同意該組組長在審核期間查看你的歷史戰力分數與專案摘要，作為入群審核依據。不包含原始評語或評分者身分。" = "By submitting, you agree to let this group’s leader view your past performance scores and project summaries during the review to decide whether to approve your request. Individual review comments and reviewer identities are not shared.";
+
+"送出中…" = "Submitting…";
+
+"送出入群申請" = "Request to join";
+
+"送出入群申請後，該組組長可在審核期間查看分數與專案摘要" = "When you request to join a group, its leader can view your scores and project summaries during review.";
+
+"待審核入群" = "Join requests";

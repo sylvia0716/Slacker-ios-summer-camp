@@ -531,3 +531,24 @@ test('members can publish only their own group avatar path', async () => {
  await assertFails(updateDoc(doc(firestoreFor(teammateID), path), value));
  await assertFails(updateDoc(doc(firestoreFor(uploaderID), path), {...value, avatarPath: `groups/${groupID}/avatars/${teammateID}/avatar.jpg`}));
 });
+
+test('join application inbox is leader-only; applicant can read only their own result', async () => {
+  const inbox = `groups/${groupID}/joinRequests/${outsiderID}`;
+  const result = `users/${outsiderID}/groupJoinRequests/${groupID}`;
+  const history = `users/${outsiderID}/peerReviewProjects/past`;
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    for (const path of [inbox, result]) await setDoc(doc(ctx.firestore(), path), {status:'pending',applicantID:outsiderID});
+    await setDoc(doc(ctx.firestore(), history), {reviewCount:2});
+  });
+  await assertSucceeds(getDoc(doc(firestoreFor(leaderID), inbox)));
+  await assertSucceeds(getDoc(doc(firestoreFor(outsiderID), result)));
+  for (const uid of [uploaderID, outsiderID, null]) await assertFails(getDoc(doc(firestoreFor(uid), inbox)));
+  for (const uid of [leaderID, uploaderID, null]) await assertFails(getDoc(doc(firestoreFor(uid), result)));
+  await assertFails(getDoc(doc(firestoreFor(outsiderID), `groups/${groupID}`)));
+  // Sharing is scoped through the authorized callable, never blanket access to history.
+  await assertFails(getDoc(doc(firestoreFor(leaderID), history)));
+  for (const uid of [leaderID, outsiderID]) {
+    await assertFails(setDoc(doc(firestoreFor(uid), inbox), {status:'approved'}));
+    await assertFails(setDoc(doc(firestoreFor(uid), result), {status:'approved'}));
+  }
+});

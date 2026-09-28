@@ -7,6 +7,7 @@ struct GroupJoinResult: Sendable {
     let group: CloudGroupSummary
     let firebaseUID: String
     let wasAlreadyMember: Bool
+    let isPending: Bool
 }
 
 struct GroupCreationResult: Sendable {
@@ -84,7 +85,8 @@ final class GroupJoinRepository {
             return GroupJoinResult(
                 group: group,
                 firebaseUID: uid,
-                wasAlreadyMember: wasAlreadyMember
+                wasAlreadyMember: wasAlreadyMember,
+                isPending: payload["status"] as? String == "pending"
             )
         } catch let error as GroupJoinError {
             throw error

@@ -29,7 +29,7 @@ function setup() {
     } }) };
     if (name === 'firebase-functions/v2/https') return { onCall: (_, fn) => fn, HttpsError };
     if (name === 'firebase-functions/v2/firestore') return { onDocumentCreated: (_, fn) => fn };
-    if (name === './group-membership' || name === './peer-review') return {};
+    if (name === './group-membership' || name === './group-admission' || name === './peer-review') return {};
     return require(name);
   } };
   vm.runInNewContext(fs.readFileSync(__dirname + '/index.js', 'utf8'), context);

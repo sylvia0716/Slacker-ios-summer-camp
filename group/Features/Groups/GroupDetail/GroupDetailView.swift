@@ -102,6 +102,10 @@ struct GroupDetailView: View {
                                     }
                                 }
 
+                                if let groupID = currentGroup.firestoreDocumentID {
+                                    GroupAdmissionInbox(model: model, groupID: groupID)
+                                }
+
                                 if let agendaStore, agendaStore.agenda != nil {
                                     SmartAgendaSection(store: agendaStore, members: groupMembers,
                                                        isLeader: currentUserMember?.role == .leader,
@@ -1441,7 +1445,7 @@ struct GroupDetailView: View {
             isCurrentUser: member.id == model.currentUserID,
             isExpanded: expandedMemberID == member.id,
             onToggleExpanded: {
-                withAnimation(.snappy) {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0)) {
                     expandedMemberID = expandedMemberID == member.id ? nil : member.id
                 }
             },

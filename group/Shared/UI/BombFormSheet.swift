@@ -4,6 +4,7 @@ import SwiftUI
 struct BombFormSheet<Content: View, Actions: View>: View {
     let title: String
     var showsHandle = false
+    var backgroundColor: Color = BombTheme.yellow
     @ViewBuilder let content: Content
     @ViewBuilder let actions: Actions
 
@@ -38,11 +39,11 @@ struct BombFormSheet<Content: View, Actions: View>: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
-                .background(BombTheme.yellow)
+                .background(backgroundColor)
         }
         .foregroundStyle(BombTheme.ink)
         .tint(BombTheme.ink)
-        .background(BombTheme.yellow.ignoresSafeArea())
+        .background(backgroundColor.ignoresSafeArea())
         .overlay {
             if !showsHandle {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -51,7 +52,7 @@ struct BombFormSheet<Content: View, Actions: View>: View {
                     .allowsHitTesting(false)
             }
         }
-        .presentationBackground(BombTheme.yellow)
+        .presentationBackground(backgroundColor)
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

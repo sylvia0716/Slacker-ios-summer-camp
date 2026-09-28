@@ -339,9 +339,11 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
 
     const groupRef = db.collection("groups").doc(groupID);
     const memberRef = groupRef.collection("members").doc(userID);
-    const [groupSnapshot, memberSnapshot] = await Promise.all([
+    const applicationRef = groupRef.collection("joinRequests").doc(userID);
+    const [groupSnapshot, memberSnapshot, applicationSnapshot] = await Promise.all([
       transaction.get(groupRef),
       transaction.get(memberRef),
+      transaction.get(applicationRef),
     ]);
 
     if (!groupSnapshot.exists || groupSnapshot.data().deleting === true) {
@@ -353,19 +355,20 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
       if (groupSnapshot.data().settledAt != null || groupDeadline === null || groupDeadline <= Date.now()) {
         throw callableError("failed-precondition", "This group is already closed.", "group-closed");
       }
-      transaction.create(memberRef, {
-        userID,
-        role: "member",
-        joinedAt: FieldValue.serverTimestamp(),
-        displayName,
-        leaderElectionID: groupSnapshot.data().leaderElectionID || null,
-        leaderVoteUID: null,
-      });
-      transaction.update(groupRef, {membershipUpdatedAt: FieldValue.serverTimestamp()});
+      if (applicationSnapshot.data()?.status !== "pending") {
+        const application = {
+          requestID: randomUUID(), groupID, groupName: groupSnapshot.data().name,
+          applicantID: userID, applicantName: displayName, status: "pending",
+          requestedAt: FieldValue.serverTimestamp(),
+        };
+        transaction.set(applicationRef, application);
+        transaction.set(db.collection("users").doc(userID).collection("groupJoinRequests").doc(groupID), application);
+      }
     }
 
     return {
       alreadyMember: memberSnapshot.exists,
+      status: memberSnapshot.exists ? "approved" : "pending",
       group: groupPayload(groupID, groupSnapshot.data(), inviteCode),
     };
   });
@@ -736,6 +739,7 @@ exports.deliverPokePush = onDocumentCreated({ region, document: "groups/{groupID
 });
 
 Object.assign(exports, require('./group-membership'));
+Object.assign(exports, require('./group-admission'));
 Object.assign(exports, require('./peer-review'));
 Object.assign(exports, require('./smart-agenda'));
 Object.assign(exports, require('./smart-agenda-reminders'));

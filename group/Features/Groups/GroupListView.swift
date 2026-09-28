@@ -31,6 +31,15 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
+                        GroupAdmissionInbox(model: model)
+                        MyGroupApplications(model: model)
+                        if let error = model.admissions.syncError {
+                            Text(error).font(.footnote).foregroundStyle(BombTheme.red)
+                            Button(L10n.text("重試")) {
+                                model.admissions.stop()
+                                model.refreshAdmissionSync()
+                            }
+                        }
                         if model.groups.isEmpty, model.isLoadingCloudGroups {
                             ProgressView(L10n.text("正在載入群組…"))
                                 .tint(BombTheme.ink)
@@ -64,7 +73,17 @@ struct GroupListView: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .refreshable { await model.reloadCloudGroups() }
+        .refreshable {
+            model.admissions.stop()
+            model.refreshAdmissionSync()
+            await model.reloadCloudGroups()
+        }
+        .onChange(of: model.admissions.myRequests, initial: true) { _, requests in
+            let needsReload = requests.contains { request in
+                request.status == .approved && !model.groups.contains { $0.firestoreDocumentID == request.groupID }
+            }
+            if needsReload { Task { await model.reloadCloudGroups(forceRefresh: true) } }
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("我的群組")) {
                 EmptyView()
@@ -316,7 +335,7 @@ private struct AddGroupSheet: View {
     }
 
     var body: some View {
-        BombFormSheet(title: navigationTitle) {
+        BombFormSheet(title: navigationTitle, backgroundColor: BombTheme.paper) {
             switch flow {
             case .entry:
                 VStack(spacing: 24) {
@@ -458,7 +477,8 @@ private struct AddGroupSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("掃描邀請碼"))
 
-            Text(L10n.text("輸入隊友分享的邀請碼"))
+            Text(L10n.text("送出申請即同意該組組長在審核期間查看你的歷史戰力分數與專案摘要，作為入群審核依據。不包含原始評語或評分者身分。"))
+                .multilineTextAlignment(.center)
                 .font(.caption.weight(.bold))
         }
         .padding(18)
@@ -592,7 +612,8 @@ private struct AddGroupSheet: View {
 
     private var primaryButtonTitle: String {
         if isCreating { return L10n.text("建立中…") }
-        if joinStore.isJoining { return L10n.text("加入中…") }
+        if joinStore.isJoining { return L10n.text("送出中…") }
+        if flow == .entry, entryMode == .join { return L10n.text("送出入群申請") }
         return flow == .entry ? L10n.text("完成") : L10n.text("稍後分享")
     }
 
@@ -648,6 +669,10 @@ private struct AddGroupSheet: View {
             guard model.acceptJoinedGroup(result) else { return }
             let successMessage = model.lastEvent
             dismiss()
+            if result.isPending {
+                joinedGroup(successMessage)
+                return
+            }
             let refreshed = await model.reloadCloudGroups(reportError: false, forceRefresh: true)
             guard model.firebaseUID == result.firebaseUID else { return }
             joinedGroup(refreshed ? successMessage : successMessage + L10n.text("，但列表更新失敗，請下拉重新整理。"))

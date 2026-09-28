@@ -120,7 +120,7 @@ struct PersonalBattleReportView: View {
     }
 
     private var privacyBanner: some View {
-        Label(L10n.text("只有你看得到；匯出時包含分數與專案摘要"), systemImage: "lock.fill")
+        Label(L10n.text("送出入群申請後，該組組長可在審核期間查看分數與專案摘要"), systemImage: "lock.fill")
             .font(.caption.weight(.bold))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -218,7 +218,7 @@ struct PersonalBattleReportView: View {
     }
 }
 
-private struct ProjectRecordCard: View {
+struct ProjectRecordCard: View {
     let project: PersonalPeerReviewProject
 
     var body: some View {
