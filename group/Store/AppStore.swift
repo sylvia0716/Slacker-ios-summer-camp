@@ -275,6 +275,9 @@ final class AppStore {
     /// 聊天室 AI 機器人的溝通評分；key 是群組 ID，設定頁與聊天室共用同一份結果。
     var communicationAnalyses: [UUID: CommunicationAnalysis] = [:]
 
+    /// 邀請碼申請在核准前不會成為群組成員；原型期間僅保留在記憶體中。
+    var joinRequests: [GroupJoinRequest] = []
+
     /// 每個群組的完整聊天時間軸；離開聊天室再進入時仍會讀取同一份記錄。
     var chatItemsByGroupID: [UUID: [ChatRoomItem]] = [:]
     private(set) var chatSenderIDsByGroupID: [UUID: [String: String]] = [:]
@@ -353,6 +356,7 @@ final class AppStore {
         agents = []
         radar = []
         communicationAnalyses = [:]
+        joinRequests = []
         lastEvent = ""
         self.dataMode = .live
 
@@ -392,6 +396,7 @@ final class AppStore {
             agents = demo.agents
             radar = demo.radar
             communicationAnalyses = demo.communicationAnalyses
+            joinRequests = demo.joinRequests
             cloudGroupSyncErrorMessage = nil
             lastEvent = L10n.text("測試資料已載入")
             dataMode = .demo
@@ -427,6 +432,7 @@ final class AppStore {
             agents = []
             radar = []
             communicationAnalyses = [:]
+            joinRequests = []
             chatItemsByGroupID = [:]
             cloudChatMessageIDsByGroupID = [:]
             chatReadReceiptsByGroupID = [:]
@@ -1917,6 +1923,30 @@ final class AppStore {
         }
         if error is DecodingError { return GroupLoadError.invalidData.localizedDescription }
         return L10n.text("雲端資料同步失敗，請確認網路後重新整理。")
+    }
+
+    func pendingJoinRequests(for groupID: UUID) -> [GroupJoinRequest] {
+        joinRequests
+            .filter { $0.groupID == groupID && $0.status == .pending }
+            .sorted { $0.requestedAt < $1.requestedAt }
+    }
+
+    func decideJoinRequest(_ requestID: UUID, approve: Bool) {
+        guard isDemoMode,
+              let requestIndex = joinRequests.firstIndex(where: { $0.id == requestID }),
+              joinRequests[requestIndex].status == .pending,
+              let groupIndex = groups.firstIndex(where: { $0.id == joinRequests[requestIndex].groupID }) else { return }
+
+        let applicantID = joinRequests[requestIndex].applicantID
+        joinRequests[requestIndex].status = approve ? .approved : .rejected
+        if approve, !groups[groupIndex].memberIDs.contains(applicantID) {
+            groups[groupIndex].memberIDs.append(applicantID)
+            groups[groupIndex].memberRoles[applicantID] = .member
+        }
+        let applicantName = members.first(where: { $0.id == applicantID })?.name ?? L10n.text("申請者")
+        lastEvent = approve
+            ? L10n.format("已核准 {0} 加入群組", String(describing: applicantName))
+            : L10n.format("已拒絕 {0} 的加入申請", String(describing: applicantName))
     }
 
 #if DEBUG

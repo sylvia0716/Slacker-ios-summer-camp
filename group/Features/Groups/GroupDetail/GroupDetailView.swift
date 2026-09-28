@@ -61,6 +61,7 @@ struct GroupDetailView: View {
     @State private var showsSettlementConfirmation = false
     @State private var isSettling = false
     @State private var settlementError: String?
+    @State private var selectedJoinRequest: GroupJoinRequest?
 
     init(
         group: Group,
@@ -110,6 +111,7 @@ struct GroupDetailView: View {
                                 }
 
                                 if deadlineOutcome(now: context.date) == .active {
+                                    joinReviewSection
                                     memberSection
                                 }
                                 if currentGroup.leaderElectionID != nil { leadershipSection }
@@ -372,6 +374,18 @@ struct GroupDetailView: View {
         }
         .sheet(isPresented: $showsMemberSheet) {
             memberRemovalSheet
+        }
+        .sheet(item: $selectedJoinRequest) { request in
+            JoinRequestReviewSheet(
+                request: request,
+                applicantName: model.members.first(where: { $0.id == request.applicantID })?.name
+                    ?? L10n.text("申請者"),
+                onDecision: { approve in
+                    model.decideJoinRequest(request.id, approve: approve)
+                    selectedJoinRequest = nil
+                }
+            )
+            .presentationDetents([.large])
         }
         .bombDialog(L10n.text("無法修改期限"), isPresented: Binding(
             get: { deadlineError != nil },
@@ -1275,6 +1289,60 @@ struct GroupDetailView: View {
                 .font(.system(.title2, design: .rounded, weight: .black))
             ForEach(otherMembers) { member in
                 memberProgressCard(for: member)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var joinReviewSection: some View {
+        let requests = model.pendingJoinRequests(for: group.id)
+        if currentUserMember?.role == .leader, !requests.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(L10n.text("入群審核"))
+                        .font(.system(.title2, design: .rounded, weight: .black))
+                    Spacer()
+                    Text("\(requests.count)")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 28, minHeight: 28)
+                        .background(BombTheme.red, in: Circle())
+                }
+
+                ForEach(requests) { request in
+                    let applicantName = model.members.first(where: { $0.id == request.applicantID })?.name
+                        ?? L10n.text("申請者")
+                    Button {
+                        selectedJoinRequest = request
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(BombTheme.ink)
+                                Text(String(applicantName.prefix(1)))
+                                    .font(.title3.weight(.black))
+                                    .foregroundStyle(BombTheme.yellow)
+                            }
+                            .frame(width: 48, height: 48)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(L10n.format("{0} 想加入群組", String(describing: applicantName)))
+                                    .font(.headline.weight(.black))
+                                Text(L10n.format("{0} 個專案 · 戰力 {1} / 5", String(describing: request.report.projectCount), String(format: "%.1f", request.report.overallScore)))
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.subheadline.weight(.black))
+                        }
+                        .foregroundStyle(BombTheme.ink)
+                        .padding(14)
+                        .background(BombTheme.paper)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(BombTheme.ink, lineWidth: 3))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -2239,6 +2307,155 @@ private struct PokeButtonFeedback: View {
                 explosionScale = 1.45
                 explosionOpacity = 0
             }
+        }
+    }
+}
+
+private struct JoinRequestReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let request: GroupJoinRequest
+    let applicantName: String
+    let onDecision: (Bool) -> Void
+    @State private var showsRejectConfirmation = false
+
+    private var scores: [(String, Double)] {
+        [
+            (L10n.text("任務完成"), request.report.taskCompletionScore),
+            (L10n.text("討論參與"), request.report.discussionScore),
+            (L10n.text("主動協助"), request.report.collaborationScore),
+            (L10n.text("解決問題"), request.report.ideaScore),
+            (L10n.text("準時可靠"), request.report.reliabilityScore)
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle().fill(BombTheme.ink)
+                            Text(String(applicantName.prefix(1)))
+                                .font(.title.weight(.black))
+                                .foregroundStyle(BombTheme.yellow)
+                        }
+                        .frame(width: 64, height: 64)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(applicantName)
+                                .font(.title2.weight(.black))
+                            Text(L10n.format("{0} 個專案 · {1} 份隊友互評", String(describing: request.report.projectCount), String(describing: request.report.reviewCount)))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.1f", request.report.overallScore))
+                            .font(.system(size: 38, weight: .black, design: .rounded))
+                        Text("/ 5")
+                            .font(.caption.weight(.black))
+                    }
+                    .padding(16)
+                    .background(BombTheme.paper)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+                    .overlay(RoundedRectangle(cornerRadius: 22).stroke(BombTheme.ink, lineWidth: 3))
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(L10n.text("團隊合作戰力"))
+                            .font(.title3.weight(.black))
+                        ForEach(scores, id: \.0) { title, score in
+                            VStack(spacing: 5) {
+                                HStack {
+                                    Text(title).font(.subheadline.weight(.bold))
+                                    Spacer()
+                                    Text(String(format: "%.1f", score))
+                                        .font(.subheadline.weight(.black).monospacedDigit())
+                                }
+                                ProgressView(value: score, total: 5)
+                                    .tint(score >= 4 ? BombTheme.green : BombTheme.yellow)
+                            }
+                        }
+                    }
+                    .comicCard()
+
+                    HStack(spacing: 12) {
+                        Image(systemName: request.report.negativeRecordCount == 0 ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                            .font(.title2.weight(.black))
+                            .foregroundStyle(request.report.negativeRecordCount == 0 ? BombTheme.green : BombTheme.red)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.text("合作風險紀錄"))
+                                .font(.headline.weight(.black))
+                            Text(request.report.negativeRecordCount == 0
+                                 ? L10n.text("過去專案沒有經確認的雷包紀錄")
+                                 : L10n.format("有 {0} 筆經確認的異常紀錄", String(describing: request.report.negativeRecordCount)))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .comicCard()
+
+                    Text(L10n.text("近期專案"))
+                        .font(.title3.weight(.black))
+                    ForEach(request.report.projects) { project in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(project.name).font(.headline.weight(.black))
+                                Text(project.completedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(L10n.locale)))
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(String(format: "%.1f / 5", project.overallScore))
+                                .font(.subheadline.weight(.black).monospacedDigit())
+                        }
+                        .comicCard()
+                    }
+
+                    Label(L10n.text("戰力資料來自已完成專案的匿名互評，僅供本次入群判斷。"), systemImage: "lock.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(16)
+                .padding(.bottom, 96)
+            }
+            .background(BombTheme.yellow.ignoresSafeArea())
+            .navigationTitle(L10n.text("入群戰力檢查"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.text("關閉")) { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 10) {
+                    Button(L10n.text("拒絕"), role: .destructive) {
+                        showsRejectConfirmation = true
+                    }
+                    .foregroundStyle(BombTheme.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(BombTheme.paper, in: Capsule())
+                    .overlay(Capsule().stroke(BombTheme.red, lineWidth: 2))
+
+                    Button {
+                        onDecision(true)
+                    } label: {
+                        Label(L10n.text("核准加入"), systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 13)
+                    .background(BombTheme.ink, in: Capsule())
+                }
+                .font(.headline.weight(.black))
+                .buttonStyle(.plain)
+                .padding(16)
+                .background(BombTheme.yellow)
+            }
+        }
+        .bombDialog(L10n.text("拒絕這份申請？"), isPresented: $showsRejectConfirmation) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("拒絕申請"), role: .destructive) { onDecision(false) }
+        } message: {
+            Text(L10n.format("{0} 不會加入這個群組。", String(describing: applicantName)))
         }
     }
 }

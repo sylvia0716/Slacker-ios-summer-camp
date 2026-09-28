@@ -196,7 +196,11 @@ struct AuthenticationView: View {
             if !session.canEnterApp {
                 Button(session.text("使用臨時帳號")) {
                     focusedField = nil
+#if DEBUG
+                    session.enterPreviewSession()
+#else
                     Task { await session.startAnonymousSession() }
+#endif
                 }
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(BombTheme.ink)

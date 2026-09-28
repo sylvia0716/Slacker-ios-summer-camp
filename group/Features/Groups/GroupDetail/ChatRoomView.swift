@@ -1,8 +1,10 @@
 import SwiftUI
+import OSLog
 
 /// 群組聊天室畫面；完整時間軸由 AppStore 依群組保存至裝置本機。
 struct ChatRoomView: View {
     private static let bottomAnchorID = "chat-room-bottom"
+    private static let aiLogger = Logger(subsystem: "con.sylvia.group", category: "AppleIntelligence")
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -636,6 +638,11 @@ struct ChatRoomView: View {
             )
             await appendBotReply(answer)
         } catch {
+            #if DEBUG
+            Self.aiLogger.error(
+                "Answer request failed:\n\(AppleIntelligenceDiagnostics.description(of: error), privacy: .public)"
+            )
+            #endif
             await appendBotReply(aiErrorMessage(error))
         }
     }
@@ -667,6 +674,11 @@ struct ChatRoomView: View {
                 groupID: group.id
             )
         } catch {
+            #if DEBUG
+            Self.aiLogger.error(
+                "Analysis request failed:\n\(AppleIntelligenceDiagnostics.description(of: error), privacy: .public)"
+            )
+            #endif
             await appendBotReply(aiErrorMessage(error))
         }
     }

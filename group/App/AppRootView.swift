@@ -64,6 +64,11 @@ struct AppRootView: View {
             if scenePhase == .active { store.resumeCloudSync() }
             openPendingReview()
         }
+#if DEBUG
+        .onChange(of: authSession.isPreviewSession) { _, isPreviewSession in
+            if isPreviewSession { store.setDemoMode(true) }
+        }
+#endif
         .onChange(of: reviewRouter.pending) { _, _ in openPendingReview() }
         .onChange(of: authSession.isCheckingSession) { _, _ in openPendingReview() }
         .onChange(of: store.isLoadingCloudGroups) { _, _ in openPendingReview() }

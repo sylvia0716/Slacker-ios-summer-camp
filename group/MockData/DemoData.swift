@@ -16,6 +16,7 @@ struct DemoDataSnapshot {
     let agents: [Agent]
     let radar: [RadarMetric]
     let communicationAnalyses: [UUID: CommunicationAnalysis]
+    let joinRequests: [GroupJoinRequest]
 }
 
 enum DemoData {
@@ -38,6 +39,12 @@ enum DemoData {
         let aKai = Member(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000004")!,
             name: "阿凱",
+            role: .member,
+            avatarSymbol: "person.fill"
+        )
+        let ziQing = Member(
+            id: UUID(uuidString: "00000000-0000-4000-8000-000000000005")!,
+            name: "子晴",
             role: .member,
             avatarSymbol: "person.fill"
         )
@@ -192,6 +199,31 @@ enum DemoData {
             )
         ]
 
+        let joinRequests = [
+            GroupJoinRequest(
+                id: UUID(uuidString: "00000000-0000-4000-8002-000000000001")!,
+                groupID: activeGroupID,
+                applicantID: ziQing.id,
+                requestedAt: now.addingTimeInterval(-18 * 60),
+                report: ApplicantBattleReport(
+                    projectCount: 4,
+                    reviewCount: 13,
+                    taskCompletionScore: 4.6,
+                    discussionScore: 4.2,
+                    collaborationScore: 4.7,
+                    ideaScore: 4.3,
+                    reliabilityScore: 4.5,
+                    negativeRecordCount: 0,
+                    projects: [
+                        ApplicantProjectRecord(id: UUID(), name: "校園永續提案", completedAt: now.addingTimeInterval(-21 * 24 * 60 * 60), overallScore: 4.7),
+                        ApplicantProjectRecord(id: UUID(), name: "服務設計工作坊", completedAt: now.addingTimeInterval(-48 * 24 * 60 * 60), overallScore: 4.3),
+                        ApplicantProjectRecord(id: UUID(), name: "行銷企劃期末", completedAt: now.addingTimeInterval(-82 * 24 * 60 * 60), overallScore: 4.5)
+                    ]
+                ),
+                status: .pending
+            )
+        ]
+
         return DemoDataSnapshot(
             currentUserID: me.id,
             userName: me.name,
@@ -200,7 +232,7 @@ enum DemoData {
             profileBio: "一起把死線拆掉。",
             profileAvatarSymbol: "person.fill",
             groups: groups,
-            members: allMembers,
+            members: allMembers + [ziQing],
             projectTasks: allProjectTasks,
             peerReviews: completedReviews(groupID: summerCampGroupID, deadline: summerCampDeadline, reviewers: [xiaoYu, miMi])
                 + completedReviews(groupID: maicGroupID, deadline: maicDeadline, reviewers: allMembers),
@@ -223,7 +255,8 @@ enum DemoData {
                 RadarMetric(title: "救火", score: 0.68),
                 RadarMetric(title: "合作", score: 0.88)
             ],
-            communicationAnalyses: communicationAnalyses
+            communicationAnalyses: communicationAnalyses,
+            joinRequests: joinRequests
         )
     }
 }

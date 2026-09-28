@@ -124,7 +124,10 @@ struct GroupListView: View {
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 16) {
-                Label(L10n.text("加入群組"), systemImage: "person.3.fill")
+                Label(
+                    model.isDemoMode ? L10n.text("加入申請") : L10n.text("加入群組"),
+                    systemImage: model.isDemoMode ? "person.badge.clock.fill" : "person.3.fill"
+                )
                     .font(.title2.weight(.black))
                     .foregroundStyle(BombTheme.ink)
 
@@ -460,6 +463,12 @@ private struct AddGroupSheet: View {
 
             Text(L10n.text("輸入隊友分享的邀請碼"))
                 .font(.caption.weight(.bold))
+
+            if model.isDemoMode {
+                Text(L10n.text("送出後，群組成員會先查看你的戰力紀錄。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(18)
         .background(BombTheme.yellow.opacity(0.08))
@@ -593,6 +602,7 @@ private struct AddGroupSheet: View {
     private var primaryButtonTitle: String {
         if isCreating { return L10n.text("建立中…") }
         if joinStore.isJoining { return L10n.text("加入中…") }
+        if model.isDemoMode, flow == .entry, entryMode == .join { return L10n.text("送出申請") }
         return flow == .entry ? L10n.text("完成") : L10n.text("稍後分享")
     }
 
@@ -642,6 +652,16 @@ private struct AddGroupSheet: View {
         isCodeFieldFocused = false
         let normalizedCode = GroupJoinRepository.normalize(groupCode)
         groupCode = normalizedCode
+
+        if model.isDemoMode {
+            guard model.groups.contains(where: { $0.inviteCode == normalizedCode }) else {
+                joinError = L10n.text("找不到這組邀請碼，請確認後再試一次。")
+                return
+            }
+            dismiss()
+            joinedGroup(L10n.text("加入申請已送出，群組成員確認戰力報告後會通知你。"))
+            return
+        }
 
         Task {
             guard let result = await joinStore.join(inviteCode: normalizedCode) else { return }
