@@ -65,12 +65,16 @@ struct AppRootView: View {
             openPendingReview()
         }
         .onChange(of: reviewRouter.pending) { _, _ in openPendingReview() }
+        .onChange(of: authSession.isInternalDeveloper) { _, allowed in
+            store.updateDeveloperAccess(allowed, for: authSession.currentUserID)
+        }
         .onChange(of: authSession.isCheckingSession) { _, _ in openPendingReview() }
         .onChange(of: store.isLoadingCloudGroups) { _, _ in openPendingReview() }
         .onChange(of: store.groups) { _, _ in openPendingReview() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 AppLanguageSettings.shared.refreshSystemLanguage()
+                authSession.refreshDeveloperAccess(forceRefresh: true)
                 store.resumeCloudSync()
             }
             else if phase == .background {

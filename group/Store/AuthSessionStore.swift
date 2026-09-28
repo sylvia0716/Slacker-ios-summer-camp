@@ -11,6 +11,9 @@ final class AuthSessionStore {
     private(set) var isAnonymous = false
     private(set) var isCheckingSession = true
     private(set) var isWorking = false
+    private var developerAccess = DeveloperAccessState()
+    var isInternalDeveloper: Bool { isAuthenticated && developerAccess.isAllowed && developerAccess.uid == currentUserID }
+    @ObservationIgnored private var developerAccessTask: Task<Void, Never>?
     var language: AppLanguage {
         get { AppLanguageSettings.shared.language }
         set { AppLanguageSettings.shared.preference = AppLanguagePreference(rawValue: newValue.rawValue)! }
@@ -47,9 +50,10 @@ final class AuthSessionStore {
         }
 
         let auth = Auth.auth()
-        authStateHandle = auth.addStateDidChangeListener { [weak self] _, user in
+        authStateHandle = auth.addIDTokenDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 guard let self else { return }
+                guard user?.uid == auth.currentUser?.uid else { return }
                 if user == nil, self.isStartingAnonymousSession { return }
                 self.updateSession(user: user)
             }
@@ -223,6 +227,23 @@ final class AuthSessionStore {
         errorKey = nil
     }
 
+    /// Called on login/token changes and foregrounding. Credentials and claims are never logged.
+    func refreshDeveloperAccess(forceRefresh: Bool = false) {
+        developerAccessTask?.cancel()
+        let request = developerAccess.begin(uid: currentUserID, email: currentUserEmail, isAnonymous: isAnonymous)
+        guard isAuthenticated, FirebaseApp.app() != nil,
+              let user = Auth.auth().currentUser, user.uid == currentUserID else {
+            developerAccess.finish(request: request, claims: nil)
+            return
+        }
+        developerAccessTask = Task { [weak self] in
+            let result = try? await user.getIDTokenResult(forcingRefresh: forceRefresh)
+            guard let self, !Task.isCancelled, self.currentUserID == user.uid,
+                  Auth.auth().currentUser?.uid == user.uid else { return }
+            self.developerAccess.finish(request: request, claims: result?.claims)
+        }
+    }
+
     private func validate(email: String, password: String) -> Bool {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedEmail.isEmpty, normalizedEmail.contains("@") else {
@@ -254,6 +275,7 @@ final class AuthSessionStore {
         self.isAnonymous = isAnonymous
         if !isAnonymous { hasEnteredAnonymousSession = false }
         isCheckingSession = false
+        refreshDeveloperAccess()
     }
 
     private static func localizedMessage(for error: Error) -> String {

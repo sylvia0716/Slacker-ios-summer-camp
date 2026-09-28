@@ -63,16 +63,16 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                     .comicCard()
 
-#if DEBUG
-                    NavigationLink {
-                        DeveloperSettingsView(model: model, onReplayTutorial: onReplayTutorial)
-                    } label: {
-                        SettingsRow(icon: "wrench.and.screwdriver.fill", title: L10n.text("開發工具"),
-                                    subtitle: L10n.text("測試模式與通知測試"))
-                            .comicCard()
+                    if authSession.isInternalDeveloper {
+                        NavigationLink {
+                            DeveloperSettingsView(model: model, authSession: authSession, onReplayTutorial: onReplayTutorial)
+                        } label: {
+                            SettingsRow(icon: "wrench.and.screwdriver.fill", title: L10n.text("開發工具"),
+                                        subtitle: L10n.text("測試模式與通知測試"))
+                                .comicCard()
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-#endif
                 }
                 .padding(16)
                 .padding(.bottom, 132)
@@ -196,29 +196,36 @@ private struct AccountSettingsView: View {
     }
 }
 
-#if DEBUG
 private struct DeveloperSettingsView: View {
     let model: GroupBombModel
+    let authSession: AuthSessionStore
+    @Environment(\.dismiss) private var dismiss
     let onReplayTutorial: () -> Void
 
     var body: some View {
         SettingsPage(title: L10n.text("開發工具")) {
-            VStack(spacing: 0) {
-                TestModeSettingsRow(model: model)
-                Divider()
-                debugMenu
-                    .buttonStyle(.plain)
+            if authSession.isInternalDeveloper {
+                VStack(spacing: 0) {
+                    TestModeSettingsRow(model: model)
+                    Divider()
+                    debugMenu
+                        .buttonStyle(.plain)
 
-                Divider()
-                NavigationLink {
-                    NotificationTestView(model: model)
-                } label: {
-                    SettingsRow(icon: "bell.badge.fill", title: L10n.text("通知測試"),
-                                subtitle: L10n.text("戳自己一下"))
+                    Divider()
+                    NavigationLink {
+                        NotificationTestView(model: model)
+                            .disabled(!authSession.isInternalDeveloper)
+                    } label: {
+                        SettingsRow(icon: "bell.badge.fill", title: L10n.text("通知測試"),
+                                    subtitle: L10n.text("戳自己一下"))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .comicCard()
             }
-            .comicCard()
+        }
+        .onChange(of: authSession.isInternalDeveloper) { _, allowed in
+            if !allowed { dismiss() }
         }
     }
     private var debugMenu: some View {
@@ -276,7 +283,6 @@ private struct DeveloperSettingsView: View {
     }
 
 }
-#endif
 
 private struct SettingsPage<Content: View>: View {
     let title: String
@@ -333,7 +339,6 @@ private struct ProfileCard: View {
     }
 }
 
-#if DEBUG
 private struct TestModeSettingsRow: View {
     let model: GroupBombModel
 
@@ -357,7 +362,6 @@ private struct TestModeSettingsRow: View {
         .padding(.vertical, 8)
     }
 }
-#endif
 
 private struct SettingsSection<Content: View>: View {
     let title: String
