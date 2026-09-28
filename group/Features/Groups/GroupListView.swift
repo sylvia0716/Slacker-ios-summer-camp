@@ -451,6 +451,17 @@ private struct AddGroupSheet: View {
 
     private var joinGroupForm: some View {
         VStack(spacing: 16) {
+            joinInviteTicket
+
+            Text(L10n.text("送出申請即同意該組組長在審核期間查看你的歷史戰力分數與專案摘要，作為入群審核依據。不包含原始評語或評分者身分。"))
+                .font(.caption.weight(.bold))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var joinInviteTicket: some View {
+        VStack(spacing: 16) {
             Text(L10n.text("6 位邀請碼"))
                 .font(.title3.weight(.black))
 
@@ -477,19 +488,19 @@ private struct AddGroupSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("掃描邀請碼"))
 
-            Text(L10n.text("送出申請即同意該組組長在審核期間查看你的歷史戰力分數與專案摘要，作為入群審核依據。不包含原始評語或評分者身分。"))
-                .multilineTextAlignment(.center)
+            Text(L10n.text("輸入隊友分享的邀請碼"))
                 .font(.caption.weight(.bold))
         }
         .padding(18)
         .background(BombTheme.yellow.opacity(0.08))
+        .background(BombTheme.paper)
         .clipShape(PostageTicketShape())
         .overlay {
             PostageTicketShape()
                 .stroke(BombTheme.ink, lineWidth: 2)
                 .allowsHitTesting(false)
         }
-        .frame(maxWidth: .infinity)
+        .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
     }
 
     private var inviteCodeBoxes: some View {
@@ -578,12 +589,13 @@ private struct AddGroupSheet: View {
                 }
                 .padding(18)
                 .background(BombTheme.yellow.opacity(0.08))
+                .background(BombTheme.paper)
                 .clipShape(PostageTicketShape())
                 .overlay {
                     PostageTicketShape()
                         .stroke(BombTheme.ink, lineWidth: 2)
                 }
-                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.horizontal) { width, _ in width * 0.66 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
