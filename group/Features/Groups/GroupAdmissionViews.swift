@@ -76,13 +76,15 @@ struct MyGroupApplications: View {
                 ForEach(requests) { request in
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(request.groupName).font(.headline)
+                            Text(request.groupName)
+                                .font(.system(.headline, design: .rounded, weight: .black))
                             Text(request.requestedAt, format: .dateTime.month().day())
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.system(.caption, design: .rounded, weight: .bold))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Label(request.status.title, systemImage: request.status == .pending ? "clock" : (request.status == .approved ? "checkmark.circle" : "xmark.circle"))
-                            .font(.caption.bold())
+                            .font(.system(.caption, design: .rounded, weight: .black))
                     }
                     .padding(.vertical, 6)
                 }
