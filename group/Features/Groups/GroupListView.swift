@@ -31,6 +31,9 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
+                        if !model.isDemoMode {
+                            CloudJoinRequestsView(model: model)
+                        }
                         if model.groups.isEmpty, model.isLoadingCloudGroups {
                             ProgressView(L10n.text("正在載入群組…"))
                                 .tint(BombTheme.ink)
@@ -125,8 +128,8 @@ struct GroupListView: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 Label(
-                    model.isDemoMode ? L10n.text("加入申請") : L10n.text("加入群組"),
-                    systemImage: model.isDemoMode ? "person.badge.clock.fill" : "person.3.fill"
+                    L10n.text("加入申請"),
+                    systemImage: "person.badge.clock.fill"
                 )
                     .font(.title2.weight(.black))
                     .foregroundStyle(BombTheme.ink)
@@ -288,9 +291,10 @@ private struct AddGroupSheet: View {
     @State private var groupName = ""
     @State private var groupDeadline = Date.now.addingTimeInterval(7 * 24 * 60 * 60)
     @State private var groupCode = ""
+    @State private var isRequestingJoin = false
+    @State private var showsResubmitConfirmation = false
     @State private var createdGroup: Group?
     @State private var joinError: String?
-    @State private var joinStore = GroupJoinStore()
     @State private var isCreating = false
     @State private var creationError: String?
     @State private var isScannerPresented = false
@@ -349,20 +353,20 @@ private struct AddGroupSheet: View {
         }
         .interactiveDismissDisabled(isBusy)
         .presentationDetents([.fraction(0.82)])
+        .bombDialog(L10n.text("上次申請未通過"), isPresented: $showsResubmitConfirmation) {
+            Button(L10n.text("取消"), role: .cancel) { }
+            Button(L10n.text("重新申請")) { submitInviteCode(resubmit: true) }
+        } message: {
+            Text(L10n.text("要重新送出申請給組長審核嗎？"))
+        }
         .bombDialog(L10n.text("無法加入群組"), isPresented: Binding(
-            get: {
-                if joinError != nil { return true }
-                if case .failure = joinStore.state { return true }
-                return false
-            },
-            set: { if !$0 { joinStore.reset(); joinError = nil } }
+            get: { joinError != nil },
+            set: { if !$0 { joinError = nil } }
         )) {
             Button(L10n.text("知道了")) { }
         } message: {
             if let joinError {
                 Text(joinError)
-            } else if case let .failure(error) = joinStore.state {
-                Text(error.localizedDescription)
             }
         }
         .bombDialog(L10n.text("無法建立群組"), isPresented: Binding(
@@ -464,11 +468,9 @@ private struct AddGroupSheet: View {
             Text(L10n.text("輸入隊友分享的邀請碼"))
                 .font(.caption.weight(.bold))
 
-            if model.isDemoMode {
-                Text(L10n.text("送出後，群組成員會先查看你的戰力紀錄。"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(L10n.text("送出後，組長可查看你的已完成專案互評摘要，核准後才會加入群組。"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(18)
         .background(BombTheme.yellow.opacity(0.08))
@@ -508,7 +510,7 @@ private struct AddGroupSheet: View {
                 .autocorrectionDisabled()
                 .textContentType(.oneTimeCode)
                 .submitLabel(.join)
-                .onSubmit(submitInviteCode)
+                .onSubmit { submitInviteCode() }
                 .focused($isCodeFieldFocused)
                 .foregroundStyle(.clear)
                 .tint(.clear)
@@ -596,13 +598,13 @@ private struct AddGroupSheet: View {
     }
 
     private var isBusy: Bool {
-        isCreating || joinStore.isJoining
+        isCreating || isRequestingJoin
     }
 
     private var primaryButtonTitle: String {
         if isCreating { return L10n.text("建立中…") }
-        if joinStore.isJoining { return L10n.text("加入中…") }
-        if model.isDemoMode, flow == .entry, entryMode == .join { return L10n.text("送出申請") }
+        if isRequestingJoin { return L10n.text("送出中…") }
+        if flow == .entry, entryMode == .join { return L10n.text("送出申請") }
         return flow == .entry ? L10n.text("完成") : L10n.text("稍後分享")
     }
 
@@ -647,8 +649,8 @@ private struct AddGroupSheet: View {
         }
     }
 
-    private func submitInviteCode() {
-        guard canJoin, !isBusy else { return }
+    private func submitInviteCode(resubmit: Bool = false) {
+        guard canJoin, !isBusy, !isRequestingJoin else { return }
         isCodeFieldFocused = false
         let normalizedCode = GroupJoinRepository.normalize(groupCode)
         groupCode = normalizedCode
@@ -659,18 +661,29 @@ private struct AddGroupSheet: View {
                 return
             }
             dismiss()
-            joinedGroup(L10n.text("加入申請已送出，群組成員確認戰力報告後會通知你。"))
+            joinedGroup(L10n.text("你已經是這個群組的成員。"))
             return
         }
 
+        isRequestingJoin = true
+        let account = model.firebaseUID
         Task {
-            guard let result = await joinStore.join(inviteCode: normalizedCode) else { return }
-            guard model.acceptJoinedGroup(result) else { return }
-            let successMessage = model.lastEvent
-            dismiss()
-            let refreshed = await model.reloadCloudGroups(reportError: false, forceRefresh: true)
-            guard model.firebaseUID == result.firebaseUID else { return }
-            joinedGroup(refreshed ? successMessage : successMessage + L10n.text("，但列表更新失敗，請下拉重新整理。"))
+            defer { isRequestingJoin = false }
+            do {
+                let status = try await GroupJoinRepository().requestJoin(inviteCode: normalizedCode, resubmit: resubmit)
+                guard account == model.firebaseUID else { return }
+                if status == "rejected" {
+                    showsResubmitConfirmation = true
+                    return
+                }
+                if status == "approved" { _ = await model.reloadCloudGroups(reportError: false, forceRefresh: true) }
+                guard account == model.firebaseUID else { return }
+                dismiss()
+                joinedGroup(L10n.text(status == "approved" ? "你已經是這個群組的成員。" : "申請已送出，等待組長審核。你可以在我的群組查看結果。"))
+            } catch {
+                guard account == model.firebaseUID else { return }
+                joinError = error.localizedDescription
+            }
         }
     }
 

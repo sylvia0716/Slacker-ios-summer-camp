@@ -115,6 +115,10 @@ struct GroupDetailView: View {
                                 }
 
                                 if deadlineOutcome(now: context.date) == .active {
+                                    if !model.isDemoMode, currentUserMember?.role == .leader,
+                                       let cloudID = currentGroup.firestoreDocumentID {
+                                        CloudJoinRequestsView(model: model, groupID: cloudID)
+                                    }
                                     joinReviewSection
                                     memberSection
                                 }

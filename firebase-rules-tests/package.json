@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test:firestore": "node --test --test-concurrency=1 firestore.rules.test.mjs firestore.chat.rules.test.mjs",
-    "test:join": "node --test join-group.test.mjs",
+    "test:join": "node --test --test-concurrency=1 join-group.test.mjs join-approval.test.mjs",
     "test:storage": "node --test storage.rules.test.mjs",
     "test:agenda": "node --test --test-concurrency=1 smart-agenda.test.mjs agenda-reminder.test.mjs",
     "test:rules": "npm run test:firestore && npm run test:storage && npm run test:join && npm run test:agenda"

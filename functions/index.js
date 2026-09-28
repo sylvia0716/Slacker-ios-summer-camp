@@ -11,6 +11,8 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 
 initializeApp();
 
+Object.assign(exports, require('./join-requests'));
+
 const db = getFirestore();
 const region = "asia-east1";
 
@@ -310,7 +312,6 @@ exports.createGroup = onCall({ region }, async (request) => {
 exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
   const inviteCode = normalizedInviteCode(request.data);
-  const displayName = await accountName(userID);
   const inviteRef = db.collection("groupInviteCodes").doc(inviteCode);
 
   const result = await db.runTransaction(async (transaction) => {
@@ -353,15 +354,8 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
       if (groupSnapshot.data().settledAt != null || groupDeadline === null || groupDeadline <= Date.now()) {
         throw callableError("failed-precondition", "This group is already closed.", "group-closed");
       }
-      transaction.create(memberRef, {
-        userID,
-        role: "member",
-        joinedAt: FieldValue.serverTimestamp(),
-        displayName,
-        leaderElectionID: groupSnapshot.data().leaderElectionID || null,
-        leaderVoteUID: null,
-      });
-      transaction.update(groupRef, {membershipUpdatedAt: FieldValue.serverTimestamp()});
+      // Older clients must never bypass approval by calling the legacy endpoint.
+      throw callableError("failed-precondition", "請更新 App，並送出入群申請。", "approval-required");
     }
 
     return {

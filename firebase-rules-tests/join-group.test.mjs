@@ -103,6 +103,15 @@ async function expectCallableFailure(promise, expectedCode) {
   });
 }
 
+// Unrelated task tests start with an approved membership. Approval itself is
+// exercised against the callable transaction in join-approval.test.mjs.
+async function seedMembership(client) {
+  await testEnv.withSecurityRulesDisabled(ctx => setDoc(
+    doc(ctx.firestore(), `groups/${groupID}/members/${client.userID}`),
+    {userID: client.userID, role: 'member', displayName: 'Test member', joinedAt: Timestamp.now()},
+  ));
+}
+
 before(async () => {
   testEnv = await initializeTestEnvironment({
     projectId,
@@ -135,9 +144,9 @@ describe("雲端任務共識驗收", () => {
   async function fixture(includeSecondReviewer = true) {
     const a = await callableClient(), b = await callableClient(), c = await callableClient();
     const reviewer = await callableClient();
-    await a.join({inviteCode: validCode});
-    await b.join({inviteCode: validCode});
-    if (includeSecondReviewer) await reviewer.join({inviteCode: validCode});
+    await seedMembership(a);
+    await seedMembership(b);
+    if (includeSecondReviewer) await seedMembership(reviewer);
     await testEnv.withSecurityRulesDisabled(async ctx => {
       await updateDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}`), {ownerMemberID: b.userID, subtasks: []});
       await setDoc(doc(ctx.firestore(), `groups/${groupID}/tasks/${taskID}/attachments/${attachmentID}`), {
@@ -201,9 +210,10 @@ describe("雲端任務共識驗收", () => {
       assert.equal((await f.reviewer.progress({...confirm,attachmentID:next})).data.status,'completed');
     } finally { await f.close(); }
   });
-  test('加入後成員名稱由後端建立', async () => {
+  test('既有成員查詢保留成員名稱', async () => {
     const a=await callableClient();
     try {
+      await seedMembership(a);
       await a.join({inviteCode:validCode});
       const member=await getDoc(doc(testEnv.authenticatedContext(a.userID).firestore(),`groups/${groupID}/members/${a.userID}`));
       assert.ok(member.data().displayName.length>0);
@@ -286,22 +296,17 @@ describe("joinGroupByInviteCode Callable", () => {
     }
   });
 
-  test("已登入使用者能以有效邀請碼加入，member ID 等於 Firebase UID", async () => {
+  test("舊版加入接口不能繞過組長審核", async () => {
     const client = await callableClient();
     try {
-      const response = await client.join({ inviteCode: "  join24  " });
-      assert.equal(response.data.alreadyMember, false);
-      assert.equal(response.data.group.groupID, groupID);
+      await expectCallableFailure(client.join({ inviteCode: "  join24  " }), "functions/failed-precondition");
 
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const snapshot = await getDoc(doc(
           context.firestore(),
           `groups/${groupID}/members/${client.userID}`,
         ));
-        assert.equal(snapshot.id, client.userID);
-        assert.deepEqual(snapshot.data().role, "member");
-        assert.deepEqual(snapshot.data().userID, client.userID);
-        assert.ok(snapshot.data().joinedAt instanceof Timestamp);
+        assert.equal(snapshot.exists(), false);
       });
     } finally {
       await client.close();
@@ -311,7 +316,7 @@ describe("joinGroupByInviteCode Callable", () => {
   test("重複加入安全且不會建立重複 member", async () => {
     const client = await callableClient();
     try {
-      await client.join({ inviteCode: validCode });
+      await seedMembership(client);
       const second = await client.join({ inviteCode: validCode });
       assert.equal(second.data.alreadyMember, true);
 
@@ -330,7 +335,7 @@ describe("joinGroupByInviteCode Callable", () => {
   test("加入後可重新讀取群組，並可依 Rules 讀取附件", async () => {
     const client = await callableClient();
     try {
-      await client.join({ inviteCode: validCode });
+      await seedMembership(client);
       const groups = await client.list({});
       assert.equal(groups.data.groups.length, 1);
       assert.equal(groups.data.groups[0].groupID, groupID);
@@ -444,14 +449,15 @@ describe("joinGroupByInviteCode Callable", () => {
     }
   });
 
-  test("同時重複加入只建立一位成員，既有 leader 與 joinedAt 不被覆寫", async () => {
+  test("同時查詢既有成員不重複建立，既有 leader 與 joinedAt 不被覆寫", async () => {
     const client = await callableClient();
     try {
+      await seedMembership(client);
       const responses = await Promise.all([
         client.join({ inviteCode: validCode }),
         client.join({ inviteCode: validCode }),
       ]);
-      assert.equal(responses.filter(response => response.data.alreadyMember === false).length, 1);
+      assert.equal(responses.filter(response => response.data.alreadyMember === true).length, 2);
       const joinedAt = Timestamp.fromMillis(1_700_000_000_000);
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const firestore = context.firestore();
@@ -484,7 +490,7 @@ describe("joinGroupByInviteCode Callable", () => {
         `groups/${groupID}/members/${client.userID}`,
       ), { userID: client.userID, role: "leader", joinedAt: Timestamp.now() }));
 
-      await client.join({ inviteCode: validCode });
+      await seedMembership(client);
       await assertFails(updateDoc(doc(
         firestore,
         `groups/${groupID}/members/${client.userID}`,
@@ -513,7 +519,7 @@ describe("joinGroupByInviteCode Callable", () => {
     const second = await callableClient();
     try {
       assert.deepEqual((await first.list({})).data.groups, []);
-      await first.join({ inviteCode: validCode });
+      await seedMembership(first);
       assert.deepEqual((await first.list({})).data.groups.map(group => group.groupID), [groupID]);
       assert.deepEqual((await second.list({})).data.groups, []);
     } finally {
@@ -543,7 +549,7 @@ describe("joinGroupByInviteCode Callable", () => {
         });
       });
       assert.deepEqual((await client.list({})).data.groups, []);
-      await client.join({ inviteCode: validCode });
+      await seedMembership(client);
       assert.deepEqual((await client.list({})).data.groups.map(group => group.groupID), [groupID]);
     } finally {
       await client.close();
@@ -555,7 +561,7 @@ describe("joinGroupByInviteCode Callable", () => {
     const newTaskID = "55555555-5555-4555-8555-555555555555";
     const subtaskID = "66666666-6666-4666-8666-666666666666";
     try {
-      await client.join({ inviteCode: validCode });
+      await seedMembership(client);
       await client.createTask({
         groupID,
         taskID: newTaskID,
@@ -611,8 +617,8 @@ describe("joinGroupByInviteCode Callable", () => {
       deadlineMillis: Date.now() + 3_600_000,
     };
     try {
-      await owner.join({ inviteCode: validCode });
-      await other.join({ inviteCode: validCode });
+      await seedMembership(owner);
+      await seedMembership(other);
       await expectCallableFailure(outsider.createTask(taskPayload), "functions/permission-denied");
       await owner.createTask(taskPayload);
       await expectCallableFailure(other.updateSubtask({

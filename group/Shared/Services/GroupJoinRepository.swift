@@ -93,6 +93,18 @@ final class GroupJoinRepository {
         }
     }
 
+    func requestJoin(inviteCode: String, resubmit: Bool) async throws -> String {
+        guard let uid = Auth.auth().currentUser?.uid else { throw GroupJoinError.notAuthenticated }
+        let result = try await functions.httpsCallable("requestGroupJoin").call([
+            "inviteCode": Self.normalize(inviteCode), "resubmit": resubmit,
+        ])
+        guard Auth.auth().currentUser?.uid == uid else { throw GroupJoinError.notAuthenticated }
+        guard let payload = result.data as? [String: Any], let status = payload["status"] as? String else {
+            throw GroupJoinError.invalidGroupData
+        }
+        return status
+    }
+
     func create(name: String, deadline: Date, displayName: String) async throws -> GroupCreationResult {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw GroupJoinError.notAuthenticated

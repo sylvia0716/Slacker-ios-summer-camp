@@ -1020,3 +1020,30 @@
 "This agenda was deleted." = "This agenda was deleted.";
 
 "This agenda already exists." = "This agenda already exists.";
+
+"我的入群申請" = "My join requests";
+"送出後，組長可查看你的已完成專案互評摘要，核准後才會加入群組。" = "The leader can review your completed-project ratings. You will join only after approval.";
+"入群審核" = "Join requests";
+"申請中，等待組長審核" = "Pending leader approval";
+"申請已核准" = "Request approved";
+"申請未通過，未加入群組" = "Request declined. You have not joined this group.";
+"申請已失效，群組已結束或邀請碼已失效" = "Request expired: the group has ended or the invite is no longer valid.";
+"入群申請更新失敗，請重試。" = "Could not refresh join requests. Tap to retry.";
+"審核未完成，請重新整理後重試。" = "Could not complete the review. Refresh and try again.";
+"{0} 想加入群組" = "{0} wants to join";
+"{0} 個專案 · {1} 份隊友互評" = "{0} projects · {1} peer reviews";
+"資料為申請時已完成專案的互評摘要。" = "A summary of completed-project reviews at the time of application.";
+"尚無互評資料" = "No peer reviews yet";
+"核准加入" = "Approve";
+"審核結果" = "Review result";
+"已核准加入" = "Membership approved";
+"申請已拒絕" = "Request declined";
+"申請已失效，未加入群組" = "Request expired. Membership was not granted.";
+"上次申請未通過" = "Previous request declined";
+"重新申請" = "Apply again";
+"要重新送出申請給組長審核嗎？" = "Send a new request to the leader?";
+"送出中…" = "Submitting…";
+"送出申請" = "Send request";
+"加入申請" = "Join request";
+"你已經是這個群組的成員。" = "You are already a member of this group.";
+"申請已送出，等待組長審核。你可以在我的群組查看結果。" = "Request sent. You can check the leader's decision in My Groups.";
