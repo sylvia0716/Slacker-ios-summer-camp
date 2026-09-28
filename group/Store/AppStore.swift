@@ -367,8 +367,17 @@ final class AppStore {
         }
     }
 
-    /// Debug 測試模式只替換 AppStore 的資料，不會把示範資料寫進 Firestore。
+    private(set) var canUseDeveloperTools = false
+
+    func updateDeveloperAccess(_ allowed: Bool, for uid: String?) {
+        guard uid == firebaseUID else { return }
+        canUseDeveloperTools = allowed && uid != nil
+        if !canUseDeveloperTools, isDemoMode { setDemoMode(false) }
+    }
+
+    /// Internal developer demo mode uses local data, never writes fixtures to Firestore.
     func setDemoMode(_ isEnabled: Bool) {
+        guard !isEnabled || canUseDeveloperTools else { return }
         guard isEnabled != isDemoMode else { return }
 
         pinnedProgressMemberByGroupID = [:]
@@ -1310,15 +1319,14 @@ final class AppStore {
         )
     }
 
-#if DEBUG
-    /// 清除指定群組互評，僅供截止後互評流程的 DEBUG 測試選單使用。
+    /// 僅供內部開發者重設本機示範資料，不能用來清除正式互評。
     func resetPeerReviews(for groupID: UUID) {
+        guard canUseDeveloperTools, isDemoMode else { return }
         peerReviews.removeAll { $0.groupID == groupID }
         if let uid = firebaseUID { ReviewReminderState.shared.clear(uid: uid, groupID: groupID) }
         peerReviewSummariesByGroupID[groupID] = nil
         peerReviewCommentsByGroupID[groupID] = nil
     }
-#endif
 
     /// 驗證並發布一項正式任務，同步維護群組的 taskIDs 關係。
     @discardableResult
@@ -1653,6 +1661,8 @@ final class AppStore {
             refreshDeadlineReminders()
             return
         }
+        canUseDeveloperTools = false
+        dataMode = .live
         hasLoadedReminderData = false
         pinnedProgressMemberByGroupID = [:]
         PokeBackgroundRefresh.shared.cancel()
