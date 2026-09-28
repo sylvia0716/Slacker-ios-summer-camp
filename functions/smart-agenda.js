@@ -13,6 +13,8 @@ const types = {
   zip:'application/zip', mov:'video/quicktime', mp4:'video/mp4',
 };
 const keysByAction = {
+  createMeeting:['topic','meetingAtMillis','duration','expectedRevision'],
+  deleteMeeting:['expectedRevision'],
   meeting:['topic','meetingAtMillis','duration','expectedRevision'],
   material:['note','attachment','expectedRevision'], retry:[],
   link:['linkID','title','url','expectedRevision'],
@@ -24,9 +26,11 @@ function requireRequest(request) {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated','Please sign in.');
   const d = request.data;
   const recordKey = d?.action === 'material' && Object.hasOwn(d, 'materialID') ? ['materialID'] : [];
+  const agendaKey = d && Object.hasOwn(d, 'agendaID') ? ['agendaID'] : [];
   if (!d || typeof d !== 'object' || !/^[a-f0-9-]{36}$/.test(d.groupID)
+      || (agendaKey.length && (typeof d.agendaID !== 'string' || (d.agendaID !== 'current' && !/^[a-f0-9-]{36}$/.test(d.agendaID))))
       || !Object.hasOwn(keysByAction, d.action)
-      || Object.keys(d).sort().join('|') !== ['groupID','action',...keysByAction[d.action],...recordKey].sort().join('|')) {
+      || Object.keys(d).sort().join('|') !== ['groupID','action',...keysByAction[d.action],...recordKey,...agendaKey].sort().join('|')) {
     throw new HttpsError('invalid-argument','Invalid agenda request.');
   }
   return d;
@@ -58,7 +62,7 @@ async function checkAttachment(value, groupID, uid) {
 
 exports.updateSmartAgenda = onCall({region}, async request => {
   const d = requireRequest(request), uid = request.auth.uid, db = getFirestore();
-  const group = db.collection('groups').doc(d.groupID), ref = group.collection('smartAgenda').doc('current');
+  const group = db.collection('groups').doc(d.groupID), ref = group.collection('smartAgenda').doc(d.agendaID ?? 'current');
   // Authorize before inspecting an object; repeat inside the transaction for concurrent exits.
   if (!(await group.collection('members').doc(uid).get()).exists) throw new HttpsError('permission-denied','Membership required.');
   const attachment = d.action === 'material' ? await checkAttachment(d.attachment, d.groupID, uid) : null;
@@ -67,11 +71,27 @@ exports.updateSmartAgenda = onCall({region}, async request => {
     const members = membership.docs.map(m => ({...m.data(), id:m.id})), caller = members.find(m => m.id === uid);
     if (!parent.exists || parent.data().deleting || !caller) throw new HttpsError('permission-denied','Membership required.');
     const current = snapshot.data() || {materials:{}, meetingRevision:null};
+    if (['createMeeting','deleteMeeting','meeting'].includes(d.action) && caller.role !== 'leader') {
+      throw new HttpsError('permission-denied','Only the leader can manage meetings.');
+    }
+    if (current.deleted) {
+      if (d.action === 'deleteMeeting') return {saved:true};
+      throw new HttpsError('not-found','This agenda was deleted.');
+    }
+    if (d.action === 'deleteMeeting') {
+      if (!snapshot.exists) return {saved:true};
+      if (d.expectedRevision !== current.meetingRevision) throw new HttpsError('aborted','Meeting changed. Reopen the editor.');
+      // Keep only a tombstone so delayed create/save retries cannot resurrect a deleted meeting.
+      tx.set(ref, {deleted:true, updatedAt:FieldValue.serverTimestamp()});
+      return {saved:true};
+    }
+    if (!snapshot.exists && d.action !== 'createMeeting' && !(d.action === 'meeting' && !d.agendaID)) {
+      throw new HttpsError('not-found','This agenda was deleted.');
+    }
     const changedMembers = current.membershipSignature !== membershipSignature(members);
     let agenda = changedMembers ? invalidateAgenda(current, members) : current;
     const write = value => tx.set(ref, {...value, updatedAt:FieldValue.serverTimestamp()});
-    if (d.action === 'meeting') {
-      if (caller.role !== 'leader') throw new HttpsError('permission-denied','Only the leader can edit the meeting.');
+    if (d.action === 'meeting' || d.action === 'createMeeting') {
       if (typeof d.topic !== 'string' || !d.topic.trim() || d.topic.length > 120
           || !Number.isFinite(d.meetingAtMillis) || d.meetingAtMillis < 0
           || !Number.isInteger(d.duration) || d.duration < 5 || d.duration > 180) {
@@ -82,6 +102,7 @@ exports.updateSmartAgenda = onCall({region}, async request => {
         if (changedMembers) write(agenda);
         return {saved:true};
       }
+      if (d.action === 'createMeeting' && snapshot.exists) throw new HttpsError('already-exists','This agenda already exists.');
       if (agenda.meetingStartedAt) throw new HttpsError('failed-precondition','End the meeting before editing its settings.');
       if (d.expectedRevision !== current.meetingRevision) throw new HttpsError('aborted','Meeting changed. Reopen the editor.');
       write(invalidateAgenda({...agenda, topic:d.topic.trim(), meetingAt:Timestamp.fromMillis(d.meetingAtMillis),
@@ -238,23 +259,28 @@ exports.syncAgendaMembership = onDocumentWritten({region, document:'groups/{grou
   if (event.data.before.exists && event.data.after.exists
       && membershipVersion(event.data.before.data()) === membershipVersion(event.data.after.data())) return;
   const db = getFirestore(), group = db.collection('groups').doc(event.params.groupID);
-  const ref = group.collection('smartAgenda').doc('current');
   await db.runTransaction(async tx => {
-    const [agenda, members] = await Promise.all([tx.get(ref),tx.get(group.collection('members'))]);
-    if (!agenda.exists) return;
+    const [agendas, members] = await Promise.all([tx.get(group.collection('smartAgenda')),tx.get(group.collection('members'))]);
     const participants = members.docs.map(m => ({...m.data(),id:m.id}));
-    if (agenda.data().membershipSignature === membershipSignature(participants)) return;
-    tx.set(ref, {...invalidateAgenda(agenda.data(), participants),updatedAt:FieldValue.serverTimestamp()});
+    for (const agenda of agendas.docs) {
+      if (agenda.data().deleted || agenda.data().membershipSignature === membershipSignature(participants)) continue;
+      tx.set(agenda.ref, {...invalidateAgenda(agenda.data(), participants),updatedAt:FieldValue.serverTimestamp()});
+    }
   });
 });
 
-exports.cleanupAgendaAttachments = onDocumentWritten({region, document:'groups/{groupID}/smartAgenda/current', retry:true}, async event => {
+async function cleanupAttachments(event) {
   const old = Object.values(event.data.before.data()?.materials || {}).map(m => m.attachment?.storagePath).filter(Boolean);
-  const latest = await event.data.after.ref.get();
-  const retained = new Set(Object.values(latest.data()?.materials || {}).map(m => m.attachment?.storagePath));
+  if (!old.length) return;
+  const agendas = await event.data.after.ref.parent.get();
+  const retained = new Set(agendas.docs.flatMap(doc => Object.values(doc.data().materials || {}).map(m => m.attachment?.storagePath)));
   for (const path of old) {
     if (!retained.has(path) && path.startsWith(`groups/${event.params.groupID}/agendaMaterials/`)) {
       await getStorage().bucket().file(path).delete({ignoreNotFound:true});
     }
   }
+}
+exports.cleanupAgendaAttachments = onDocumentWritten({region, document:'groups/{groupID}/smartAgenda/current', retry:true}, cleanupAttachments);
+exports.cleanupAdditionalAgendaAttachments = onDocumentWritten({region, document:'groups/{groupID}/smartAgenda/{agendaID}', retry:false}, async event => {
+  if (event.params.agendaID !== 'current') await cleanupAttachments(event);
 });

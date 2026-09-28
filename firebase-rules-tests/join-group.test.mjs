@@ -318,7 +318,25 @@ describe("joinGroupByInviteCode Callable", () => {
       const pendingDB = testEnv.authenticatedContext(client.userID).firestore();
       await assertFails(getDoc(doc(pendingDB, `groups/${groupID}`)));
       assert.equal((await getDoc(doc(pendingDB, `users/${client.userID}/groupJoinRequests/${groupID}`))).data().status, 'pending');
+      const agendaIDs = ['current', '44444444-4444-4444-8444-444444444444'];
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        for (const agendaID of agendaIDs) {
+          await setDoc(doc(context.firestore(), `groups/${groupID}/smartAgenda/${agendaID}`), {
+            title: `Admission access ${agendaID}`,
+          });
+        }
+      });
+      for (const agendaID of agendaIDs) {
+        await assertFails(getDoc(doc(pendingDB, `groups/${groupID}/smartAgenda/${agendaID}`)));
+      }
+      await assertFails(getDocs(collection(pendingDB, `groups/${groupID}/smartAgenda`)));
       await client.admit({inviteCode: validCode});
+      for (const agendaID of agendaIDs) {
+        const agenda = await assertSucceeds(getDoc(doc(pendingDB, `groups/${groupID}/smartAgenda/${agendaID}`)));
+        assert.equal(agenda.exists(), true);
+      }
+      const agendas = await assertSucceeds(getDocs(collection(pendingDB, `groups/${groupID}/smartAgenda`)));
+      assert.equal(agendas.size, agendaIDs.length);
 
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const snapshot = await getDoc(doc(
