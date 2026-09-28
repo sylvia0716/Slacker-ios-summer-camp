@@ -1029,7 +1029,13 @@ final class AppStore {
             }
         let items = todoTasks.flatMap { task in
             task.subtasks.filter { !$0.isComplete }.map {
-                WidgetTodoItem(id: $0.id, title: $0.title)
+                WidgetTodoItem(
+                    id: $0.id,
+                    title: $0.title,
+                    taskID: task.id,
+                    groupName: groups.first(where: { $0.id == task.groupID })?.name ?? "",
+                    taskTitle: task.title
+                )
             }
         }
         WidgetSnapshotStore.saveTodo(WidgetTodoSnapshot(

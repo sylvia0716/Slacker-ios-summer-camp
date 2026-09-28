@@ -16,6 +16,9 @@ struct WidgetTodoSnapshot: Codable {
 struct WidgetTodoItem: Codable, Identifiable {
     let id: UUID
     let title: String
+    let taskID: UUID
+    let groupName: String
+    let taskTitle: String
 }
 
 /// Keeps the app's selected group summary available to the widget extension.

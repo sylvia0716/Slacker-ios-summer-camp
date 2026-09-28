@@ -15,6 +15,9 @@ struct WidgetTodoSnapshot: Codable {
 struct WidgetTodoItem: Codable, Identifiable {
     let id: UUID
     let title: String
+    let taskID: UUID
+    let groupName: String
+    let taskTitle: String
 }
 
 /// Reads the latest group summary written by the main app through the App Group.
