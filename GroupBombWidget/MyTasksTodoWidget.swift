@@ -134,58 +134,101 @@ private struct MyTasksTodoWidgetView: View {
     }
 
     private var compactContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !isSmall {
-                Text("\(WidgetLanguage.text("我的待辦", "My To-Dos")) · \(entry.snapshot.count)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(ink.opacity(0.65))
-                    .lineLimit(1)
-            }
-
+        Group {
             if entry.snapshot.count == 0 {
                 Text(WidgetLanguage.text("目前沒有待辦事項", "No to-dos"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ink.opacity(0.7))
-            } else {
-                ViewThatFits(in: .vertical) {
-                    if !isSmall {
-                        compactList(limit: 2)
+            } else if isSmall {
+                compactChecklist(items: entry.snapshot.items)
+            } else if let first = entry.snapshot.items.first {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 5) {
+                            Text("\(entry.snapshot.count)")
+                                .font(.system(size: 30, weight: .black, design: .rounded))
+                                .monospacedDigit()
+                            Text(WidgetLanguage.text("我的待辦", "My To-Dos"))
+                                .font(.system(size: 14, weight: .black))
+                                .minimumScaleFactor(0.8)
+                            Spacer(minLength: 0)
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(yellow)
+                                .frame(width: 25, height: 25)
+                                .background(ink, in: Circle())
+                                .accessibilityHidden(true)
+                        }
+                        .lineLimit(1)
+                        Rectangle().fill(ink).frame(height: 1)
+                        Text(first.taskTitle)
+                            .font(.system(size: 15, weight: .black))
+                            .lineLimit(2)
+                        if !first.groupName.isEmpty {
+                            groupLabel(first.groupName)
+                        }
                     }
-                    compactList(limit: 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Only show this task's subtasks under its heading.
+                    compactChecklist(items: entry.snapshot.items.filter { $0.taskID == first.taskID })
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private func compactList(limit: Int) -> some View {
-        let items = Array(entry.snapshot.items.prefix(limit))
-        let remaining = max(0, entry.snapshot.count - items.count)
+    private func compactChecklist(items: [WidgetTodoItem]) -> some View {
+        ViewThatFits(in: .vertical) {
+            compactList(items: items, limit: 4)
+            compactList(items: items, limit: 3)
+            compactList(items: items, limit: 2)
+            compactList(items: items, limit: 1)
+        }
+    }
 
-        return VStack(alignment: .leading, spacing: 10) {
-            ForEach(items) { item in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(.system(size: isSmall ? 17 : 15, weight: .bold))
-                        .lineLimit(isSmall ? 2 : 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(isSmall ? item.taskTitle : [item.taskTitle, item.groupName]
-                        .filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(ink.opacity(0.6))
-                        .lineLimit(1)
+    private func compactList(items: [WidgetTodoItem], limit: Int) -> some View {
+        let visibleItems = Array(items.prefix(limit))
+        let remaining = max(0, entry.snapshot.count - visibleItems.count)
+
+        return VStack(alignment: .leading, spacing: isSmall ? 12 : 10) {
+            VStack(spacing: isSmall ? 8 : 4) {
+                ForEach(visibleItems) { item in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .strokeBorder(ink.opacity(0.75), lineWidth: 1.2)
+                            .frame(width: isSmall ? 16 : 14, height: isSmall ? 16 : 14)
+                            .accessibilityHidden(true)
+                        Text(item.title)
+                            .font(.system(size: isSmall ? 14 : 13, weight: .bold))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, isSmall ? 0 : 6)
+                    .padding(.vertical, isSmall ? 0 : 2)
+                    .background(isSmall ? Color.clear : ink.opacity(0.045))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel([item.groupName, item.taskTitle, item.title]
+                        .filter { !$0.isEmpty }.joined(separator: ", "))
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel([item.groupName, item.taskTitle, item.title]
-                    .filter { !$0.isEmpty }.joined(separator: ", "))
+            }
+            .padding(.leading, isSmall ? 0 : 8)
+            .overlay(alignment: .leading) {
+                if !isSmall {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(yellow)
+                        .frame(width: 2)
+                }
             }
             if remaining > 0 {
                 Text(WidgetLanguage.text("還有 \(remaining) 項", "+\(remaining) more"))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(ink.opacity(0.6))
                     .lineLimit(1)
             }
         }
+        .padding(.horizontal, isSmall ? 5 : 0)
         .fixedSize(horizontal: false, vertical: true)
     }
 
