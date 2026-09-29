@@ -4,6 +4,7 @@ import UIKit
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
     let model: GroupBombModel
+    let subscription: SubscriptionStore
     let authSession: AuthSessionStore
     let onReplayTutorial: () -> Void
 
@@ -28,7 +29,7 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     } else if authSession.isAnonymous {
                         NavigationLink {
-                            AccountSettingsView(model: model, authSession: authSession)
+                            AccountSettingsView(model: model, subscription: subscription, authSession: authSession)
                         } label: {
                             SettingsRow(
                                 icon: "person.crop.circle.badge.clock",
@@ -49,7 +50,7 @@ struct SettingsView: View {
                         }
                         Divider()
                         NavigationLink {
-                            AccountSettingsView(model: model, authSession: authSession)
+                            AccountSettingsView(model: model, subscription: subscription, authSession: authSession)
                         } label: {
                             SettingsRow(icon: "person.crop.circle.fill", title: L10n.text("帳號"),
                                         subtitle: L10n.text("個人戰力檔案與帳號管理"))
@@ -121,13 +122,23 @@ private struct GeneralSettingsView: View {
 
 private struct AccountSettingsView: View {
     let model: GroupBombModel
+    let subscription: SubscriptionStore
     let authSession: AuthSessionStore
+    @State private var showsSubscription = false
     @State private var showsSignOutConfirmation = false
     @State private var showsPasswordReset = false
     @State private var showsAccountAccess = false
 
     var body: some View {
         SettingsPage(title: L10n.text("帳號")) {
+            Button { showsSubscription = true } label: {
+                SettingsRow(icon: "bolt.circle.fill", title: L10n.text("Oops Bomb Pro"),
+                            subtitle: subscription.isPro
+                                ? L10n.text("已解鎖不限數量的未結束專案")
+                                : L10n.text("免費最多 2 個未結束專案"))
+                    .comicCard()
+            }
+            .buttonStyle(.plain)
             NavigationLink {
                 PersonalBattleReportView(model: model)
             } label: {
@@ -172,6 +183,9 @@ private struct AccountSettingsView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showsSubscription) {
+            SubscriptionView(subscription: subscription)
         }
         .sheet(isPresented: $showsAccountAccess) {
             AuthenticationView(

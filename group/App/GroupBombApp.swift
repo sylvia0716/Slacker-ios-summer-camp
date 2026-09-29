@@ -4,8 +4,12 @@ import UserNotifications
 import FirebaseAuth
 import FirebaseAppCheck
 import FirebaseCore
+import FirebaseFirestore
+import FirebaseFunctions
 import FirebaseMessaging
+import FirebaseStorage
 import OSLog
+import RevenueCat
 
 /// Application entry point. It deliberately only wires the root view.
 @main
@@ -37,6 +41,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        #if DEBUG
+        Purchases.configure(withAPIKey: "test_CfkQYcYBQWfDqAEBkeFlMYKVUPF")
+        #endif
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             #if DEBUG
             AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
@@ -44,6 +51,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             AppCheck.setAppCheckProviderFactory(AppAttestProviderFactory())
             #endif
             FirebaseApp.configure()
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-use-firebase-emulators") {
+                Auth.auth().useEmulator(withHost: "127.0.0.1", port: 9099)
+                Firestore.firestore().useEmulator(withHost: "127.0.0.1", port: 8080)
+                Functions.functions(region: "asia-east1").useEmulator(withHost: "127.0.0.1", port: 5001)
+                Storage.storage().useEmulator(withHost: "127.0.0.1", port: 9199)
+            }
+            #endif
         } else {
             logger.error("Firebase was not configured because GoogleService-Info.plist is missing from the group app target.")
         }

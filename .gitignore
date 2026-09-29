@@ -20,3 +20,4 @@ node_modules/
 # Local API credentials
 .env.local
 .secret.local
+functions/.env.group-bomb

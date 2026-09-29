@@ -1,7 +1,7 @@
 {
   "functions": {
     "source": "functions",
-    "ignore": ["node_modules", ".git", ".env.local", ".secret.local"]
+    "ignore": ["node_modules", ".git", ".env.local", ".env.group-bomb", ".secret.local"]
   },
   "firestore": {
     "rules": "firestore.rules",

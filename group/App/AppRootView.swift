@@ -8,6 +8,7 @@ struct AppRootView: View {
     @State private var store = GroupBombModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var authSession = AuthSessionStore()
+    @State private var subscription = SubscriptionStore()
     @State private var launchAnimationID = 0
     @State private var tab = AppTab.groups
     @State private var settingsNavigationID = UUID()
@@ -53,9 +54,12 @@ struct AppRootView: View {
             WidgetSnapshotStore.updateLanguage()
             authSession.start { uid in store.changeCloudAccount(to: uid) }
             store.changeCloudAccount(to: authSession.currentUserID)
+            await subscription.syncUser(authSession.currentUserID)
             if scenePhase == .active { store.resumeCloudSync() }
         }
+        .task { await subscription.listenForUpdates() }
         .onChange(of: authSession.currentUserID) { previousUserID, userID in
+            Task { await subscription.syncUser(userID) }
             if previousUserID != nil, userID == nil {
                 launchAnimationID += 1
             }
@@ -76,6 +80,7 @@ struct AppRootView: View {
                 AppLanguageSettings.shared.refreshSystemLanguage()
                 authSession.refreshDeveloperAccess(forceRefresh: true)
                 store.resumeCloudSync()
+                Task { await subscription.refresh() }
             }
             else if phase == .background {
                 // Prepare the entrance before iOS snapshots the backgrounded app.
@@ -219,6 +224,7 @@ struct AppRootView: View {
             NavigationStack(path: $reviewNotificationPath) {
                 GroupListView(
                     model: store,
+                    subscription: subscription,
                     isSelected: tab == .groups,
                     tutorialStep: $tutorialStep
                 )
@@ -248,6 +254,7 @@ struct AppRootView: View {
             NavigationStack {
                 SettingsView(
                     model: store,
+                    subscription: subscription,
                     authSession: authSession,
                     onReplayTutorial: replayTutorial
                 )

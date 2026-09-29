@@ -15,6 +15,7 @@
 		F100000A000000000000000A /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = F100000B000000000000000B /* FirebaseAppCheck */; };
 		F100000C000000000000000C /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = F100000D000000000000000D /* FirebaseFunctions */; };
 		F100000F000000000000000F /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = F100000E000000000000000E /* FirebaseMessaging */; };
+		F20000010000000000000001 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = F20000040000000000000004 /* RevenueCat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 				F100000A000000000000000A /* FirebaseAppCheck in Frameworks */,
 				F100000C000000000000000C /* FirebaseFunctions in Frameworks */,
 				F100000F000000000000000F /* FirebaseMessaging in Frameworks */,
+				F20000010000000000000001 /* RevenueCat in Frameworks */,
 				F10000060000000000000006 /* FirebaseCore in Frameworks */,
 				F10000070000000000000007 /* FirebaseAuth in Frameworks */,
 				F10000080000000000000008 /* FirebaseFirestore in Frameworks */,
@@ -144,6 +146,7 @@
 				F10000030000000000000003 /* FirebaseAuth */,
 				F10000040000000000000004 /* FirebaseFirestore */,
 				F10000050000000000000005 /* FirebaseStorage */,
+				F20000040000000000000004 /* RevenueCat */,
 			);
 			productName = group;
 			productReference = E5A7EFFC300755BD007F8C90 /* group.app */;
@@ -201,6 +204,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				F20000030000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E5A7EFFD300755BD007F8C90 /* Products */;
@@ -530,6 +534,14 @@
 				minimumVersion = 12.17.0;
 			};
 		};
+		F20000030000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.89.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -567,6 +579,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F10000010000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		F20000040000000000000004 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F20000030000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

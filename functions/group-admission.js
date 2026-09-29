@@ -1,6 +1,8 @@
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const region = 'asia-east1';
+const {enforceProjectQuota} = require('./project-quota');
+const {proStatusForUser} = require('./revenuecat-entitlement');
 
 function input(request, keys) {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in required');
@@ -35,6 +37,7 @@ exports.reviewGroupJoinRequest = onCall({region}, async request => {
     throw new HttpsError('invalid-argument', 'Invalid decision');
   }
   const db = getFirestore(), group = db.collection('groups').doc(data.groupID);
+  const proStatus = data.decision === 'approved' ? await proStatusForUser(data.applicantID) : 'inactive';
   return db.runTransaction(async tx => {
     const {groupSnapshot, application} = await authorizedApplication(tx, group, request.auth.uid, data);
     if (application.data().status === data.decision) return {status: data.decision};
@@ -49,6 +52,7 @@ exports.reviewGroupJoinRequest = onCall({region}, async request => {
         throw new HttpsError('failed-precondition', 'Group is closed', {reason: 'group-closed'});
       }
       if (!member.exists) {
+        await enforceProjectQuota(db, tx, data.applicantID, proStatus);
         tx.create(memberRef, {
           userID: data.applicantID, displayName: application.data().applicantName, role: 'member',
           joinedAt: FieldValue.serverTimestamp(), leaderElectionID: groupData.leaderElectionID || null,

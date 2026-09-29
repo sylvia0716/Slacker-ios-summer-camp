@@ -30,6 +30,8 @@ function setup(uids) {
     if(name === 'firebase-admin/auth') return {getAuth:()=>({getUser:async()=>({displayName:'Test'})})};
     if(name === 'firebase-admin/messaging') return {getMessaging:()=>({sendEachForMulticast:async()=>({responses:[]})})};
     if(name === 'node:crypto') return require('node:crypto');
+    if(name === './project-quota') return require('./project-quota');
+    if(name === './revenuecat-entitlement') return {proStatusForUser:async()=> 'inactive'};
     if(name === './poke-notification') return require('./poke-notification');
     if(name === './member-display-name') return {memberDisplayName:()=> 'Test'};
     if(name === './task-progress' || name === './group-membership' || name === './group-admission' || name === './peer-review' || name === './smart-agenda' || name === './smart-agenda-reminders') return {};

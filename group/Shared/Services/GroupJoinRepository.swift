@@ -27,6 +27,8 @@ enum GroupJoinError: LocalizedError, Equatable {
     case unavailable
     case invalidName
     case invalidDeadline
+    case activeProjectLimit
+    case applicantProjectLimit
 
     var errorDescription: String? {
         switch self {
@@ -41,6 +43,8 @@ enum GroupJoinError: LocalizedError, Equatable {
         case .unavailable: L10n.text("目前無法加入群組，請稍後再試。")
         case .invalidName: L10n.text("請輸入 60 個字以內的群組名稱。")
         case .invalidDeadline: L10n.text("群組期限必須晚於目前時間。")
+        case .activeProjectLimit: L10n.text("免費帳號最多參與 2 個未結束專案，包含建立與加入。請先結束或退出其他專案。")
+        case .applicantProjectLimit: L10n.text("對方已達 2 個未結束專案的免費上限，暫時無法核准。請對方先結束或退出其他專案。")
         }
     }
 }
@@ -193,6 +197,7 @@ final class GroupJoinRepository {
         let nsError = error as NSError
         let details = nsError.userInfo["details"] as? [String: Any]
         switch details?["reason"] as? String {
+        case "active-project-limit": return .activeProjectLimit
         case "not-authenticated": return .notAuthenticated
         case "invite-code-not-found": return .invalidCode
         case "invite-code-inactive": return .inactiveCode

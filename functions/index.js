@@ -1,4 +1,6 @@
 const { initializeApp } = require("firebase-admin/app");
+const { enforceProjectQuota } = require("./project-quota");
+const { proStatusForUser } = require("./revenuecat-entitlement");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { randomBytes, randomUUID } = require("node:crypto");
@@ -268,6 +270,7 @@ function groupPayload(groupID, data, inviteCode = "") {
 
 exports.createGroup = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
+  const proStatus = await proStatusForUser(userID);
   const { name, deadlineMillis, displayName } = normalizedCreateGroupData(request.data);
   const groupID = randomUUID().toLowerCase();
   const inviteCode = makeInviteCode();
@@ -281,6 +284,8 @@ exports.createGroup = onCall({ region }, async (request) => {
     if (inviteSnapshot.exists) {
       throw callableError("aborted", "Invite code collision.", "invite-code-collision");
     }
+
+    await enforceProjectQuota(db, transaction, userID, proStatus);
 
     transaction.create(groupRef, {
       name,
@@ -309,6 +314,7 @@ exports.createGroup = onCall({ region }, async (request) => {
 
 exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
   const userID = requireAuthenticatedUser(request);
+  const proStatus = await proStatusForUser(userID);
   const inviteCode = normalizedInviteCode(request.data);
   const displayName = await accountName(userID);
   const inviteRef = db.collection("groupInviteCodes").doc(inviteCode);
@@ -356,6 +362,7 @@ exports.joinGroupByInviteCode = onCall({ region }, async (request) => {
         throw callableError("failed-precondition", "This group is already closed.", "group-closed");
       }
       if (applicationSnapshot.data()?.status !== "pending") {
+        await enforceProjectQuota(db, transaction, userID, proStatus);
         const application = {
           requestID: randomUUID(), groupID, groupName: groupSnapshot.data().name,
           applicantID: userID, applicantName: displayName, status: "pending",

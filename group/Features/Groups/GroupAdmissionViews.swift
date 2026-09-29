@@ -235,6 +235,8 @@ private struct GroupAdmissionReviewSheet: View {
             do {
                 try await model.admissions.review(request, approve: approve)
                 dismiss()
+            } catch GroupJoinError.applicantProjectLimit {
+                decisionError = GroupJoinError.applicantProjectLimit.localizedDescription
             } catch {
                 decisionError = L10n.text("審核未完成，申請或群組狀態可能已變更，請重新整理後重試。")
             }
