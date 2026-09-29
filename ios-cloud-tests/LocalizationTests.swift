@@ -26,6 +26,22 @@ struct LocalizationTests {
         #expect(AppLanguageSettings(defaults: defaults).preference == .system)
     }
 
+    @Test func authenticationSloganFollowsLanguagePreference() throws {
+        let suite = "slogan-localization-test-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppLanguageSettings(defaults: defaults)
+        let cases: [(AppLanguagePreference, String)] = [
+            (.english, "Less “Oops.” More “Done.”"),
+            (.traditionalChinese, "小心雷包就在你身邊"),
+            (.english, "Less “Oops.” More “Done.”")
+        ]
+        for (preference, expected) in cases {
+            settings.preference = preference
+            #expect(settings.language.text("一起拆彈，一起過關。") == expected)
+        }
+    }
+
     @Test func translatesOnlyInterfaceTemplateAndPreservesUserInput() {
         let title = "English task 中文 {1} 👩🏽‍💻"
         let name = "Alex 小宇 {0}"
