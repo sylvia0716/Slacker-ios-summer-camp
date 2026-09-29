@@ -59,42 +59,7 @@ struct GroupAdmissionInbox: View {
     }
 }
 
-struct MyGroupApplications: View {
-    let model: GroupBombModel
-
-    private var requests: [GroupJoinRequest] {
-        model.admissions.myRequests.filter { request in
-            request.status != .approved || !model.groups.contains { $0.firestoreDocumentID == request.groupID }
-        }
-    }
-
-    var body: some View {
-        if !requests.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(L10n.text("我的入群申請"))
-                    .font(.system(.title2, design: .rounded, weight: .black))
-                ForEach(requests) { request in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(request.groupName)
-                                .font(.system(.headline, design: .rounded, weight: .black))
-                            Text(request.requestedAt, format: .dateTime.month().day())
-                                .font(.system(.caption, design: .rounded, weight: .bold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Label(request.status.title, systemImage: request.status == .pending ? "clock" : (request.status == .approved ? "checkmark.circle" : "xmark.circle"))
-                            .font(.system(.caption, design: .rounded, weight: .black))
-                    }
-                    .padding(.vertical, 6)
-                }
-            }
-            .comicCard()
-        }
-    }
-}
-
-private struct GroupAdmissionReviewSheet: View {
+struct GroupAdmissionReviewSheet: View {
     let model: GroupBombModel
     let request: GroupJoinRequest
     @Environment(\.dismiss) private var dismiss

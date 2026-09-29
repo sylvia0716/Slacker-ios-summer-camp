@@ -151,7 +151,7 @@ private struct BombLaunchArtwork: View {
                 drawFuse(context: bomb, burn: burn)
                 drawSparks(context: scene, burn: burn)
 
-                let title = Text("OOPS BOMB")
+                let title = Text("OOPS! BOMB")
                     .font(.custom("AvenirNextCondensed-Heavy", fixedSize: 42 * unit))
                     .tracking(0.7 * unit)
                 context.draw(title.foregroundStyle(BombTheme.paper),
@@ -543,7 +543,7 @@ private struct BombLaunchArtwork: View {
         bolt.closeSubpath()
         emblem.fill(bolt, with: .color(BombTheme.ink))
 
-        print.draw(Text("OOPS BOMB").font(.system(size: 10, weight: .bold, design: .monospaced))
+        print.draw(Text("OOPS! BOMB").font(.system(size: 10, weight: .bold, design: .monospaced))
             .tracking(4).foregroundStyle(BombTheme.ink.opacity(0.7)), at: CGPoint(x: 0, y: 83))
     }
 }

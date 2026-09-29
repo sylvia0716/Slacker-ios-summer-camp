@@ -81,7 +81,7 @@ struct SettingsView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("設定")) {
-                EmptyView()
+                NotificationBellButton(model: model)
             } trailing: {
                 EmptyView()
             }

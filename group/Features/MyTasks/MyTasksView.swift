@@ -94,7 +94,7 @@ struct MyTasksView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("我的任務")) {
-                EmptyView()
+                NotificationBellButton(model: model)
             } trailing: {
                 EmptyView()
             }
@@ -402,7 +402,7 @@ private struct TaskRemainingTime {
     }
 }
 
-private struct MyTaskDetailView: View {
+struct MyTaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let model: GroupBombModel
     let taskID: UUID

@@ -1085,3 +1085,37 @@
 "拒絕後，對方可在 App 內查看未通過結果，並可重新申請。" = "The applicant can see the rejection in the app and apply again.";
 "免費帳號最多參與 2 個未結束專案，包含建立與加入。請先結束或退出其他專案。" = "Free accounts can participate in up to 2 unfinished projects, including projects created and joined. Finish or leave another project first.";
 "對方已達 2 個未結束專案的免費上限，暫時無法核准。請對方先結束或退出其他專案。" = "This applicant has reached the free limit of 2 unfinished projects. They must finish or leave another project before you can approve them.";
+
+"通知" = "Notifications";
+
+"沒有未讀通知" = "No unread notifications";
+
+"{0} 則未讀通知" = "{0} unread notifications";
+
+"全部已讀" = "Mark all read";
+
+"目前沒有通知" = "No notifications yet";
+
+"已讀" = "Read";
+
+"未讀" = "Unread";
+
+"入群申請審核中" = "Application under review";
+
+"入群申請已通過" = "Application approved";
+
+"你加入「{0}」的申請已通過。" = "Your request to join “{0}” was approved.";
+
+"你加入「{0}」的申請未通過，可重新申請。" = "Your request to join “{0}” was declined. You can apply again.";
+
+"{0} 申請加入「{1}」。" = "{0} requested to join “{1}”.";
+
+"你在「{0}」累積被戳超過 10 下。" = "You have been poked more than 10 times in “{0}”.";
+
+"會議提醒" = "Meeting reminder";
+
+"「{0}」的會議「{1}」將於 {2} 開始。" = "“{1}” in “{0}” starts at {2}.";
+
+"部分通知尚未同步，請下拉重新整理。" = "Some notifications have not synced. Pull down to refresh.";
+
+"查看群組" = "View group";

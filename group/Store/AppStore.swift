@@ -161,6 +161,10 @@ final class AppStore {
     private(set) var peerReviewSummariesByGroupID: [UUID: PeerReviewSummary] = [:]
     private(set) var peerReviewCommentsByGroupID: [UUID: [String]] = [:]
     let admissions = GroupAdmissionStore()
+    let notificationInbox = NotificationInboxStore()
+    @ObservationIgnored private var meetingNotificationListeners: [UUID: ListenerRegistration] = [:]
+    private var meetingNotificationErrors: Set<UUID> = []
+    var meetingNotificationSyncFailed: Bool { !meetingNotificationErrors.isEmpty }
     private(set) var personalPeerReviewProjects: [PersonalPeerReviewProject] = []
     private(set) var personalPeerReviewSyncError: String?
     @ObservationIgnored private var progressSyncErrorsByGroupID: [UUID: String] = [:]
@@ -384,6 +388,7 @@ final class AppStore {
         pinnedProgressMemberByGroupID = [:]
         suspendCloudSync()
         hasLoadedReminderData = false
+        notificationInbox.changeAccount(to: isEnabled ? nil : firebaseUID)
 
         if isEnabled {
             let demo = DemoData.make()
@@ -1708,6 +1713,8 @@ final class AppStore {
         userName = ""
         lastEvent = ""
         firebaseUID = uid
+        notificationInbox.changeAccount(to: uid)
+        meetingNotificationErrors = []
         if let uid, Auth.auth().currentUser?.uid == uid {
             profileName = Auth.auth().currentUser?.displayName ?? ""
             Task { [weak self] in
@@ -1735,7 +1742,21 @@ final class AppStore {
                     completedReviewGroupIDs: Set(self.groups.filter { self.hasCompletedReviewReminders(in: $0) }.map(\.id)))
                 : nil
             DeadlineNotificationService.shared.update(uid: self.firebaseUID, enabled: enabled, plan: plan, categories: self.notificationCategories)
+            self.refreshInboxReminders()
         }
+    }
+
+    /// Refresh while foregrounded and catch up the last day after returning to the app.
+    func refreshInboxReminders(now: Date = .now) {
+        guard dataMode == .live, notificationsEnabled, hasLoadedReminderData,
+              !isLoadingCloudGroups, let uid = firebaseUID else { return }
+        let plan = DeadlineReminderPlan.make(
+            groups: groups, tasks: projectTasks, memberID: currentUserID, uid: uid,
+            now: now.addingTimeInterval(-24 * 3600),
+            reminderTime: Calendar.current.dateComponents([.hour, .minute], from: deadlineReminderTime),
+            completedReviewGroupIDs: Set(groups.filter { hasCompletedReviewReminders(in: $0) }.map(\.id))
+        ).filter { notificationCategories.allowsReminder(isReview: $0.opensPeerReview, isTask: $0.taskID != nil) }
+        notificationInbox.receiveReminders(plan, groups: groups, tasks: projectTasks, uid: uid, now: now)
     }
 
     func hasCompletedReviewReminders(in group: Group) -> Bool {
@@ -1758,7 +1779,7 @@ final class AppStore {
         guard !isDemoMode, let uid = firebaseUID else { return }
         admissions.start(uid: uid, leaderGroupIDs: groups.filter {
             $0.memberRoles[currentUserID] == .leader
-        }.compactMap(\.firestoreDocumentID))
+        }.compactMap(\.firestoreDocumentID), inbox: notificationInbox)
     }
 
     func registerPokeDevice() {
@@ -1781,6 +1802,7 @@ final class AppStore {
 
     func suspendCloudSync() {
         admissions.stop()
+        stopMeetingNotificationSync()
         syncIsActive = false
         cloudGeneration = UUID()
         cloudLoadTask?.cancel()
@@ -1823,6 +1845,35 @@ final class AppStore {
         pokeListeners = [:]
     }
 
+    private func stopMeetingNotificationSync() {
+        meetingNotificationListeners.values.forEach { $0.remove() }
+        meetingNotificationListeners = [:]
+        meetingNotificationErrors = []
+    }
+
+    private func startMeetingNotificationSync(group: Group, uid: String, generation: UUID) {
+        guard let cloudID = group.firestoreDocumentID else { return }
+        let repository = chatRepository ?? ChatRepository()
+        chatRepository = repository
+        meetingNotificationListeners[group.id] = repository.listenToMeetingReminders(
+            groupID: cloudID, groupName: group.name
+        ) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.firebaseUID == uid, self.cloudGeneration == generation,
+                      self.syncIsActive, self.dataMode == .live else { return }
+                switch result {
+                case .success(let events):
+                    self.meetingNotificationErrors.remove(group.id)
+                    if self.notificationsEnabled && self.notificationCategories.meetings {
+                        self.notificationInbox.receive(events, for: uid)
+                    }
+                case .failure:
+                    self.meetingNotificationErrors.insert(group.id)
+                }
+            }
+        }
+    }
+
     @discardableResult
     func reloadCloudGroups(reportError: Bool = true, forceRefresh: Bool = false) async -> Bool {
         guard dataMode == .live,
@@ -1852,6 +1903,7 @@ final class AppStore {
     private func performCloudGroupLoad(uid: String, generation: UUID, reportError: Bool) async -> Bool {
         stopAttachmentSync()
         stopPokeSync()
+        stopMeetingNotificationSync()
         stopPeerReviewSync()
         startPersonalPeerReviewSync(uid: uid, generation: generation)
         isLoadingCloudGroups = true
@@ -1885,6 +1937,7 @@ final class AppStore {
             startAttachmentSync(for: projectTasks.map(\.id))
             for group in groups { startProgressSync(group: group, uid: uid, generation: generation) }
             for group in groups { startPokeSync(group: group, uid: uid, generation: generation) }
+            for group in groups { startMeetingNotificationSync(group: group, uid: uid, generation: generation) }
             for group in groups { startPeerReviewSync(group: group, uid: uid, generation: generation) }
             let personalRepository = peerReviewRepository ?? PeerReviewRepository()
             peerReviewRepository = personalRepository
@@ -2219,6 +2272,10 @@ final class AppStore {
                         _ = PokeDeliveryState.shared.unseenCount(latestCount: 0, uid: uid, groupID: firestoreGroupID)
                     }
                     for reception in receptions {
+                        if self.receivesPokes {
+                            self.notificationInbox.receivePoke(count: reception.pokeCount,
+                                groupID: firestoreGroupID, groupName: reception.groupName, uid: uid)
+                        }
                         let unseen = PokeDeliveryState.shared.unseenCount(
                             latestCount: reception.pokeCount, uid: uid, groupID: firestoreGroupID
                         )

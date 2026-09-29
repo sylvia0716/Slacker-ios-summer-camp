@@ -12,12 +12,14 @@ struct NotificationCategoryTests {
         #expect(state.categories == NotificationCategories())
         state.categories.pokes = false
         state.categories.tasks = false
+        state.categories.meetings = false
         state.notificationsEnabled = false
         let restored = PokeDeliveryState(defaults: defaults)
         #expect(!restored.receivesPokes)
         restored.notificationsEnabled = true
         #expect(!restored.receivesPokes)
         #expect(!restored.categories.tasks)
+        #expect(!restored.categories.meetings)
         #expect(restored.categories.projects && restored.categories.reviews)
     }
 

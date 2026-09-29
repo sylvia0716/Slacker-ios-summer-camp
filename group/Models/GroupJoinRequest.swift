@@ -21,6 +21,7 @@ struct GroupJoinRequest: Identifiable, Equatable {
     let applicantName: String
     let requestedAt: Date
     var status: Status
+    var reviewedAt: Date? = nil
 
     var id: String { "\(groupID)/\(applicantID)" }
 }

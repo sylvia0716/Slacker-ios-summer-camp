@@ -32,6 +32,8 @@ struct NotificationSettingsView: View {
                             Divider()
                             category(L10n.text("專案倒數"), icon: "hourglass", isOn: $model.notificationCategories.projects)
                             Divider()
+                            category(L10n.text("會議提醒"), icon: "calendar", isOn: $model.notificationCategories.meetings)
+                            Divider()
                             category(L10n.text("互評提醒"), icon: "star.bubble.fill", isOn: $model.notificationCategories.reviews)
                         }
                         .comicCard()

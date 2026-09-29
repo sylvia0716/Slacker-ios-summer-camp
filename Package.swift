@@ -15,7 +15,8 @@ let package = Package(
             "Shared/Services/GroupRepository.swift", "Shared/Services/CloudReadRetry.swift", "Models/AttachmentOperationError.swift",
             "Shared/Services/AttachmentDocumentReader.swift",
             "Shared/Services/AttachmentDownloadService.swift", "Shared/Services/AttachmentDeletionService.swift",
-            "Store/AttachmentActionStore.swift", "Shared/Services/ProfileNicknameRepository.swift",
+            "Store/AttachmentActionStore.swift", "Store/NotificationInboxStore.swift",
+            "Models/InboxNotification.swift", "Models/GroupJoinRequest.swift", "Shared/Services/ProfileNicknameRepository.swift",
             "Shared/Services/PokeDeliveryState.swift", "Shared/Services/DeadlineReminderPlan.swift",
             "Shared/Services/ReviewReminderState.swift", "Shared/Services/ReviewNotificationRouter.swift"
         ], resources: [.process("Resources")]),
