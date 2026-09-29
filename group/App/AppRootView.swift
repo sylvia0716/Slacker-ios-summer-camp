@@ -103,6 +103,14 @@ struct AppRootView: View {
             store.refreshDeadlineReminders()
         }
         .onDisappear { store.suspendCloudSync() }
+        .task(id: scenePhase == .active && authSession.canEnterApp) {
+            guard scenePhase == .active, authSession.canEnterApp else { return }
+            while !Task.isCancelled {
+                store.refreshInboxReminders()
+                do { try await Task.sleep(for: .seconds(30)) }
+                catch { return }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .pokeReceived)) { notification in
             guard store.receivesPokes, let reception = notification.object as? PokeReception,
                   PokeDeliveryState.accepts(recipientUID: reception.recipientUID,

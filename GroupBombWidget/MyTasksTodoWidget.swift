@@ -54,6 +54,34 @@ private struct MyTasksTodoWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !isLarge {
+                compactContent
+            } else {
+                largeContent
+            }
+        }
+        .foregroundStyle(ink)
+        .padding(isLarge ? 16 : 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(ink)
+                    .offset(x: isLarge ? 4 : 2, y: isLarge ? 4 : 2)
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(paper)
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(ink, lineWidth: isLarge ? 3 : 2))
+        .padding(.trailing, isLarge ? 4 : 2)
+        .padding(.bottom, isLarge ? 4 : 2)
+        .padding(isLarge ? 12 : 6)
+        .widgetURL(URL(string: "oopsbomb://my-tasks"))
+        .containerBackground(for: .widget) { yellow }
+    }
+
+    private var largeContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
             if !isSmall {
                 HStack(alignment: .center, spacing: 6) {
                     Text("\(entry.snapshot.count)")
@@ -103,24 +131,62 @@ private struct MyTasksTodoWidgetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
-        .foregroundStyle(ink)
-        .padding(isLarge ? 16 : 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(ink)
-                    .offset(x: 4, y: 4)
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(paper)
+    }
+
+    private var compactContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !isSmall {
+                Text("\(WidgetLanguage.text("我的待辦", "My To-Dos")) · \(entry.snapshot.count)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(ink.opacity(0.65))
+                    .lineLimit(1)
+            }
+
+            if entry.snapshot.count == 0 {
+                Text(WidgetLanguage.text("目前沒有待辦事項", "No to-dos"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ink.opacity(0.7))
+            } else {
+                ViewThatFits(in: .vertical) {
+                    if !isSmall {
+                        compactList(limit: 2)
+                    }
+                    compactList(limit: 1)
+                }
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(ink, lineWidth: 3))
-        .padding(.trailing, 4)
-        .padding(.bottom, 4)
-        .padding(isLarge ? 12 : 8)
-        .widgetURL(URL(string: "oopsbomb://my-tasks"))
-        .containerBackground(for: .widget) { yellow }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func compactList(limit: Int) -> some View {
+        let items = Array(entry.snapshot.items.prefix(limit))
+        let remaining = max(0, entry.snapshot.count - items.count)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(items) { item in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: isSmall ? 17 : 15, weight: .bold))
+                        .lineLimit(isSmall ? 2 : 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(isSmall ? item.taskTitle : [item.taskTitle, item.groupName]
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(ink.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel([item.groupName, item.taskTitle, item.title]
+                    .filter { !$0.isEmpty }.joined(separator: ", "))
+            }
+            if remaining > 0 {
+                Text(WidgetLanguage.text("還有 \(remaining) 項", "+\(remaining) more"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(ink.opacity(0.6))
+                    .lineLimit(1)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func todoList(limit: Int) -> some View {

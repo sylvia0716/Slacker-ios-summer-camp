@@ -20,11 +20,12 @@ final class PokeDeliveryState {
             let values = defaults.dictionary(forKey: "notifications.categories") as? [String: Bool] ?? [:]
             return NotificationCategories(pokes: values["pokes"] ?? true,
                 tasks: values["tasks"] ?? true, projects: values["projects"] ?? true,
-                reviews: values["reviews"] ?? true)
+                reviews: values["reviews"] ?? true, meetings: values["meetings"] ?? true)
         }
         set {
             defaults.set(["pokes": newValue.pokes, "tasks": newValue.tasks,
-                          "projects": newValue.projects, "reviews": newValue.reviews],
+                          "projects": newValue.projects, "reviews": newValue.reviews,
+                          "meetings": newValue.meetings],
                          forKey: "notifications.categories")
         }
     }
@@ -80,6 +81,7 @@ struct NotificationCategories: Equatable {
     var tasks = true
     var projects = true
     var reviews = true
+    var meetings = true
 
     func allowsReminder(isReview: Bool, isTask: Bool) -> Bool {
         isReview ? reviews : (isTask ? tasks : projects)

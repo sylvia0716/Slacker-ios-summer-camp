@@ -187,6 +187,31 @@ final class ChatRepository {
     }
 
     @discardableResult
+    /// The bell listens across joined groups without opening their chat timelines.
+    func listenToMeetingReminders(
+        groupID: String,
+        groupName: String,
+        onChange: @escaping (Result<[InboxNotification], Error>) -> Void
+    ) -> ListenerRegistration {
+        messagesCollection(groupID: groupID)
+            .whereField("kind", isEqualTo: CloudChatItemKind.agendaReminder.rawValue)
+            .addSnapshotListener { snapshot, error in
+                if let error { onChange(.failure(error)); return }
+                let events = (snapshot?.documents ?? []).compactMap { document -> InboxNotification? in
+                    let data = document.data()
+                    guard let summary = data["agendaSummary"] as? [String: Any],
+                          let topic = summary["topic"] as? String,
+                          let millis = summary["meetingAtMillis"] as? Double,
+                          let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
+                          createdAt > Date.now.addingTimeInterval(-30 * 24 * 3600) else { return nil }
+                    return InboxNotification(id: "meeting.\(groupID).\(document.documentID)", kind: .meeting,
+                        groupID: groupID, groupName: groupName, subject: topic,
+                        eventDate: Date(timeIntervalSince1970: millis / 1_000), createdAt: createdAt)
+                }
+                onChange(.success(events))
+            }
+    }
+
     func listenToMessages(
         groupID: String,
         onChange: @escaping (Result<[CloudChatMessage], Error>) -> Void

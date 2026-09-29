@@ -31,8 +31,6 @@ struct GroupListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        GroupAdmissionInbox(model: model)
-                        MyGroupApplications(model: model)
                         if let error = model.admissions.syncError {
                             Text(error).font(.footnote).foregroundStyle(BombTheme.red)
                             Button(L10n.text("重試")) {
@@ -86,7 +84,7 @@ struct GroupListView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             BombHeader(title: L10n.text("我的群組")) {
-                EmptyView()
+                NotificationBellButton(model: model)
             } trailing: {
                 Button(L10n.text("新增"), systemImage: "plus") {
                     if tutorialStep?.wrappedValue == .createGroup {

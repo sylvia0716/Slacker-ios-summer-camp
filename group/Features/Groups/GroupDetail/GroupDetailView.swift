@@ -1235,7 +1235,7 @@ struct GroupDetailView: View {
     }
 
     private var memberSection: some View {
-        let members = groupMembers
+        let members = groupMembers.filter { $0.id != model.currentUserID }
         let pinnedMember = pinnedProgressMember
         // Match the displayed percentages, preserving group order for equal progress.
         let otherMembers = members.enumerated()
@@ -1250,6 +1250,14 @@ struct GroupDetailView: View {
         let orderedMembers = pinnedMember.map { [$0] + otherMembers } ?? otherMembers
 
         return VStack(alignment: .leading, spacing: 16) {
+            if let ownMember = currentUserMember {
+                Text(L10n.text("我的任務"))
+                    .font(.system(.title2, design: .rounded, weight: .black))
+                    .foregroundStyle(BombTheme.ink)
+
+                memberProgressCard(for: ownMember)
+            }
+
             HStack(alignment: .center, spacing: 12) {
                 HStack(spacing: 8) {
                     Text(L10n.text("成員進度"))
@@ -1293,10 +1301,11 @@ struct GroupDetailView: View {
 
     private var pinnedProgressMember: Member? {
         if let selectedID = model.pinnedProgressMemberByGroupID[group.id],
+           selectedID != model.currentUserID,
            let member = groupMembers.first(where: { $0.id == selectedID }) {
             return member
         }
-        return currentUserMember ?? groupMembers.first
+        return otherGroupMembers.first
     }
 
     private var pinnedMemberPicker: some View {
@@ -1324,7 +1333,7 @@ struct GroupDetailView: View {
                     }
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(groupMembers) { member in
+                            ForEach(otherGroupMembers) { member in
                                 let isPinned = member.id == pinnedProgressMember?.id
                                 Button {
                                     model.pinnedProgressMemberByGroupID[group.id] = member.id
@@ -1355,7 +1364,7 @@ struct GroupDetailView: View {
                         }
                     }
                     .scrollBounceBehavior(.basedOnSize)
-                    .frame(maxHeight: min(CGFloat(groupMembers.count) * 88, max(160, proxy.size.height - 180)))
+                    .frame(maxHeight: min(CGFloat(otherGroupMembers.count) * 88, max(160, proxy.size.height - 180)))
                 }
                 .foregroundStyle(BombTheme.ink)
                 .padding(20)

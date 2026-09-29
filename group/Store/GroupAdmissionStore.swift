@@ -9,6 +9,7 @@ import Observation
 final class GroupAdmissionStore {
     private(set) var myRequests: [GroupJoinRequest] = []
     private(set) var incomingRequests: [GroupJoinRequest] = []
+    private(set) var loadedIncomingGroupIDs: Set<String> = []
     private(set) var syncError: String?
     @ObservationIgnored private var listeners: [ListenerRegistration] = []
     @ObservationIgnored private var session = UUID()
@@ -16,7 +17,7 @@ final class GroupAdmissionStore {
     @ObservationIgnored private var incomingByGroup: [String: [GroupJoinRequest]] = [:]
     @ObservationIgnored private var errors: Set<String> = []
 
-    func start(uid: String, leaderGroupIDs: [String]) {
+    func start(uid: String, leaderGroupIDs: [String], inbox: NotificationInboxStore) {
         let key = ([uid] + leaderGroupIDs.sorted()).joined(separator: "/")
         guard key != subscriptionKey else { return }
         stop()
@@ -24,7 +25,7 @@ final class GroupAdmissionStore {
         let generation = session
         let db = Firestore.firestore()
         func listen(_ query: Query, key: String) {
-            listeners.append(query.addSnapshotListener { [weak self] snapshot, error in
+            listeners.append(query.addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
                 Task { @MainActor in
                     guard let self, self.session == generation, Auth.auth().currentUser?.uid == uid else { return }
                     do {
@@ -34,9 +35,17 @@ final class GroupAdmissionStore {
                         self.errors.remove(key)
                         if key == "mine" { self.myRequests = requests }
                         else {
+                            if snapshot?.metadata.isFromCache == false {
+                                self.loadedIncomingGroupIDs.insert(key)
+                            }
                             self.incomingByGroup[key] = requests.filter { $0.status == .pending }
                             self.incomingRequests = self.incomingByGroup.values.flatMap { $0 }
                                 .sorted { $0.requestedAt < $1.requestedAt }
+                        }
+                        inbox.receiveApplications(requests, incoming: key != "mine", uid: uid)
+                        if key != "mine", snapshot?.metadata.isFromCache == false {
+                            inbox.reconcileAdmissionReviews(groupID: key,
+                                pendingIDs: Set(requests.map(\.requestID)), uid: uid)
                         }
                     } catch {
                         self.errors.insert(key)
@@ -46,7 +55,7 @@ final class GroupAdmissionStore {
                             self.incomingRequests = self.incomingByGroup.values.flatMap { $0 }
                         }
                     }
-                    self.syncError = self.errors.isEmpty ? nil : L10n.text("入群申請同步失敗，請重試。")
+                        self.syncError = self.errors.isEmpty ? nil : L10n.text("入群申請同步失敗，請重試。")
                 }
             })
         }
@@ -64,6 +73,7 @@ final class GroupAdmissionStore {
         subscriptionKey = ""
         myRequests = []
         incomingRequests = []
+        loadedIncomingGroupIDs = []
         incomingByGroup = [:]
         errors = []
         syncError = nil
@@ -119,6 +129,7 @@ final class GroupAdmissionStore {
               let rawStatus = d["status"] as? String, let status = GroupJoinRequest.Status(rawValue: rawStatus),
               let requestedAt = d["requestedAt"] as? Timestamp else { throw GroupJoinError.invalidGroupData }
         return GroupJoinRequest(requestID: requestID, groupID: groupID, groupName: groupName,
-            applicantID: applicantID, applicantName: applicantName, requestedAt: requestedAt.dateValue(), status: status)
+            applicantID: applicantID, applicantName: applicantName, requestedAt: requestedAt.dateValue(), status: status,
+            reviewedAt: (d["reviewedAt"] as? Timestamp)?.dateValue())
     }
 }
