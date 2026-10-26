@@ -5,7 +5,6 @@ import WidgetKit
 @main
 struct GroupBombWidgetBundle: WidgetBundle {
     var body: some Widget {
-        GroupProgressWidget()
         MyTasksTodoWidget()
     }
 }

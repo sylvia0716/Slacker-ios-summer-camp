@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AttachmentManagementSheet: View {
-    let model: GroupBombModel
+    let model: AppStore
     let task: ProjectTask
     let onSubmit: (Deliverable) -> Void
     @Environment(\.dismiss) private var dismiss

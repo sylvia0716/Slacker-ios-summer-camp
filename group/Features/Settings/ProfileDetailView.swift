@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Nickname is shared with Firebase; other profile fields retain their existing behavior.
 struct ProfileDetailView: View {
-    let model: GroupBombModel
+    let model: AppStore
 
     @Environment(\.dismiss) private var dismiss
     @State private var draftName: String
@@ -16,7 +16,7 @@ struct ProfileDetailView: View {
     @State private var isSavingProfile = false
     @State private var saveError: String?
 
-    init(model: GroupBombModel) {
+    init(model: AppStore) {
         self.model = model
         _draftName = State(initialValue: model.profileName)
         _draftRole = State(initialValue: model.profileRole)

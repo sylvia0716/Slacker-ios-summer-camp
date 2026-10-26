@@ -4,7 +4,7 @@ import ImageIO
 
 /// Authenticated image thumbnail. No public download URL or persistent cross-account image cache.
 struct AttachmentPhotoThumbnail: View {
-    let model: GroupBombModel
+    let model: AppStore
     let taskID: UUID
     let deliverable: Deliverable
     @Environment(\.scenePhase) private var scenePhase

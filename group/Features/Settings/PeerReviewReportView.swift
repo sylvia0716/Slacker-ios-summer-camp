@@ -5,7 +5,7 @@ import UIKit
 struct PeerReviewReportView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.bombSafeAreaInsets) private var safeAreaInsets
-    let model: GroupBombModel
+    let model: AppStore
     let group: Group
     @State private var isGeneratingAnalysis = false
     @State private var analysisError: String?

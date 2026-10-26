@@ -4,7 +4,7 @@ import UIKit
 
 /// First tab: groups projects by their deadline and peer-review state.
 struct GroupListView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let subscription: SubscriptionStore
     let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
@@ -16,7 +16,7 @@ struct GroupListView: View {
     @State private var joinSuccessMessage: String?
 
     init(
-        model: GroupBombModel,
+        model: AppStore,
         subscription: SubscriptionStore,
         isSelected: Bool = true,
         tutorialStep: Binding<TutorialStep?>? = nil
@@ -55,9 +55,6 @@ struct GroupListView: View {
                             if let message = model.cloudGroupSyncErrorMessage {
                                 syncStatus(message)
                             }
-                            Text(L10n.text("選一組，繼續拆彈。"))
-                                .font(.subheadline.bold())
-
                             let activeGroups = groups(matching: { $0 == .active }, now: context.date)
                             let awaitingGroups = groups(matching: { $0.isAwaitingReview }, now: context.date)
                             let closedGroups = groups(matching: { $0 == .closed }, now: context.date)
@@ -287,7 +284,7 @@ struct GroupListView: View {
 }
 
 private struct AddGroupSheet: View {
-    let model: GroupBombModel
+    let model: AppStore
     let subscription: SubscriptionStore
     let enterGroup: (Group) -> Void
     let joinedGroup: (String) -> Void
@@ -310,7 +307,7 @@ private struct AddGroupSheet: View {
     @FocusState private var isCodeFieldFocused: Bool
 
     init(
-        model: GroupBombModel,
+        model: AppStore,
         subscription: SubscriptionStore,
         initialMode: GroupEntryMode,
         enterGroup: @escaping (Group) -> Void,
@@ -888,14 +885,6 @@ private enum GroupListStatus: Equatable {
         }
     }
 
-    var badgeTitle: String {
-        switch self {
-        case .active: L10n.text("進行中")
-        case .awaitingReviewCompleted, .awaitingReviewExploded: L10n.text("待評分")
-        case .closed: L10n.text("已完成")
-        }
-    }
-
     var accentColor: Color {
         switch self {
         case .active: BombTheme.yellow
@@ -922,7 +911,7 @@ private struct GroupRow: View {
     private var statusForegroundColor: Color {
         switch status {
         case .active: BombTheme.ink
-        case .awaitingReviewCompleted: status.accentColor
+        case .awaitingReviewCompleted: Color(red: 0.62, green: 0.30, blue: 0)
         case .awaitingReviewExploded: BombTheme.red
         case .closed: BombTheme.green
         }
@@ -940,15 +929,6 @@ private struct GroupRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(status.badgeTitle)
-                    .font(.subheadline.weight(.black))
-                    .foregroundStyle(status == .active || status == .awaitingReviewCompleted ? BombTheme.ink : .white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(status.accentColor)
-                    .clipShape(.capsule)
-                    .fixedSize()
             }
 
             VStack(alignment: .leading, spacing: 10) {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GroupAdmissionInbox: View {
-    let model: GroupBombModel
+    let model: AppStore
     var groupID: String? = nil
     @State private var selectedRequest: GroupJoinRequest?
 
@@ -60,7 +60,7 @@ struct GroupAdmissionInbox: View {
 }
 
 struct GroupAdmissionReviewSheet: View {
-    let model: GroupBombModel
+    let model: AppStore
     let request: GroupJoinRequest
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

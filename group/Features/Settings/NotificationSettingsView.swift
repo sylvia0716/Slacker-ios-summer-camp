@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NotificationSettingsView: View {
-    @Bindable var model: GroupBombModel
+    @Bindable var model: AppStore
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

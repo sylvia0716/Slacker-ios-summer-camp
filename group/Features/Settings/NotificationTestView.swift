@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NotificationTestView: View {
     @Environment(\.dismiss) private var dismiss
-    let model: GroupBombModel
+    let model: AppStore
     @State private var selectedGroupID: UUID?
     @State private var pokeCount = 0
     @State private var showsNotificationsDisabledAlert = false

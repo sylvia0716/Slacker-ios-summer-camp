@@ -3,7 +3,7 @@ import UIKit
 
 /// Third tab: profile, reports, and general preferences.
 struct SettingsView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let subscription: SubscriptionStore
     let authSession: AuthSessionStore
     let onReplayTutorial: () -> Void
@@ -91,7 +91,7 @@ struct SettingsView: View {
 }
 
 private struct GeneralSettingsView: View {
-    let model: GroupBombModel
+    let model: AppStore
 
     var body: some View {
         SettingsPage(title: L10n.text("一般")) {
@@ -121,7 +121,7 @@ private struct GeneralSettingsView: View {
 }
 
 private struct AccountSettingsView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let subscription: SubscriptionStore
     let authSession: AuthSessionStore
     @State private var showsSubscription = false
@@ -211,7 +211,7 @@ private struct AccountSettingsView: View {
 }
 
 private struct DeveloperSettingsView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let authSession: AuthSessionStore
     @Environment(\.dismiss) private var dismiss
     let onReplayTutorial: () -> Void
@@ -354,7 +354,7 @@ private struct ProfileCard: View {
 }
 
 private struct TestModeSettingsRow: View {
-    let model: GroupBombModel
+    let model: AppStore
 
     var body: some View {
         HStack(spacing: 14) {
@@ -417,7 +417,7 @@ private struct SettingsRow: View {
 }
 
 private struct GroupManagementView: View {
-    let model: GroupBombModel
+    let model: AppStore
     @State private var groupToLeave: Group?
     @State private var showsLeaveConfirmation = false
     @State private var isLeaving = false

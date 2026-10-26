@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Shared attachment presentation in delivery and attachment editing.
 struct AttachmentSummaryRow: View {
-    let model: GroupBombModel
+    let model: AppStore
     let taskID: UUID
     let deliverable: Deliverable
 

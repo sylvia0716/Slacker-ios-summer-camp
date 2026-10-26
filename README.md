@@ -34,7 +34,7 @@ My Tasks collects the signed-in member's assignments across projects, making it 
 - Check or uncheck a subtask to update its completion state. Weighted subtasks drive the displayed task percentage and feed member and project progress.
 - See each assignment's project context rather than losing track of which team needs the work.
 
-**Home Screen widgets** extend that view beyond the app. The My Tasks widget displays a compact checklist of pending work grouped by task, with a link back into My Tasks. A separate project widget shows countdowns and progress. Both use snapshots shared by the app.
+**The My Tasks widget** extends that view beyond the app. It displays a compact checklist of pending work grouped by task, on the Home Screen as well as on the Lock Screen and in StandBy, with a link back into My Tasks. Checking off an item on the widget completes the subtask: the tick is queued in the shared App Group and pushed to the backend the next time the app becomes active. The widget reads a snapshot written by the app.
 
 > Your next task, right where you can see it.
 
@@ -199,14 +199,13 @@ Open `group.xcodeproj` and select the **group** scheme. Allow Xcode to resolve t
 
 In **Signing & Capabilities**, select your development team for both `group` and `GroupBombWidget`. Use bundle identifiers registered to your team. The repository currently uses `con.sylvia.group` and `con.sylvia.group.widget`.
 
-Register a shared App Group and use the same identifier in all four locations:
+Register a shared App Group and use the same identifier in all three locations:
 
 - `group/group.entitlements`
 - `GroupBombWidget/GroupBombWidget.entitlements`
-- `group/Shared/Services/WidgetSnapshotStore.swift`
-- `GroupBombWidget/WidgetSnapshotStore.swift`
+- `WidgetShared/WidgetTodoSnapshot.swift` (`WidgetSharedConfig.appGroupIdentifier`)
 
-The current App Group identifier is `group.con.sylvia.group`. Both targets must have access to the same group for widgets to receive app snapshots.
+The current App Group identifier is `group.con.sylvia.group`. Both targets must have access to the same group for the widget to receive app snapshots.
 
 ### 3. Configure your Firebase project
 
@@ -287,7 +286,8 @@ OopsBomb/
 ├── LICENSE                # MIT license
 ├── group/                 # SwiftUI app, models, stores, services, and resources
 ├── group.xcodeproj/       # App and widget targets; Swift package dependencies
-├── GroupBombWidget/       # Project progress and My Tasks widgets
+├── GroupBombWidget/       # My Tasks widget and its App Intent
+├── WidgetShared/          # Snapshot payload shared by both targets
 ├── functions/             # Firebase backend and unit tests
 ├── firebase-rules-tests/  # Emulator integration and access-control tests
 ├── ios-cloud-tests/       # Swift tests

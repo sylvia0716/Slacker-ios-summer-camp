@@ -23,7 +23,7 @@ struct MemberProgressPreviewItem: Identifiable {
 }
 
 struct MemberProgressCard: View {
-    let model: GroupBombModel
+    let model: AppStore
     let firestoreGroupID: String?
     let member: MemberProgressPreviewItem
     let tasks: [ProjectTask]
@@ -322,10 +322,9 @@ struct MemberProgressCard: View {
                     ForEach(task.subtasks) { subtask in
                         if isCurrentUser {
                             Button { onToggleSubtask(task.id, subtask.id) } label: {
-                                checklistRow(subtask, isUpdating: model.pendingSubtaskUpdates[task.id] == subtask.id)
+                                checklistRow(subtask, isUpdating: model.pendingSubtaskUpdates[subtask.id] != nil)
                             }
                             .buttonStyle(.plain)
-                            .allowsHitTesting(!model.pendingTaskUpdates.contains(task.id))
                             .accessibilityValue(subtask.isComplete ? L10n.text("已完成") : L10n.text("未完成"))
                             .accessibilityHint(L10n.text("切換子任務完成狀態"))
                         } else {

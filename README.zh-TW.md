@@ -34,7 +34,7 @@ Oops! Bomb 是一款協助團隊在共同截止期限前完成工作的 iOS 協�
 - 勾選或取消勾選子任務即可更新完成狀態。系統依子任務權重計算顯示的任務完成百分比，並納入成員與專案進度。
 - 查看每項任務所屬的專案，清楚知道是哪個團隊需要這份成果。
 
-**主畫面小工具**讓你在 App 外也能掌握進度。「我的任務」小工具會依任務分組，以精簡清單顯示待完成工作，並提供返回「我的任務」的連結。另一個專案小工具則顯示倒數計時與進度。兩者皆使用 App 分享的資料快照。
+**「我的任務」小工具**讓你在 App 外也能掌握進度。它會依任務分組，以精簡清單顯示待完成工作，並支援主畫面、鎖定畫面與待機顯示，同時提供返回「我的任務」的連結。直接在小工具上勾選即可完成子任務：勾選記錄會先存進共用的 App Group，待 App 下次啟用時再送往後端。小工具讀取的是 App 寫入的資料快照。
 
 > 下一件該做的事，就在看得見的地方。
 
@@ -199,12 +199,11 @@ cd OopsBomb
 
 在 **Signing & Capabilities** 中，為 `group` 與 `GroupBombWidget` 選擇你的開發團隊，並使用已註冊於該團隊的 Bundle Identifier。儲存庫目前使用 `con.sylvia.group` 與 `con.sylvia.group.widget`。
 
-註冊共用的 App Group，並在以下四個位置使用相同的識別碼：
+註冊共用的 App Group，並在以下三個位置使用相同的識別碼：
 
 - `group/group.entitlements`
 - `GroupBombWidget/GroupBombWidget.entitlements`
-- `group/Shared/Services/WidgetSnapshotStore.swift`
-- `GroupBombWidget/WidgetSnapshotStore.swift`
+- `WidgetShared/WidgetTodoSnapshot.swift`（`WidgetSharedConfig.appGroupIdentifier`）
 
 目前的 App Group 識別碼為 `group.con.sylvia.group`。兩個 target 都必須能存取同一個群組，小工具才能接收 App 的資料快照。
 
@@ -287,7 +286,8 @@ OopsBomb/
 ├── LICENSE                # MIT 授權條款
 ├── group/                 # SwiftUI App、模型、資料儲存、服務與資源
 ├── group.xcodeproj/       # App 與小工具 target；Swift 套件相依性
-├── GroupBombWidget/       # 專案進度與「我的任務」小工具
+├── GroupBombWidget/       # 「我的任務」小工具與其 App Intent
+├── WidgetShared/          # 兩個 target 共用的快照資料結構
 ├── functions/             # Firebase 後端與單元測試
 ├── firebase-rules-tests/  # 模擬器整合與存取控制測試
 ├── ios-cloud-tests/       # Swift 測試

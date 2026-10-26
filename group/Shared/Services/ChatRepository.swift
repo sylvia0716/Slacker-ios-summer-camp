@@ -258,6 +258,21 @@ final class ChatRepository {
             }
     }
 
+    /// 只監聽最新一則訊息的時間與發送者，給聊天室外的未讀提示使用。
+    func listenToLatestMessage(
+        groupID: String,
+        onChange: @escaping (_ createdAt: Date?, _ senderID: String?) -> Void
+    ) -> ListenerRegistration {
+        messagesCollection(groupID: groupID)
+            .order(by: "createdAt")
+            .limit(toLast: 1)
+            .addSnapshotListener { snapshot, _ in
+                guard let snapshot else { return }
+                let data = snapshot.documents.last?.data()
+                onChange((data?["createdAt"] as? Timestamp)?.dateValue(), data?["senderID"] as? String)
+            }
+    }
+
     @discardableResult
     func listenToPresence(
         groupID: String,

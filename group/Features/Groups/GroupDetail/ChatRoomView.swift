@@ -8,7 +8,7 @@ struct ChatRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    let model: GroupBombModel
+    let model: AppStore
     let group: Group
     private let tutorialStep: Binding<TutorialStep?>?
 
@@ -21,7 +21,7 @@ struct ChatRoomView: View {
     @FocusState private var isComposerFocused: Bool
 
     init(
-        model: GroupBombModel,
+        model: AppStore,
         group: Group,
         tutorialStep: Binding<TutorialStep?>? = nil
     ) {
@@ -140,6 +140,7 @@ struct ChatRoomView: View {
             Text(aiFailureMessage ?? "")
         }
         .onAppear {
+            model.markChatSeen(in: group.id)
             if tutorialStep?.wrappedValue == .chatEntry {
                 tutorialStep?.wrappedValue = .aiChat
             }
@@ -160,6 +161,7 @@ struct ChatRoomView: View {
             model.markLatestChatMessageRead(groupID: group.id)
         }
         .onDisappear {
+            model.markChatSeen(in: group.id)
             model.stopChatSync(groupID: group.id, displayName: model.profileName)
         }
         .toolbar(.hidden, for: .tabBar)

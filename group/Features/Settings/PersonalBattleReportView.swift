@@ -4,7 +4,7 @@ import UIKit
 /// Private cumulative report built only from scores received by the signed-in user.
 struct PersonalBattleReportView: View {
     @Environment(\.dismiss) private var dismiss
-    let model: GroupBombModel
+    let model: AppStore
     @State private var exportedReport: ExportedPersonalReport?
     @State private var exportError: String?
     /// 平均分是這頁最主要的閱讀內容，跟著使用者的字級設定縮放。

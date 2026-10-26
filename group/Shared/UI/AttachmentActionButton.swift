@@ -3,7 +3,7 @@ import QuickLook
 
 /// Reuses the existing result label; adds interactions without changing its layout.
 struct AttachmentActionButton<Label: View>: View {
-    let model: GroupBombModel
+    let model: AppStore
     let taskID: UUID
     let deliverable: Deliverable
     var localPreview: (() -> Void)? = nil

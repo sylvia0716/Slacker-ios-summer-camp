@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NotificationBellButton: View {
-    let model: GroupBombModel
+    let model: AppStore
 
     var body: some View {
         NavigationLink {
@@ -35,7 +35,7 @@ struct NotificationBellButton: View {
 }
 
 struct NotificationInboxView: View {
-    let model: GroupBombModel
+    let model: AppStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedNotification: InboxNotification?
     @State private var selectedRequest: GroupJoinRequest?
@@ -244,7 +244,7 @@ private struct NotificationRow: View {
 }
 
 private struct NotificationDetailView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let item: InboxNotification
     @Environment(\.dismiss) private var dismiss
     @State private var selectedRequest: GroupJoinRequest?

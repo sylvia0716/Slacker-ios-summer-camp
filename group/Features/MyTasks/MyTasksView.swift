@@ -2,12 +2,12 @@ import SwiftUI
 
 /// Second tab: aggregates the current user's tasks and opens task delivery details.
 struct MyTasksView: View {
-    let model: GroupBombModel
+    let model: AppStore
     let isSelected: Bool
     @State private var showCompleted = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    init(model: GroupBombModel, isSelected: Bool = true) {
+    init(model: AppStore, isSelected: Bool = true) {
         self.model = model
         self.isSelected = isSelected
     }
@@ -132,7 +132,7 @@ struct MyTasksView: View {
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(showCompleted == completed ? BombTheme.ink : BombTheme.paper)
                         .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(showCompleted == completed ? BombTheme.yellow : .clear, in: Capsule())
+                        .background(showCompleted == completed ? BombTheme.paper : .clear, in: Capsule())
                         .contentShape(.capsule)
                 }
                 .buttonStyle(.plain)
@@ -202,7 +202,7 @@ private struct TaskProgressDashboard: View {
             }
             .offset(y: 31)
         }
-        .frame(height: 260)
+        .frame(height: 220)
         .onAppear {
             if isActive { animateProgress(fromZero: true) }
         }
@@ -390,11 +390,10 @@ private struct MyTaskCard: View {
                 HStack(spacing: 8) {
                     statusDot
 
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        titleText.layoutPriority(1)
-                        if !groupName.isEmpty { groupNameText }
+                    VStack(alignment: .leading, spacing: 2) {
+                        titleText.lineLimit(2)
+                        if !groupName.isEmpty { groupNameText.lineLimit(1) }
                     }
-                    .lineLimit(1)
 
                     Spacer(minLength: 0)
 
@@ -458,7 +457,7 @@ private struct TaskRemainingTime {
 
 struct MyTaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    let model: GroupBombModel
+    let model: AppStore
     let taskID: UUID
     @State private var showsSubmissionSheet = false
 
@@ -598,7 +597,7 @@ struct MyTaskDetailView: View {
                                 .foregroundStyle(subtask.isComplete ? .secondary : BombTheme.ink)
                                 .strikethrough(subtask.isComplete)
                             Spacer(minLength: 0)
-                            if model.pendingSubtaskUpdates[task.id] == subtask.id {
+                            if model.pendingSubtaskUpdates[subtask.id] != nil {
                                 ProgressView().controlSize(.small)
                             }
                         }

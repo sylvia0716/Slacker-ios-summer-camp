@@ -1,57 +1,39 @@
 import Foundation
 import WidgetKit
 
-/// The compact, cross-process payload used by the Home Screen widget.
-struct WidgetProgressSnapshot: Codable {
-    let groupName: String
-    let progress: Int
-    let deadline: Date
-}
-
-struct WidgetTodoSnapshot: Codable {
-    let count: Int
-    let items: [WidgetTodoItem]
-}
-
-struct WidgetTodoItem: Codable, Identifiable {
-    let id: UUID
-    let title: String
-    let taskID: UUID
-    let groupName: String
-    let taskTitle: String
-}
-
-/// Keeps the app's selected group summary available to the widget extension.
+/// Keeps the current user's unfinished subtasks available to the widget extension.
+/// The payload types live in `WidgetShared`, which both targets compile.
 enum WidgetSnapshotStore {
-    static let appGroupIdentifier = "group.con.sylvia.group"
-    static let snapshotKey = "widgetProgressSnapshot"
-    static let widgetKind = "GroupProgressWidget"
-    static let todoSnapshotKey = "widgetTodoSnapshot"
-    static let todoWidgetKind = "MyTasksTodoWidget"
+    /// Removed in favour of the to-do widget; cleared so the old payload stops taking up
+    /// space in the shared container.
+    private static let retiredProgressSnapshotKey = "widgetProgressSnapshot"
 
     static func updateLanguage() {
-        UserDefaults(suiteName: appGroupIdentifier)?.set(
-            AppLanguageSettings.shared.preference.rawValue, forKey: "appLanguagePreference")
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
-        WidgetCenter.shared.reloadTimelines(ofKind: todoWidgetKind)
+        guard let defaults = WidgetSharedConfig.defaults else { return }
+        let preference = AppLanguageSettings.shared.preference.rawValue
+        guard defaults.string(forKey: WidgetSharedConfig.languagePreferenceKey) != preference else { return }
+        defaults.set(preference, forKey: WidgetSharedConfig.languagePreferenceKey)
+        reloadWidget()
     }
 
-    static func save(_ snapshot: WidgetProgressSnapshot?) {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
-
-        if let snapshot, let data = try? JSONEncoder().encode(snapshot) {
-            defaults.set(data, forKey: snapshotKey)
-        } else {
-            defaults.removeObject(forKey: snapshotKey)
-        }
-
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
-    }
-
+    /// Writes the snapshot and reloads the widget only when the payload actually changed.
+    /// WidgetKit budgets daily reloads, and the store is written from several `didSet`
+    /// observers, so an unconditional reload would burn through that budget.
     static func saveTodo(_ snapshot: WidgetTodoSnapshot) {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+        guard let defaults = WidgetSharedConfig.defaults,
               let data = try? JSONEncoder().encode(snapshot) else { return }
-        defaults.set(data, forKey: todoSnapshotKey)
-        WidgetCenter.shared.reloadTimelines(ofKind: todoWidgetKind)
+
+        defaults.removeObject(forKey: retiredProgressSnapshotKey)
+
+        // Encoding is deterministic for this payload, so comparing bytes is enough and
+        // avoids decoding the stored snapshot on every task mutation.
+        guard defaults.data(forKey: WidgetSharedConfig.todoSnapshotKey) != data else { return }
+
+        defaults.set(data, forKey: WidgetSharedConfig.todoSnapshotKey)
+        reloadWidget()
+    }
+
+    private static func reloadWidget() {
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetSharedConfig.todoWidgetKind)
     }
 }
