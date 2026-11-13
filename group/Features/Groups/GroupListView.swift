@@ -5,7 +5,6 @@ import UIKit
 /// First tab: groups projects by their deadline and peer-review state.
 struct GroupListView: View {
     let model: AppStore
-    let subscription: SubscriptionStore
     let isSelected: Bool
     private let tutorialStep: Binding<TutorialStep?>?
 
@@ -17,12 +16,10 @@ struct GroupListView: View {
 
     init(
         model: AppStore,
-        subscription: SubscriptionStore,
         isSelected: Bool = true,
         tutorialStep: Binding<TutorialStep?>? = nil
     ) {
         self.model = model
-        self.subscription = subscription
         self.isSelected = isSelected
         self.tutorialStep = tutorialStep
     }
@@ -105,7 +102,6 @@ struct GroupListView: View {
         .sheet(isPresented: $isAddGroupPresented, onDismiss: restoreCreateGroupTutorialIfNeeded) {
             AddGroupSheet(
                 model: model,
-                subscription: subscription,
                 initialMode: addGroupInitialMode,
                 enterGroup: { group in
                     enteredGroup = group
@@ -285,7 +281,6 @@ struct GroupListView: View {
 
 private struct AddGroupSheet: View {
     let model: AppStore
-    let subscription: SubscriptionStore
     let enterGroup: (Group) -> Void
     let joinedGroup: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -299,8 +294,6 @@ private struct AddGroupSheet: View {
     @State private var joinStore = GroupJoinStore()
     @State private var isCreating = false
     @State private var creationError: String?
-    @State private var showsSubscription = false
-    @State private var creationHitQuota = false
     @State private var isScannerPresented = false
     @State private var isScannerUnavailableAlertPresented = false
     @State private var showsCodeCopiedFeedback = false
@@ -308,13 +301,11 @@ private struct AddGroupSheet: View {
 
     init(
         model: AppStore,
-        subscription: SubscriptionStore,
         initialMode: GroupEntryMode,
         enterGroup: @escaping (Group) -> Void,
         joinedGroup: @escaping (String) -> Void
     ) {
         self.model = model
-        self.subscription = subscription
         self.enterGroup = enterGroup
         self.joinedGroup = joinedGroup
         _entryMode = State(initialValue: initialMode)
@@ -367,11 +358,6 @@ private struct AddGroupSheet: View {
             },
             set: { if !$0 { joinStore.reset(); joinError = nil } }
         )) {
-            #if DEBUG
-            if case .failure(.activeProjectLimit) = joinStore.state {
-                Button(L10n.text("升級至 Pro")) { showsSubscription = true }
-            }
-            #endif
             Button(L10n.text("知道了")) { }
         } message: {
             if let joinError {
@@ -384,11 +370,6 @@ private struct AddGroupSheet: View {
             get: { creationError != nil },
             set: { if !$0 { creationError = nil } }
         )) {
-            #if DEBUG
-            if creationHitQuota {
-                Button(L10n.text("升級至 Pro")) { showsSubscription = true }
-            }
-            #endif
             Button(L10n.text("知道了")) { }
         } message: {
             Text(creationError ?? "")
@@ -411,9 +392,6 @@ private struct AddGroupSheet: View {
                 isScannerPresented = false
                 joinError = message
             })
-        }
-        .sheet(isPresented: $showsSubscription) {
-            SubscriptionView(subscription: subscription)
         }
     }
 
@@ -672,7 +650,6 @@ private struct AddGroupSheet: View {
                 )
                 flow = .shareCode
             } catch {
-                creationHitQuota = (error as? GroupJoinError) == .activeProjectLimit
                 creationError = error.localizedDescription
             }
         }

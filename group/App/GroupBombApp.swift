@@ -9,7 +9,6 @@ import FirebaseFunctions
 import FirebaseMessaging
 import FirebaseStorage
 import OSLog
-import RevenueCat
 
 /// Application entry point. It deliberately only wires the root view.
 @main
@@ -47,9 +46,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        #if DEBUG
-        Purchases.configure(withAPIKey: "test_CfkQYcYBQWfDqAEBkeFlMYKVUPF")
-        #endif
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             #if DEBUG
             AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())

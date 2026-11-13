@@ -106,16 +106,8 @@ final class GroupAdmissionStore {
     }
 
     func review(_ request: GroupJoinRequest, approve: Bool) async throws {
-        do {
-            _ = try await call("reviewGroupJoinRequest", request: request,
-                              extra: ["decision": approve ? "approved" : "rejected"])
-        } catch {
-            let details = (error as NSError).userInfo["details"] as? [String: Any]
-            if details?["reason"] as? String == "active-project-limit" {
-                throw GroupJoinError.applicantProjectLimit
-            }
-            throw error
-        }
+        _ = try await call("reviewGroupJoinRequest", request: request,
+                          extra: ["decision": approve ? "approved" : "rejected"])
     }
 
     private func call(_ name: String, request: GroupJoinRequest, extra: [String: Any] = [:]) async throws -> Any {
